@@ -5,7 +5,8 @@ const state = {
   activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135,
   collapsedSetGroups: {},
   collectionFilters: {q:'',set_id:'',language:'all',rarity:'',finish:'',mode:'all',sort:'number'},
-  watchFilters: {q:'',set_id:'',language:'all',finish:'',sort:'added'}, deckFilters:{q:'',set_id:'',language:'EN',type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''}, deckZone:'main', deckCatalogObserver:null
+  watchFilters: {q:'',set_id:'',language:'all',finish:'',sort:'added'}, deckFilters:{q:'',set_id:'',language:'EN',type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''}, deckZone:'main', deckCatalogObserver:null,
+  homeBanner:null, homeBannerTimer:null
 };
 
 const $ = (q, root=document) => root.querySelector(q);
@@ -57,6 +58,17 @@ const api = async (url, options={}) => {
 };
 const post = (url,data) => api(url,{method:'POST',body:JSON.stringify(data)});
 
+async function reRenderPreservingFocus(selector,renderFn){
+  const active=document.activeElement;
+  const hadFocus=active&&active.matches&&active.matches(selector);
+  const selStart=hadFocus?active.selectionStart:null,selEnd=hadFocus?active.selectionEnd:null;
+  await renderFn();
+  if(hadFocus){
+    const el=$(selector);
+    if(el){el.focus();if(selStart!=null)try{el.setSelectionRange(selStart,selEnd)}catch{}}
+  }
+}
+
 function toast(message, actionLabel, action) {
   const node=document.createElement('div'); node.className='toast';
   node.innerHTML=`<span>${escapeHtml(message)}</span>${actionLabel?`<button>${escapeHtml(actionLabel)}</button>`:''}`;
@@ -69,16 +81,18 @@ function setNav(route) {
 }
 
 function setActiveGame(gameId, persist=true) {
-  const changed=state.activeGameId && state.activeGameId!==gameId;
+  const previousGameId=state.activeGameId;
+  const changed=previousGameId && previousGameId!==gameId;
+  const isInitial=!previousGameId;
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
   state.watchlistId=null; state.deckId=null;
-  if(changed){state.setType='all';state.setSort='type';state.setDirection='desc';state.collectionFilters={q:'',set_id:'',language:'all',rarity:'',finish:'',mode:'all',sort:'number'};state.watchFilters={q:'',set_id:'',language:'all',finish:'',sort:'added'};state.deckFilters={q:'',set_id:'',language:gameId==='one-piece'?'EN':'all',type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};state.deckZone='main'}
+  if(changed||isInitial){const defaultLang=state.boot.settings?.defaultLanguages?.[gameId];state.language=defaultLang||'combined';state.setType='all';state.setSort='type';state.setDirection='desc';state.collectionFilters={q:'',set_id:'',language:defaultLang||'all',rarity:'',finish:'',mode:'all',sort:'number'};state.watchFilters={q:'',set_id:'',language:defaultLang||'all',finish:'',sort:'added'};state.deckFilters={q:'',set_id:'',language:defaultLang||(gameId==='one-piece'?'EN':'all'),type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};state.deckZone='main'}
   if(persist) post('/api/settings',{activeGameId:gameId});
 }
 
 function routeTo(route, data) {
-  hideDeckImagePreview();closeDeckAddPopup();
+  hideDeckImagePreview();closeDeckAddPopup();clearTimeout(state.homeBannerTimer);
   state.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
   if(route==='dashboard') renderDashboard();
   if(route==='game') renderGame(data || state.game?.id);
@@ -87,6 +101,7 @@ function routeTo(route, data) {
   if(route==='collection') renderCollection();
   if(route==='watchlist') renderWatchlist();
   if(route==='decks') renderDeckbuilder();
+  if(route==='settings') renderSettings();
   $('.sidebar').classList.remove('open');
 }
 
@@ -139,12 +154,17 @@ function sortedSets(sets){
 function renderDashboard(){
   const games=state.boot.games;
   const totalValue=games.reduce((a,g)=>a+g.value,0), copies=games.reduce((a,g)=>a+g.copies,0), unique=games.reduce((a,g)=>a+g.unique_cards,0);
-  content.innerHTML=`
+  content.innerHTML=`<div class="dashboard-shell">
     <section class="dashboard-hero">
-      <div class="hero-copy"><span class="eyebrow light">SAMMLUNGSZENTRALE</span><h1>Willkommen zurück, ${escapeHtml(state.boot.user.display_name.split(' ')[0])}.</h1><p>Deine Sammlung wächst. Hier siehst du ihren aktuellen Stand über alle Spiele hinweg.</p></div>
-      <div class="hero-summary"><div><b>${money(totalValue)}</b><span>Gesamtwert</span></div><div><b>${copies}</b><span>Karten</span></div><div><b>${unique}</b><span>Varianten</span></div></div>
+      <div class="hero-top">
+        <div class="hero-copy"><h1>Willkommen zurück, ${escapeHtml(state.boot.user.display_name.split(' ')[0])}.</h1><p>Deine Sammlung wächst. Hier siehst du ihren aktuellen Stand über alle Spiele hinweg.</p></div>
+        <div class="hero-summary"><div><b>${money(totalValue)}</b><span>Gesamtwert</span></div><div><b>${copies}</b><span>Karten</span></div><div><b>${unique}</b><span>Varianten</span></div></div>
+      </div>
+      <section id="home-banner" class="home-banner hidden">
+        <div class="home-banner-head"><span class="eyebrow" id="home-banner-label">NEU &amp; ANGESAGT</span></div>
+        <div class="home-banner-viewport"><div class="home-banner-track" id="home-banner-track"></div></div>
+      </section>
     </section>
-    <div class="section-title"><h2>Deine Spiele</h2></div>
     <section class="game-grid">${games.map(g=>`
       <button class="game-tile" data-game="${g.id}" style="--accent:${g.accent}">
         <div class="game-visual"><img class="game-logo" src="/game-logo/${g.id}" alt="${escapeHtml(g.name)} Logo"></div>
@@ -154,13 +174,111 @@ function renderDashboard(){
           <div class="game-stats"><span><b>${g.copies}</b> Karten</span><span><b>${g.unique_cards}</b> Varianten · ${g.completion}%</span></div>
         </div>
       </button>`).join('')}</section>
-    <div class="section-title"><h2>Auf einen Blick</h2></div>
-    <section class="activity-row">
-      <div class="activity-card"><span class="activity-icon">▦</span><div><b>${copies} Karten gesammelt</b><small>${unique} unterschiedliche Varianten in deiner Sammlung</small></div></div>
-      <div class="activity-card"><span class="activity-icon">↧</span><div><b>${state.boot.imports.length?`${state.boot.imports.length} Importe gespeichert`:'Noch keine Listen importiert'}</b><small>${state.boot.imports.length?`Zuletzt am ${date(state.boot.imports[0].created_at)}`:'Sammlungen lassen sich jederzeit als Liste übernehmen'}</small></div></div>
-      <div class="activity-card"><span class="activity-icon">◎</span><div><b>${escapeHtml(state.game?.name || games[0]?.name)} ausgewählt</b><small>Diese Auswahl gilt in Sammlung, Watchlists und Deckbuilder</small></div></div>
-    </section>`;
+  </div>`;
   $$('[data-game]',content).forEach(el=>el.onclick=()=>{setActiveGame(el.dataset.game);routeTo('game',el.dataset.game)});
+  const bannerTrack=$('#home-banner-track');
+  bannerTrack.addEventListener('mouseenter',()=>clearTimeout(state.homeBannerTimer));
+  bannerTrack.addEventListener('mouseleave',()=>{
+    if(!state.homeBanner)return;
+    const duration=Math.max(14,state.homeBanner.slides[state.homeBanner.index].cards.length*1.5);
+    state.homeBannerTimer=setTimeout(advanceBanner,duration*1000);
+  });
+  bannerTrack.addEventListener('click',e=>{const card=e.target.closest('.banner-card');if(card)openCard(card.dataset.identity,card.dataset.variant)});
+  loadHomeBanner();
+}
+
+function bannerCard(c,accent){
+  return `<div class="banner-card" style="--accent:${accent}" data-identity="${c.identity_id}" data-variant="${c.variant_id}"><div class="banner-card-art card-finish-frame ${finishPresentation(c).effect}"><img loading="eager" decoding="async" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}"></div></div>`;
+}
+
+function preloadBannerImages(slides){
+  for(const slide of slides)for(const c of slide.cards){const img=new Image();img.src=artUrl(c.variant_id)}
+}
+
+function paintBannerSlide(index){
+  const slide=state.homeBanner.slides[index],track=$('#home-banner-track');
+  if(!track)return 0;
+  const cardsHtml=slide.cards.map(c=>bannerCard(c,slide.accent)).join('');
+  track.innerHTML=cardsHtml+cardsHtml;
+  const duration=Math.max(14,slide.cards.length*1.5);
+  track.style.setProperty('--marquee-duration',`${duration}s`);
+  track.style.animation='none'; void track.offsetWidth; track.style.animation='';
+  const label=$('#home-banner-label');
+  if(label)label.textContent=`${slide.mode==='value'?'Wertvollste Karten':'Neueste Karten'} deiner Sammlung`;
+  return duration;
+}
+
+async function advanceBanner(){
+  const banner=$('#home-banner');
+  if(!banner||!state.homeBanner)return;
+  banner.classList.add('fading');
+  await new Promise(r=>setTimeout(r,420));
+  if(!$('#home-banner'))return;
+  state.homeBanner.index=(state.homeBanner.index+1)%state.homeBanner.slides.length;
+  const duration=paintBannerSlide(state.homeBanner.index);
+  await new Promise(r=>requestAnimationFrame(r));
+  banner.classList.remove('fading');
+  state.homeBannerTimer=setTimeout(advanceBanner,duration*1000);
+}
+
+async function loadHomeBanner(){
+  clearTimeout(state.homeBannerTimer);
+  try{
+    const data=await api('/api/home-banner');
+    if(!data.slides.length||!$('#home-banner'))return;
+    state.homeBanner={slides:data.slides,index:0};
+    preloadBannerImages(data.slides);
+    const duration=paintBannerSlide(0);
+    $('#home-banner').classList.remove('hidden');
+    state.homeBannerTimer=setTimeout(advanceBanner,duration*1000);
+  }catch(error){/* banner is decorative; fail silently */}
+}
+
+function renderSettings(){
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[];
+  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
+    <section class="settings-section">
+      <h2>Standardsprache je Spiel</h2>
+      <p class="muted">Wird als Vorauswahl in Sammlung, Deckbuilder und Import verwendet.</p>
+      <div class="settings-grid">${games.map(g=>`<label class="settings-field"><span>${escapeHtml(g.name)}</span><select data-lang-game="${g.id}" class="select-control">${g.languages.map(l=>`<option value="${l}" ${(defaultLanguages[g.id]||g.languages[0])===l?'selected':''}>${l}</option>`).join('')}</select></label>`).join('')}</div>
+    </section>
+    <section class="settings-section">
+      <h2>Startseiten-Banner</h2>
+      <p class="muted">Wähle, welche Kartenlisten im "Neu &amp; Angesagt"-Banner rotieren.</p>
+      <div class="settings-checklist">
+        <label class="checkbox-row"><input type="checkbox" data-banner-mode="newest" ${modes.includes('newest')?'checked':''}> Die 20 neuesten Karten</label>
+        <label class="checkbox-row"><input type="checkbox" data-banner-mode="value" ${modes.includes('value')?'checked':''}> Die 20 wertvollsten Karten</label>
+      </div>
+      <p class="muted settings-subhead">TCGs ausschließen</p>
+      <div class="settings-checklist">${games.map(g=>`<label class="checkbox-row"><input type="checkbox" data-banner-exclude="${g.id}" ${excludedGames.includes(g.id)?'checked':''}> ${escapeHtml(g.name)}</label>`).join('')}</div>
+      <p class="muted settings-hint">Standardmäßig rotiert das Banner endlos zwischen allen nicht ausgeschlossenen TCGs. Sind mehrere Kartenlisten aktiv, wechselt es zusätzlich zwischen ihnen.</p>
+    </section>`;
+  $$('[data-lang-game]',content).forEach(select=>select.onchange=async e=>{
+    const updated={...(state.boot.settings.defaultLanguages||{}),[select.dataset.langGame]:e.target.value};
+    await post('/api/settings',{defaultLanguages:updated});
+    state.boot.settings.defaultLanguages=updated;
+    toast('Standardsprache gespeichert');
+  });
+  $$('[data-banner-mode]',content).forEach(cb=>cb.onchange=async e=>{
+    const current=state.boot.settings.homeBanner||{};
+    let next=[...(current.modes||['newest'])];
+    if(e.target.checked){if(!next.includes(cb.dataset.bannerMode))next.push(cb.dataset.bannerMode)}
+    else{next=next.filter(m=>m!==cb.dataset.bannerMode);if(!next.length){e.target.checked=true;toast('Mindestens eine Kartenliste muss aktiv sein.');return}}
+    const updated={...current,modes:next};
+    await post('/api/settings',{homeBanner:updated});
+    state.boot.settings.homeBanner=updated;
+    toast('Banner-Einstellung gespeichert');
+  });
+  $$('[data-banner-exclude]',content).forEach(cb=>cb.onchange=async e=>{
+    const current=state.boot.settings.homeBanner||{};
+    let next=[...(current.excludedGames||[])];
+    if(e.target.checked){if(!next.includes(cb.dataset.bannerExclude))next.push(cb.dataset.bannerExclude)}
+    else{next=next.filter(id=>id!==cb.dataset.bannerExclude)}
+    const updated={...current,excludedGames:next};
+    await post('/api/settings',{homeBanner:updated});
+    state.boot.settings.homeBanner=updated;
+    toast('Banner-Einstellung gespeichert');
+  });
 }
 
 async function renderGame(gameId){
@@ -197,7 +315,7 @@ function setGroupSection(gameId,group,items){
 }
 
 function setTile(s){
- return `<article class="set-card" data-set="${s.id}" style="--accent:${s.accent}"><div class="set-art"><img class="set-brand-logo set-brand-logo-${s.game_id}" loading="lazy" src="/set-logo/${encodeURIComponent(s.id)}?v=${encodeURIComponent(s.visual_version||'provider-v1')}" alt="${escapeHtml(s.name)} Logo"><span class="set-code">${escapeHtml(s.code)}</span><span class="set-kind">${escapeHtml(s.set_type)}</span></div><div class="set-card-info"><h3>${escapeHtml(s.name)}</h3><div class="set-meta">${releaseDate(s)} · ${s.printed_card_count ?? '–'} nummeriert</div><div class="badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div><div class="set-completion"><span>BASE<b>${s.base_completion}%</b></span><span>FOIL / PARALLEL<b>${s.foil_completion}%</b></span><span>MASTER<b>${s.master_completion}%</b></span><span style="margin-left:auto">WERT<b>${money(s.value)}</b></span></div></div></article>`;
+ return `<article class="set-card" data-set="${s.id}" style="--accent:${s.accent}"><div class="set-art"><img class="set-brand-logo set-brand-logo-${s.game_id}" loading="lazy" src="/set-logo/${encodeURIComponent(s.id)}?v=${encodeURIComponent(s.visual_version||'provider-v1')}" alt="${escapeHtml(s.name)} Logo"><span class="set-code">${escapeHtml(s.code)}</span><span class="set-kind">${escapeHtml(s.set_type)}</span></div><div class="set-card-info"><h3>${escapeHtml(s.name)}</h3><div class="set-meta">${releaseDate(s)} · ${s.printed_card_count ?? '–'} nummeriert</div><div class="badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div><div class="set-completion"><span>BASE<b>${s.base_completion}%</b></span><span>FOIL / PARALLEL<b>${s.foil_completion}%</b></span><span>MASTER<b>${s.master_completion}%</b></span><span>PLAYSET<b>${s.playset_completion}%</b></span><span style="margin-left:auto">WERT<b>${money(s.value)}</b></span></div></div></article>`;
 }
 
 async function renderSet(setId, preserve=false){
@@ -212,7 +330,7 @@ async function renderSet(setId, preserve=false){
     <section class="set-compact-head">
       <div class="set-compact-title"><div class="breadcrumbs"><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1><span>${escapeHtml(s.code)}</span>${escapeHtml(s.name)} <small>${releaseDate(s)} · ${s.printed_card_count} Karten</small></h1></div>
       <div class="compact-badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div>
-      <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${st.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${st.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${st.master}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${st.owned} / ${st.missing}</b></div><div class="compact-stat value"><span>Setwert</span><b>${money(st.value)}</b></div></div>
+      <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${st.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${st.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${st.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${st.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${st.owned} / ${st.missing}</b></div><div class="compact-stat value"><span>Setwert</span><b>${money(st.value)}</b></div></div>
     </section>
     <div class="card-toolbar">
       <div class="filter-search"><span>⌕</span><input id="set-search" value="${escapeHtml(state.query)}" placeholder="In diesem Set suchen"></div>
@@ -230,7 +348,7 @@ async function renderSet(setId, preserve=false){
   $$('#owned-filter button').forEach(b=>b.onclick=()=>{state.filter=b.dataset.mode;renderSet(setId,true)});
   $('#language-filter').onchange=e=>{state.language=e.target.value;renderSet(setId,true)};
   $('#sort-filter').onchange=e=>{state.sort=e.target.value;renderSet(setId,true);post('/api/settings',{[`sort_${game.id}`]:state.sort})};
-  let timer; $('#set-search').oninput=e=>{clearTimeout(timer);state.query=e.target.value;timer=setTimeout(()=>renderSet(setId,true),280)};
+  let timer; $('#set-search').oninput=e=>{clearTimeout(timer);state.query=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#set-search',()=>renderSet(setId,true)),280)};
   $('#card-zoom').oninput=e=>{state.zoom=e.target.value;$('.card-grid').style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
 }
 
@@ -245,7 +363,7 @@ async function renderAllCards(gameId,preserve=false){
     <div class="card-view-navigation"><button class="secondary-button" id="cards-back">← Zurück zur Setübersicht</button><label><span>Ansicht wechseln</span><select id="card-set-switch" class="select-control"><option value="__all__" selected>Alle Karten</option>${setOptions.map(item=>`<option value="${item.id}">${escapeHtml(item.code)} · ${escapeHtml(item.name)}</option>`).join('')}</select></label></div>
     <section class="set-compact-head all-cards-head">
       <div class="set-compact-title"><div class="breadcrumbs"><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1>Alle Karten <small>${stats.total} Karten in ${data.groups.length} Sets</small></h1></div>
-      <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${stats.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${stats.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${stats.master}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${stats.owned} / ${stats.missing}</b></div><div class="compact-stat value"><span>Gesamtwert</span><b>${money(stats.value)}</b></div></div>
+      <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${stats.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${stats.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${stats.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${stats.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${stats.owned} / ${stats.missing}</b></div><div class="compact-stat value"><span>Gesamtwert</span><b>${money(stats.value)}</b></div></div>
     </section>
     <div class="card-toolbar browser-toolbar all-cards-toolbar">
       <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
@@ -263,32 +381,102 @@ async function renderAllCards(gameId,preserve=false){
   $('#all-language-filter').onchange=event=>{state.language=event.target.value;renderAllCards(gameId,true)};
   $('#all-sort-filter').onchange=event=>{state.sort=event.target.value;renderAllCards(gameId,true);post('/api/settings',{[`sort_${game.id}`]:state.sort})};
   $('#all-set-order').onchange=event=>{state.setDirection=event.target.value;renderAllCards(gameId,true)};
-  let timer;$('#all-card-search').oninput=event=>{clearTimeout(timer);state.query=event.target.value;timer=setTimeout(()=>renderAllCards(gameId,true),280)};
+  let timer;$('#all-card-search').oninput=event=>{clearTimeout(timer);state.query=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#all-card-search',()=>renderAllCards(gameId,true)),280)};
   $('#all-card-zoom').oninput=event=>{state.zoom=event.target.value;$$('.card-grid',content).forEach(grid=>grid.style.setProperty('--card-size',`${state.zoom}px`));post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
+}
+
+const cardCycleRegistry=new Map();
+const LORCANA_PREMIUM_TIER={Epic:'Epic',Mythisch:'Epic',Enchanted:'Enchanted',Verzaubert:'Enchanted',Iconic:'Iconic',Ikonisch:'Iconic'};
+
+function lorcanaVariantGroups(languageVariants){
+  const normal=languageVariants.filter(x=>x.finish==='Normal');
+  const foil=languageVariants.filter(x=>x.finish==='Silver');
+  const premium=languageVariants.filter(x=>LORCANA_PREMIUM_TIER[x.rarity]);
+  const groups=[{tier:'normal',items:normal}];
+  if(foil.length)groups.push({tier:'foil',items:foil});
+  if(premium.length)groups.push({tier:'premium',items:premium,rarityLabel:LORCANA_PREMIUM_TIER[premium[0].rarity]});
+  return groups;
+}
+
+function lorcanaVariantBadges(languageVariants){
+  return lorcanaVariantGroups(languageVariants).map(g=>{
+    const qty=g.items.reduce((a,x)=>a+(Number(x.quantity)||0),0);
+    return `<span class="variant-badge tier-${g.tier} ${qty?'owned':'missing'}" title="${g.rarityLabel?escapeHtml(g.rarityLabel):''}">×${qty}</span>`;
+  }).join('');
 }
 
 function cardTile(card){
   const languageVariants=card.variants.filter(x=>x.language===card.language);
-  const v=languageVariants.find(x=>['standard','normal'].includes(x.variant_code))||languageVariants[0]||card.variants[0];
+  const v=languageVariants.find(x=>x.finish==='Normal')||languageVariants.find(x=>['standard','normal'].includes(x.variant_code))||languageVariants[0]||card.variants[0];
+  const isLorcana=(v.game_id||state.activeGameId)==='lorcana';
+  const foil=isLorcana?languageVariants.find(x=>x.finish==='Silver'):null;
   const visual=finishPresentation(v);
+  const cycle=[v,...languageVariants.filter(x=>x!==v)];
+  cardCycleRegistry.set(v.variant_id,cycle);
+  const badgesHtml=isLorcana?lorcanaVariantBadges(languageVariants):(card.quantity?`<span class="owned-pill">×${card.quantity}</span>`:'');
+  const quantityHtml=isLorcana&&foil
+    ?`<div class="quantity-stack"><div class="quantity-control foil" data-variant="${foil.variant_id}"><button data-delta="-1">−</button><b>${foil.quantity}</b><button data-delta="1">＋</button></div><div class="quantity-control" data-variant="${v.variant_id}"><button data-delta="-1">−</button><b>${v.quantity}</b><button data-delta="1">＋</button></div></div>
+      <div class="quick-add-stack"><button class="quick-add foil" data-variant="${foil.variant_id}">＋ 1 Foil</button><button class="quick-add" data-variant="${v.variant_id}">＋ 1 hinzufügen</button></div>`
+    :`<div class="quantity-control" data-variant="${v.variant_id}"><button data-delta="-1">−</button><b>${v.quantity}</b><button data-delta="1">＋</button></div><button class="quick-add" data-variant="${v.variant_id}">＋ 1 hinzufügen</button>`;
+  const imageHtml=cycle.length>1
+    ?`<div class="card-flip-stack"><img class="cycle-img front" loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}"><img class="cycle-img back" loading="lazy" decoding="async" alt="" aria-hidden="true"></div>`
+    :`<img loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}">`;
+  const playsetHtml=card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓ 4×</span>`:'';
   return `<article class="card-tile ${card.quantity?'owned':'missing'} ${card.variant_count>3?'complex':''}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
-    <div class="card-image-wrap card-finish-frame ${visual.effect}"><img loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}"><button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button>${card.quantity?`<span class="owned-pill">×${card.quantity}</span>`:''}<div class="quantity-control"><button data-delta="-1">−</button><b>${v.quantity}</b><button data-delta="1">＋</button></div><button class="quick-add">＋ 1 hinzufügen</button></div>
-    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span>${price(maxPrice(languageVariants))}</span></div>${state.zoom>175?`<div class="variant-chips">${languageVariants.slice(0,3).map(x=>`<span class="variant-chip">${escapeHtml(x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
+    <div class="card-image-wrap card-finish-frame ${visual.effect}">${imageHtml}<button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${playsetHtml}${quantityHtml}</div>
+    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${languageVariants.slice(0,3).map(x=>`<span class="variant-chip">${escapeHtml(x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
 
 function bindCardEvents(watchlistId=null){
   $$('.card-tile',content).forEach(tile=>{
     tile.onclick=e=>{if(e.target.closest('.watch-button,.quantity-control,.quick-add'))return;openCard(tile.dataset.identity,tile.dataset.variant)};
     $('.watch-button',tile).onclick=async e=>{e.stopPropagation();const r=await post('/api/watchlist',{variant_id:tile.dataset.variant,...(watchlistId?{list_id:watchlistId}:{})});e.currentTarget.classList.toggle('active',r.active);e.currentTarget.textContent=r.active?'♥':'♡';toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt');refreshWatchCount();if(state.route==='watchlist')renderWatchlist(true)};
-    $$('.quantity-control button',tile).forEach(btn=>btn.onclick=e=>{e.stopPropagation();changeQuantity(tile.dataset.variant,Number(btn.dataset.delta))});
-    $('.quick-add',tile).onclick=e=>{e.stopPropagation();changeQuantity(tile.dataset.variant,1,true)};
+    $$('.quantity-control',tile).forEach(row=>{const variantId=row.dataset.variant||tile.dataset.variant;$$('button',row).forEach(btn=>btn.onclick=e=>{e.stopPropagation();changeQuantity(variantId,Number(btn.dataset.delta))})});
+    $$('.quick-add',tile).forEach(btn=>btn.onclick=e=>{e.stopPropagation();changeQuantity(btn.dataset.variant||tile.dataset.variant,1,true)});
+    const cycle=cardCycleRegistry.get(tile.dataset.variant);
+    const stack=$('.card-flip-stack',tile);
+    if(cycle&&cycle.length>1&&stack){
+      const frame=$('.card-image-wrap',tile),priceEl=$('.card-price',tile);
+      let [frontEl,backEl]=$$('.cycle-img',stack);
+      if(!frontEl.classList.contains('front')){[frontEl,backEl]=[backEl,frontEl]}
+      let cycleIndex=0,cycleTimer=null;
+      const advance=()=>{
+        cycleIndex=(cycleIndex+1)%cycle.length;
+        const variant=cycle[cycleIndex];
+        backEl.src=artUrl(variant.variant_id);
+        frontEl.classList.replace('front','back');
+        backEl.classList.replace('back','front');
+        frame.className=`card-image-wrap card-finish-frame ${finishPresentation(variant).effect}`;
+        if(priceEl)priceEl.textContent=price(variant.price);
+        [frontEl,backEl]=[backEl,frontEl];
+      };
+      const reset=()=>{
+        cycleIndex=0;
+        const variant=cycle[0];
+        frontEl.src=artUrl(variant.variant_id);
+        frontEl.classList.add('front');frontEl.classList.remove('back');
+        backEl.classList.add('back');backEl.classList.remove('front');
+        frame.className=`card-image-wrap card-finish-frame ${finishPresentation(variant).effect}`;
+        if(priceEl)priceEl.textContent=price(variant.price);
+      };
+      tile.addEventListener('mouseenter',()=>{cycleIndex=0;cycleTimer=setInterval(advance,900)});
+      tile.addEventListener('mouseleave',()=>{clearInterval(cycleTimer);reset()});
+    }
   });
+}
+
+async function refreshCurrentView(){
+  if(state.route==='set') await renderSet(state.set.id,true);
+  else if(state.route==='game-cards') await renderAllCards(state.activeGameId,true);
+  else if(state.route==='collection') await renderCollection(true);
+  else if(state.route==='watchlist') await renderWatchlist(true);
+  else if(state.route==='decks') await renderDeckbuilder(true);
 }
 
 async function changeQuantity(variantId,delta,quick=false){
   const r=await post('/api/collection',{variant_id:variantId,delta,condition:'Near Mint'});
-  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:'Near Mint'});if(state.route==='game-cards')await renderAllCards(state.activeGameId,true);else if(state.set)await renderSet(state.set.id,true)});
-  if(state.route==='set') await renderSet(state.set.id,true); else if(state.route==='game-cards')await renderAllCards(state.activeGameId,true); else if(state.route==='collection') await renderCollection(true); else if(state.route==='watchlist') await renderWatchlist(true);
+  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:'Near Mint'});await refreshCurrentView()});
+  await refreshCurrentView();
   if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
 }
 
@@ -324,7 +512,7 @@ async function renderCollection(preserve=false){
 
 function bindBrowserFilters(prefix,render){
   const target=prefix==='watch'?state.watchFilters:state.collectionFilters;let timer;
-  $(`#${prefix}-q`).oninput=e=>{clearTimeout(timer);target.q=e.target.value;timer=setTimeout(render,250)};
+  $(`#${prefix}-q`).oninput=e=>{clearTimeout(timer);target.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus(`#${prefix}-q`,render),250)};
   const mappings=prefix==='watch'?['set','language','finish','sort']:['set','language','rarity','finish','mode','sort'];
   mappings.forEach(key=>$(`#${prefix}-${key}`).onchange=e=>{target[key==='set'?'set_id':key]=e.target.value;render()});
 }
@@ -431,10 +619,22 @@ function hololiveFilterPanel(filters){
 
 function deckOverviewCard(deck,game,formats){
   const profile=formats.find(item=>item.id===deck.format_id)||formats[0];
-  const counts=profile.zones.map(zone=>{const actual=deck[`${zone.id}_count`]||0,effective=game.id==='one-piece'&&zone.id==='don'&&actual<zone.target?zone.target:actual;return `${zone.name} ${effective}/${zone.target}${effective!==actual?' auto':''}`}).join(' · ');
-  const cover=deck.cover_variant_id?`<img loading="lazy" src="${artUrl(deck.cover_variant_id)}" alt="">`:`<span>${symbol(game.id)}</span>`;
-  const collectionState=deck.missing_copies?`${deck.missing_copies} fehlen · Nachkauf ${deckCostLabel(deck.missing_cost,deck.missing_unpriced_copies)}`:deck.required_copies?'Sammlung vollständig':'Noch keine Karten';
-  return `<button class="deck-overview-card" data-deck="${deck.id}" style="--accent:${game.accent}"><div class="deck-overview-cover">${cover}<i></i></div><div class="deck-overview-copy"><span>${escapeHtml(profile.name)}</span><h2>${escapeHtml(deck.name)}</h2><p>${escapeHtml(counts)}</p><div class="deck-overview-metrics"><span>${money(deck.deck_value)}</span><span class="${deck.missing_copies?'missing':deck.required_copies?'complete':''}">${deck.owned_copies}/${deck.required_copies} vorhanden</span></div><small>${collectionState} · geändert ${date(deck.updated_at)}</small></div><b class="deck-open-arrow">→</b></button>`;
+  const backUrl=`/card-back/${game.id}`;
+  const cover=deck.cover_variant_id?`<img loading="lazy" src="${artUrl(deck.cover_variant_id)}" alt="">`:'';
+  const missingLabel=deck.missing_copies?`${deck.missing_copies} fehlen`:deck.required_copies?'Vollständig':'Leer';
+  const missingClass=deck.missing_copies?'missing':deck.required_copies?'complete':'';
+  return `<button class="deck-overview-card" data-deck="${deck.id}" style="--accent:${game.accent}">
+    <div class="deck-stack">
+      <span class="deck-stack-card deck-stack-back deck-stack-back-2" style="background-image:url('${backUrl}')"></span>
+      <span class="deck-stack-card deck-stack-back deck-stack-back-1" style="background-image:url('${backUrl}')"></span>
+      <div class="deck-stack-card deck-stack-top${deck.cover_variant_id?'':' empty'}" ${deck.cover_variant_id?'':`style="background-image:url('${backUrl}')"`}>${cover}</div>
+    </div>
+    <div class="deck-overview-badge">
+      <span class="deck-overview-format">${escapeHtml(profile.name)}</span>
+      <h3>${escapeHtml(deck.name)}</h3>
+      <div class="deck-overview-stats"><b>${money(deck.deck_value)}</b><span class="deck-overview-missing ${missingClass}">${escapeHtml(missingLabel)}</span></div>
+    </div>
+  </button>`;
 }
 
 function closeDeckAddPopup(){const modal=$('#deck-add-modal');if(modal)modal.remove();document.body.style.overflow='';}
@@ -512,7 +712,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   const gameFilters=isOnePiece?opFilterPanel(f):isLorcana?lorcanaFilterPanel(f):isHololive?hololiveFilterPanel(f):'';
   const filters=`<div class="op-catalog-controls"><div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="${isOnePiece?'Englische Karten':'Karten'} suchen"></div>${languageControl}<select id="deck-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="cost">Kosten</option><option value="rarity">Seltenheit</option></select><div class="toolbar-spacer"></div>${viewTools}</div>${gameFilters?`<div class="op-catalog-filterbar">${gameFilters}</div>`:''}`;
   content.innerHTML=`<div class="deck-shell deck-shell-editor" style="--deck-card-size:${state.deckZoom}px;--catalog-card-size:${state.deckZoom}px">
-    <section class="deck-editor"><header class="deck-editor-head"><button class="compact-back-button" id="deck-overview-back" title="Alle Decks" aria-label="Alle Decks">←</button><div class="deck-title-field"><input id="deck-name" value="${escapeHtml(detail.deck.name)}" aria-label="Deckname"></div><select id="deck-format" class="select-control">${formats.map(x=>`<option value="${x.id}" ${x.id===detail.deck.format_id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select><a href="${escapeHtml(validation.rules_url)}" target="_blank" rel="noopener">Regeln ↗</a><button id="delete-deck" class="icon-button" title="Deck löschen">⌫</button></header>
+    <section class="deck-editor"><header class="deck-editor-head"><button class="compact-back-button" id="deck-overview-back" title="Alle Decks" aria-label="Alle Decks">←</button><div class="deck-title-field"><input id="deck-name" value="${escapeHtml(detail.deck.name)}" aria-label="Deckname"></div><select id="deck-format" class="select-control">${formats.map(x=>`<option value="${x.id}" ${x.id===detail.deck.format_id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select><a href="${escapeHtml(validation.rules_url)}" target="_blank" rel="noopener">Regeln ↗</a><button id="deck-import-open" class="icon-button" title="Deckliste importieren">↧</button><button id="delete-deck" class="icon-button" title="Deck löschen">⌫</button></header>
       ${deckWorkspace}
     </section>
     <aside class="deck-catalog"><div class="deck-catalog-title"><div><b>Kartenkatalog</b><span>${catalog.pagination.total} Basiskarten · ${isOnePiece?'EN':f.language==='all'?'alle Sprachen':f.language}</span></div></div>${filters}<div class="catalog-card-list ${state.deckView==='grid'?'catalog-card-grid-list':''}">${catalog.cards.map(c=>deckCatalogCard(c,profile,deckQuantities)).join('')}<div class="deck-catalog-sentinel">${catalog.pagination.has_more?'Weitere Karten werden geladen …':'Alle Treffer geladen'}</div></div></aside></div>`;
@@ -550,7 +750,8 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   if(catalog.pagination.has_more&&'IntersectionObserver'in window){state.deckCatalogObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))loadMoreCatalog()},{root:catalogList,rootMargin:'240px'});state.deckCatalogObserver.observe(sentinel)}
   $('#deck-name').onchange=e=>saveDeckMeta(e.target.value,$('#deck-format').value,detail.deck.notes||'');$('#deck-format').onchange=e=>saveDeckMeta($('#deck-name').value,e.target.value,detail.deck.notes||'');
   $('#delete-deck').onclick=async()=>{if(!confirm(`Deck „${detail.deck.name}“ löschen?`))return;await api(`/api/decks/${state.deckId}`,{method:'DELETE'});state.deckId=null;renderDeckbuilder()};
-  let timer;$('#deck-q').oninput=e=>{clearTimeout(timer);f.q=e.target.value;timer=setTimeout(()=>renderDeckbuilder(true),250)};
+  $('#deck-import-open').onclick=()=>{$('#deck-import-preview').classList.remove('visible');$('#deck-import-preview').innerHTML='';$('#deck-apply-import').disabled=true;openOverlay('deck-import-modal')};
+  let timer;$('#deck-q').oninput=e=>{clearTimeout(timer);f.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deck-q',()=>renderDeckbuilder(true)),250)};
   $('#deck-sort').value=f.sort;$('#deck-sort').onchange=event=>{f.sort=event.target.value;renderDeckbuilder(true)};
   if(isOnePiece){
     $$('[data-op-filter]').forEach(button=>button.onclick=()=>{const key=button.dataset.opFilter,value=button.dataset.value,current=f[key]||[];f[key]=current.includes(value)?current.filter(item=>item!==value):[...current,value];renderDeckbuilder(true)});
@@ -590,7 +791,7 @@ function renderCardModal(){
   $$('[data-variant-nav]',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalVariant=physicalVariants[idx+Number(b.dataset.variantNav)];renderCardModal()});
   $$('.variant-option',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalVariant=card.variants.find(v=>v.id===b.dataset.variant);renderCardModal()});
   $$('[data-card-nav]',$('#card-dialog')).forEach(b=>b.onclick=()=>{const target=state.cards[gridIdx+Number(b.dataset.cardNav)];if(target)openCard(target.identity_id,target.variant_id,true)});
-  const qtyControls=$$('.modal-qty-btn',$('#card-dialog')); qtyControls.forEach(b=>b.onclick=()=>{if(!state.edit){toast('Aktiviere zuerst den Edit Mode.');return}changeQuantity(v.id,Number(b.dataset.delta))});
+  const qtyControls=$$('.modal-qty-btn',$('#card-dialog')); qtyControls.forEach(b=>b.onclick=()=>changeQuantity(v.id,Number(b.dataset.delta)));
   const watch=$('.modal-watch',$('#card-dialog')); if(watch)watch.onclick=async()=>{const listId=Number($('#modal-watchlist')?.value||state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur gewählten Watchlist hinzugefügt':'Von der gewählten Watchlist entfernt')};
   const refresh=$('#price-refresh',$('#card-dialog')); if(refresh)refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent='Preise werden geladen …';try{await post('/api/prices/sync',{});toast('Marktpreise aktualisiert');await openCard(card.id,v.id,true)}catch(error){toast(error.message||'Preisimport fehlgeschlagen');refresh.disabled=false;refresh.textContent='Preise aktualisieren'}};
 }
@@ -623,11 +824,49 @@ async function doSearch(q){
   $$('.search-result',wrap).forEach(el=>el.onclick=()=>{closeOverlay('search-overlay');openCard(el.dataset.id,el.dataset.variant)});
 }
 
+let importMode='text', importJsonData=null;
+
 async function previewImport(){
-  const payload={game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value};
-  const rows=await post('/api/import/preview',payload), box=$('#import-preview');box.classList.add('visible');
+  const box=$('#import-preview');box.classList.add('visible');
+  let rows;
+  if(importMode==='json'){
+    if(!importJsonData||!importJsonData.length){box.innerHTML='<div class="empty-state">Bitte zuerst eine JSON-Backup-Datei wählen.</div>';$('#apply-import').disabled=true;return[]}
+    rows=await post('/api/import/json/preview',{collection:importJsonData});
+  } else {
+    const payload={game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value};
+    rows=await post('/api/import/preview',payload);
+  }
   box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.finish):escapeHtml(r.message||'Kein Treffer')}</small></div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
   $('#apply-import').disabled=!rows.some(r=>r.status==='matched');return rows;
+}
+
+async function previewDeckImport(){
+  const box=$('#deck-import-preview');box.classList.add('visible');
+  const rows=await post(`/api/decks/${state.deckId}/import/preview`,{text:$('#deck-import-text').value});
+  box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.original)}</b><small>${r.quantity}× · ${r.match?escapeHtml(r.match.set_name):escapeHtml(r.message||'Kein Treffer')}${r.alt_printings?` · +${r.alt_printings} weitere Drucke`:''}</small></div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
+  $('#deck-apply-import').disabled=!rows.some(r=>r.status==='matched');return rows;
+}
+
+function setImportMode(mode){
+  importMode=mode;
+  $$('.import-mode-toggle button').forEach(b=>b.classList.toggle('active',b.dataset.importMode===mode));
+  $('#import-text-fields').classList.toggle('hidden',mode!=='text');
+  $('#import-json-fields').classList.toggle('hidden',mode!=='json');
+  $('#import-preview').classList.remove('visible');$('#import-preview').innerHTML='';
+  $('#apply-import').disabled=true;
+}
+
+async function handleImportJsonFile(file){
+  const nameLabel=$('#import-json-filename');
+  if(!file){importJsonData=null;nameLabel.textContent='';return}
+  try{
+    const parsed=JSON.parse(await file.text());
+    importJsonData=Array.isArray(parsed)?parsed:(parsed.collection||[]);
+    nameLabel.textContent=`${file.name} · ${importJsonData.length} Einträge`;
+  }catch(error){
+    importJsonData=null;nameLabel.textContent='';
+    toast('Die Datei ist kein gültiges JSON-Backup.');
+  }
 }
 
 function wireGlobalEvents(){
@@ -641,8 +880,28 @@ function wireGlobalEvents(){
   document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen()}if(e.key==='Escape')$$('.overlay:not(.hidden)').forEach(x=>closeOverlay(x.id));if(state.modalCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){const btn=e.key==='ArrowLeft'?'[data-card-nav="-1"]':e.key==='ArrowRight'?'[data-card-nav="1"]':e.key==='ArrowUp'?'[data-variant-nav="-1"]':'[data-variant-nav="1"]';$(btn,$('#card-dialog'))?.click()}});
   let searchTimer;$('#global-search-input').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>doSearch(e.target.value),220)};
   $$('.overlay').forEach(o=>o.addEventListener('mousedown',e=>{if(e.target===o)closeOverlay(o.id)}));$$('[data-close]').forEach(b=>b.onclick=()=>closeOverlay(b.dataset.close));
-  $('#import-open').onclick=()=>openOverlay('import-modal');$('#export-open').onclick=()=>openOverlay('export-modal');
-  $('#preview-import').onclick=previewImport;$('#apply-import').onclick=async()=>{const payload={game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy:$('input[name="strategy"]:checked').value};const r=await post('/api/import/apply',payload);closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')};
+  const syncImportLanguage=()=>{const lang=state.boot.settings?.defaultLanguages?.[$('#import-game').value];if(lang)$('#import-language').value=lang};
+  $('#import-open').onclick=()=>{setImportMode('text');$('#import-game').value=state.activeGameId;syncImportLanguage();openOverlay('import-modal')};
+  $('#import-game').onchange=syncImportLanguage;
+  $('#export-open').onclick=()=>openOverlay('export-modal');
+  $$('.import-mode-toggle button').forEach(btn=>btn.onclick=()=>setImportMode(btn.dataset.importMode));
+  $('#import-json-file').onchange=e=>handleImportJsonFile(e.target.files[0]);
+  $('#preview-import').onclick=previewImport;
+  $('#apply-import').onclick=async()=>{
+    const strategy=$('input[name="strategy"]:checked').value;
+    const r=importMode==='json'
+      ?await post('/api/import/json/apply',{collection:importJsonData||[],strategy})
+      :await post('/api/import/apply',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy});
+    closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
+  };
+  $('#deck-preview-import').onclick=previewDeckImport;
+  $('#deck-apply-import').onclick=async()=>{
+    const strategy=$('input[name="deck-import-strategy"]:checked').value;
+    const r=await post(`/api/decks/${state.deckId}/import/apply`,{text:$('#deck-import-text').value,strategy});
+    closeOverlay('deck-import-modal');
+    toast(`${r.applied} Karten importiert${r.skipped_zone?`, ${r.skipped_zone} ohne passende Zone übersprungen`:''}.`);
+    renderDeckbuilder(true);
+  };
 }
 
 async function init(){
