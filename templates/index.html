@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090909">
+  <title>DeckLedger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=40">
+</head>
+<body class="dark">
+  <div id="app" class="app-shell">
+    <aside class="sidebar">
+      <button class="brand" data-route="dashboard">
+        <svg class="brand-symbol" viewBox="0 0 44 44" aria-hidden="true">
+          <path class="brand-card-back" d="M8.5 15.5 23 7.8a3 3 0 0 1 4.1 1.3l9.2 18.1a3 3 0 0 1-1.3 4.1l-14.5 7.4"/>
+          <rect class="brand-card-front" x="10.5" y="6.5" width="23" height="31" rx="4"/>
+          <path class="brand-card-line" d="M16 26.5h12M16 31h8"/>
+          <path class="brand-card-spark" d="m27.5 12.2 1.1 2.2 2.2 1.1-2.2 1.1-1.1 2.2-1.1-2.2-2.2-1.1 2.2-1.1 1.1-2.2Z"/>
+        </svg>
+        <span class="brand-word"><b>DECK</b><span>LEDGER</span></span>
+      </button>
+      <button id="sidebar-collapse" class="sidebar-collapse" title="Seitenleiste einklappen">‹</button>
+      <nav class="main-nav" aria-label="Hauptnavigation">
+        <button class="nav-item active" data-route="dashboard"><span class="nav-icon">⌂</span><span>Übersicht</span></button>
+        <button class="nav-item" data-route="collection"><span class="nav-icon">▦</span><span>Sammlung</span></button>
+        <button class="nav-item" data-route="watchlist"><span class="nav-icon">♡</span><span>Watchlists</span><span id="watch-count" class="count-badge">0</span></button>
+        <button class="nav-item" data-route="decks"><span class="nav-icon">▱</span><span>Deckbuilder</span></button>
+      </nav>
+      <div class="sidebar-label">WERKZEUGE</div>
+      <nav class="main-nav">
+        <button class="nav-item" id="import-open"><span class="nav-icon">⇩</span><span>Importieren</span></button>
+        <button class="nav-item" id="export-open"><span class="nav-icon">⇧</span><span>Exportieren</span></button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div id="edit-panel" class="edit-panel">
+        <div><span class="status-dot"></span><strong>Edit Mode</strong></div>
+        <p>Karten direkt bearbeiten</p>
+        <button id="edit-toggle" class="switch" role="switch" aria-checked="false"><span></span></button>
+      </div>
+      <div class="user-menu">
+        <div id="user-avatar" class="avatar">AM</div>
+        <div><strong id="user-name">Alex Morgan</strong><small id="user-role">Sammler</small></div>
+        <form action="/logout" method="post"><button title="Abmelden">↗</button></form>
+      </div>
+    </aside>
+
+    <header class="topbar">
+      <button id="mobile-menu" class="icon-button mobile-only">☰</button>
+      <select id="global-game-filter" class="global-game-filter" aria-label="Aktives TCG"></select>
+      <button id="global-search-open" class="global-search"><span>⌕</span><span>Karten, Sets oder Nummern suchen …</span><kbd>⌘ K</kbd></button>
+      <div class="top-actions">
+        <div id="edit-indicator" class="edit-indicator">EDIT MODE</div>
+        <button id="quick-toggle" class="small-button">⚡ Quick Entry</button>
+      </div>
+    </header>
+
+    <main id="content" class="content"><div class="page-loader"><span></span><p>Sammlung wird geladen …</p></div></main>
+  </div>
+
+  <div id="search-overlay" class="overlay hidden">
+    <div class="search-dialog">
+      <div class="search-input-wrap"><span>⌕</span><input id="global-search-input" placeholder="Suche im gewählten TCG …" autocomplete="off"><kbd>ESC</kbd></div>
+      <div id="search-results" class="search-results"><div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Suche nach Name, Set oder Sammlernummer.</span></div></div>
+    </div>
+  </div>
+
+  <div id="card-modal" class="overlay hidden"><div id="card-dialog" class="card-dialog"></div></div>
+
+  <div id="import-modal" class="overlay hidden">
+    <div class="utility-dialog import-dialog">
+      <div class="dialog-head"><div><span class="eyebrow">SAMMLUNG ERWEITERN</span><h2>Listenimport</h2></div><button class="close-button" data-close="import-modal">×</button></div>
+      <div class="import-form-grid">
+        <label>Spiel<select id="import-game"></select></label>
+        <label>Standardsprache<select id="import-language"><option>DE</option><option selected>EN</option><option>JP</option></select></label>
+        <label>Zustand<select id="import-condition"><option>Mint</option><option selected>Near Mint</option><option>Excellent</option><option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option></select></label>
+      </div>
+      <label class="import-text-label">Liste einfügen<textarea id="import-text" rows="7" placeholder="4 OP01016 EN&#10;2x OP01017 EN&#10;OP01018;1;EN;Parallel;Near Mint"></textarea></label>
+      <div class="format-help">Unterstützt: <code>4 OP01016 EN</code> oder <code>OP01016;4;EN;Parallel;NM</code></div>
+      <div id="import-preview" class="import-preview"></div>
+      <div class="dialog-actions"><label class="radio-label"><input type="radio" name="strategy" value="add" checked> Mengen addieren</label><label class="radio-label"><input type="radio" name="strategy" value="replace"> Ersetzen</label><span class="spacer"></span><button class="secondary-button" id="preview-import">Vorschau</button><button class="primary-button" id="apply-import" disabled>Import anwenden</button></div>
+    </div>
+  </div>
+
+  <div id="export-modal" class="overlay hidden">
+    <div class="utility-dialog export-dialog">
+      <div class="dialog-head"><div><span class="eyebrow">DATENHOHEIT</span><h2>Sammlung exportieren</h2></div><button class="close-button" data-close="export-modal">×</button></div>
+      <p class="muted">Lade deine vollständige Sammlung jederzeit in einem portablen Format herunter.</p>
+      <div class="export-options"><a href="/api/export.json" class="export-card"><span class="file-icon">{ }</span><div><b>JSON Export</b><small>Volle Datentreue für Backups</small></div><span>↓</span></a><a href="/api/export.csv" class="export-card"><span class="file-icon">CSV</span><div><b>CSV Export</b><small>Für Tabellen und andere Tracker</small></div><span>↓</span></a></div>
+    </div>
+  </div>
+
+  <div id="toast-stack" class="toast-stack"></div>
+  <script src="{{ url_for('static', filename='app.js') }}?v=39"></script>
+</body>
+</html>

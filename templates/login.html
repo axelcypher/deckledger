@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DeckLedger · Anmeldung</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=6">
+</head>
+<body class="login-body dark">
+  <main class="login-shell">
+    <section class="login-art" aria-hidden="true">
+      <div class="login-brand">
+        <svg class="brand-symbol" viewBox="0 0 44 44" aria-hidden="true"><path class="brand-card-back" d="M8.5 15.5 23 7.8a3 3 0 0 1 4.1 1.3l9.2 18.1a3 3 0 0 1-1.3 4.1l-14.5 7.4"/><rect class="brand-card-front" x="10.5" y="6.5" width="23" height="31" rx="4"/><path class="brand-card-line" d="M16 26.5h12M16 31h8"/><path class="brand-card-spark" d="m27.5 12.2 1.1 2.2 2.2 1.1-2.2 1.1-1.1 2.2-1.1-2.2-2.2-1.1 2.2-1.1 1.1-2.2Z"/></svg>
+        <span class="brand-word"><b>DECK</b><span>LEDGER</span></span>
+      </div>
+      <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+      <div class="floating-card card-a"><span>COLLECT</span><b>Discover.</b></div>
+      <div class="floating-card card-b"><span>TRACK</span><b>Complete.</b></div>
+      <div class="floating-card card-c"><span>VALUE</span><b>Know.</b></div>
+      <div class="login-quote">
+        <span class="eyebrow light">DEINE SAMMLUNG. EIN ORT.</span>
+        <h1>Jede Karte erzählt<br>eine Geschichte.</h1>
+        <p>Organisiere deine TCG-Sammlung, schließe Sets ab und behalte den Marktwert im Blick.</p>
+      </div>
+    </section>
+    <section class="login-panel">
+      <div class="login-mobile-brand">
+        <svg class="brand-symbol" viewBox="0 0 44 44" aria-hidden="true"><path class="brand-card-back" d="M8.5 15.5 23 7.8a3 3 0 0 1 4.1 1.3l9.2 18.1a3 3 0 0 1-1.3 4.1l-14.5 7.4"/><rect class="brand-card-front" x="10.5" y="6.5" width="23" height="31" rx="4"/><path class="brand-card-line" d="M16 26.5h12M16 31h8"/><path class="brand-card-spark" d="m27.5 12.2 1.1 2.2 2.2 1.1-2.2 1.1-1.1 2.2-1.1-2.2-2.2-1.1 2.2-1.1 1.1-2.2Z"/></svg>
+        <span class="brand-word"><b>DECK</b><span>LEDGER</span></span>
+      </div>
+      <form method="post" class="login-form">
+        <div class="eyebrow">WILLKOMMEN ZURÜCK</div>
+        <h2>Sammlung öffnen</h2>
+        <p class="muted">Melde dich an, um deinen Fortschritt fortzusetzen.</p>
+        {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+        <label>Benutzername<input name="username" value="demo" autocomplete="username" required></label>
+        <label>Passwort<input name="password" type="password" value="deckledger" autocomplete="current-password" required></label>
+        <button class="primary-button login-button" type="submit">Anmelden <span>→</span></button>
+        <div class="demo-hint"><span>Demo-Zugang</span><code>demo</code><span>/</span><code>deckledger</code></div>
+      </form>
+      <p class="login-footer">Self-hosted · Deine Daten bleiben bei dir</p>
+    </section>
+  </main>
+</body>
+</html>
