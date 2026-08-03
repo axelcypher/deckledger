@@ -914,8 +914,17 @@ def discover_field_paths(record, prefix="", depth=0, max_depth=3):
             paths.add(path)
             if depth < max_depth:
                 paths |= discover_field_paths(value, path, depth + 1, max_depth)
-    elif isinstance(record, list) and record and depth < max_depth and isinstance(record[0], dict):
-        paths |= discover_field_paths(record[0], f"{prefix}[0]", depth + 1, max_depth)
+    elif isinstance(record, list) and record and depth < max_depth:
+        # A list of dicts (e.g. one card's array of variant records) recurses
+        # into the first element's own fields, same as before. A list of plain
+        # values (e.g. imageUrls: ["https://..."]) has no sub-fields to recurse
+        # into, but the indexed path itself must still be offered -- otherwise
+        # a single-image-array field could never be selected as anything but
+        # the whole array, silently breaking whatever expects a plain string.
+        indexed_path = f"{prefix}[0]"
+        paths.add(indexed_path)
+        if isinstance(record[0], dict):
+            paths |= discover_field_paths(record[0], indexed_path, depth + 1, max_depth)
     return paths
 
 
