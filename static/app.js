@@ -284,453 +284,6 @@ function renderSettings(){
 
 const DECK_RULESET_OPTIONS=[['','Keine'],['lorcana-standard','Lorcana Standard'],['one-piece-standard','One Piece Standard'],['hololive-standard','hololive Standard']];
 const PRICE_METHOD_OPTIONS=[['','Keine'],['cardmarket','Cardmarket'],['tcgcsv','TCGCSV / TCGplayer'],['yuyutei','Yuyutei']];
-const SOURCE_TYPE_OPTIONS=[['static-json','Statische JSON-Datei'],['http-json','HTTP JSON-API'],['csv','CSV-Datei'],['github-release','GitHub Release']];
-
-function providerConfigDefaults(){
-  return {
-    sources:[{language:'EN',type:'static-json',url:''}],
-    preferred_language:'EN', sets_path:'', cards_path:'',
-    set_mapping:{code_field:'$key',name_field:'',set_type_field:'',release_date_field:'',printed_card_count_field:'',classifications_field:''},
-    identity_mapping:{id_field:'id',alias_field:'',canonical_name_field:'',rules_text_field:'',card_type_field:'',attributes:{}},
-    printing_mapping:{set_code_field:'',collector_number_field:'',rarity_field:'',attributes:{}},
-    variant_mapping:{mode:'expand_array_field',field:'',default:['Normal'],image_field:'',finish_field:''},
-    lookup_tables:{},
-    default_accent:'#6366f1', minimum_sets:0, minimum_cards:0,
-  };
-}
-// A "mapping" is the subset of a provider config that a single source can
-// optionally override: everything except sources[]/preferred_language/
-// minimum_*, which only ever exist once, at the provider level.
-function mappingDefaults(){
-  const d=providerConfigDefaults();
-  return {sets_path:'',cards_path:'',set_mapping:d.set_mapping,identity_mapping:d.identity_mapping,printing_mapping:d.printing_mapping,variant_mapping:d.variant_mapping,lookup_tables:{}};
-}
-function normalizeMapping(src){
-  const d=mappingDefaults(); src=src||{};
-  return {
-    sets_path:src.sets_path||'', cards_path:src.cards_path||'',
-    set_mapping:{...d.set_mapping,...(src.set_mapping||{})},
-    identity_mapping:{...d.identity_mapping,...(src.identity_mapping||{}),attributes:{...((src.identity_mapping||{}).attributes||{})}},
-    printing_mapping:{...d.printing_mapping,...(src.printing_mapping||{}),attributes:{...((src.printing_mapping||{}).attributes||{})}},
-    variant_mapping:{...d.variant_mapping,...(src.variant_mapping||{})},
-    lookup_tables:Object.fromEntries(Object.entries(src.lookup_tables||{}).map(([k,v])=>[k,{...v}])),
-  };
-}
-function normalizeProviderConfig(cfg){
-  const d=providerConfigDefaults(); cfg=cfg||{};
-  const m=normalizeMapping(cfg);
-  return {
-    sources:(cfg.sources&&cfg.sources.length?cfg.sources:d.sources).map(s=>({...s})),
-    preferred_language:cfg.preferred_language||d.preferred_language,
-    ...m,
-    default_accent:cfg.default_accent||d.default_accent,
-    minimum_sets:cfg.minimum_sets||0, minimum_cards:cfg.minimum_cards||0,
-  };
-}
-// A source carries its own override mapping the moment any of these keys is
-// set on it (always all-or-nothing -- see the [data-src-override] toggle).
-function sourceHasOverride(s){
-  return Boolean(s.set_mapping||s.identity_mapping||s.printing_mapping||s.variant_mapping);
-}
-function renderKvRows(obj,fieldOptions,placeholders){
-  const ph=placeholders||['Attributname','Feld in der Quelle'];
-  return Object.entries(obj||{}).map(([k,v])=>{
-    const valueField=fieldOptions?`<select class="kv-value">${fieldSelectOptions(v,fieldOptions)}</select>`:`<input class="kv-value" value="${escapeHtml(v)}" placeholder="${escapeHtml(ph[1])}">`;
-    return `<div class="admin-kv-row"><input class="kv-key" value="${escapeHtml(k)}" placeholder="${escapeHtml(ph[0])}">${valueField}<button type="button" class="icon-button" data-remove-kv-row title="Entfernen">✕</button></div>`;
-  }).join('');
-}
-function readKvList(listEl){
-  const result={};
-  if(!listEl)return result;
-  $$('.admin-kv-row',listEl).forEach(row=>{
-    const key=$('.kv-key',row).value.trim();
-    const value=$('.kv-value',row).value.trim();
-    if(key)result[key]=value;
-  });
-  return result;
-}
-function fieldSelectOptions(currentValue,fieldSummaries,extra){
-  const options=fieldSummaries||[]; extra=extra||[];
-  const knownExtra=extra.some(([v])=>v===currentValue);
-  const knownField=options.some(f=>f.path===currentValue);
-  let html='<option value="">– kein Feld –</option>';
-  html+=extra.map(([v,l])=>`<option value="${escapeHtml(v)}" ${currentValue===v?'selected':''}>${escapeHtml(l)}</option>`).join('');
-  if(currentValue&&!knownExtra&&!knownField)html+=`<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)} (aktuell, nicht in Testdaten gefunden)</option>`;
-  html+=options.map(f=>`<option value="${escapeHtml(f.path)}" ${currentValue===f.path?'selected':''}>${escapeHtml(f.path)}${f.example?` — „${escapeHtml(f.example)}“`:''}</option>`).join('');
-  return html;
-}
-function fieldControl(dataCfg,currentValue,fieldSummaries,extra,placeholder){
-  if(fieldSummaries)return `<select data-cfg="${dataCfg}">${fieldSelectOptions(currentValue,fieldSummaries,extra)}</select>`;
-  return `<input data-cfg="${dataCfg}" value="${escapeHtml(currentValue)}" ${placeholder?`placeholder="${escapeHtml(placeholder)}"`:''}>`;
-}
-function fieldExample(preview,path){
-  if(!path)return null;
-  const f=preview.card_fields.find(x=>x.path===path);
-  return f&&f.example?f.example:null;
-}
-function renderCardPreview(m,preview){
-  if(!preview||!preview.card_fields||!preview.card_fields.length)return '';
-  const name=fieldExample(preview,m.identity_mapping.canonical_name_field);
-  const type=fieldExample(preview,m.identity_mapping.card_type_field);
-  const rawRarity=fieldExample(preview,m.printing_mapping.rarity_field);
-  const rarity=(rawRarity&&m.lookup_tables.rarity_label&&m.lookup_tables.rarity_label[rawRarity])||rawRarity;
-  const rulesText=fieldExample(preview,m.identity_mapping.rules_text_field);
-  const number=fieldExample(preview,m.printing_mapping.collector_number_field);
-  const image=fieldExample(preview,m.variant_mapping.image_field);
-  return `<div class="admin-card-preview">
-    <h4>Kartenvorschau <span class="muted">(Beispielkarte aus den Testdaten, mit der aktuellen Zuordnung)</span></h4>
-    <div class="admin-card-preview-body">
-      <div class="admin-card-preview-image">${image?`<img src="${escapeHtml(image)}" alt="" loading="lazy">`:'<div class="admin-card-preview-placeholder">Kein Bild-Feld gewählt</div>'}</div>
-      <div class="admin-card-preview-info">
-        <b>${name?escapeHtml(name):'– Kartenname-Feld wählen –'}</b>
-        <div class="admin-card-preview-meta">${[type,number?`#${number}`:null,rarity].filter(Boolean).map(escapeHtml).join(' · ')}</div>
-        ${rulesText?`<p class="admin-card-preview-rules">${escapeHtml(rulesText)}</p>`:''}
-      </div>
-    </div>
-  </div>`;
-}
-function renderMappingSections(m,fields,preview,heading){
-  const setFields=fields?fields.setFields:null, cardFields=fields?fields.cardFields:null, topLevelFields=fields?fields.topLevelFields:null;
-  const h=heading||'h4';
-  return `${preview?renderCardPreview(m,preview):''}
-    <div class="admin-form-grid">
-      <label>Pfad zu Sets in der Quelle${fieldControl('sets_path',m.sets_path,topLevelFields,null,'z.B. sets – leer bei flacher Liste')}</label>
-      <label>Pfad zu Karten in der Quelle${fieldControl('cards_path',m.cards_path,topLevelFields,null,'z.B. cards – leer bei flacher Liste')}</label>
-    </div>
-    <${h}>Set-Zuordnung</${h}>
-    <div class="admin-form-grid">
-      <label>Code-Feld${fieldControl('set_mapping.code_field',m.set_mapping.code_field,setFields,[['$key','$key (Objekt-Schlüssel)']],'$key bei schlüsselbasierten Objekten')}</label>
-      <label>Name-Feld${fieldControl('set_mapping.name_field',m.set_mapping.name_field,setFields)}</label>
-      <label>Set-Typ-Feld${fieldControl('set_mapping.set_type_field',m.set_mapping.set_type_field,setFields)}</label>
-      <label>Erscheinungsdatum-Feld${fieldControl('set_mapping.release_date_field',m.set_mapping.release_date_field,setFields)}</label>
-      <label>Kartenanzahl-Feld${fieldControl('set_mapping.printed_card_count_field',m.set_mapping.printed_card_count_field,setFields,null,'leer = automatisch berechnet')}</label>
-      <label>Klassifikationen-Feld${fieldControl('set_mapping.classifications_field',m.set_mapping.classifications_field,setFields)}</label>
-    </div>
-
-    <${h}>Karten-Identität</${h}>
-    <div class="admin-form-grid">
-      <label>ID-Feld${fieldControl('identity_mapping.id_field',m.identity_mapping.id_field,cardFields)}</label>
-      <label>Alias-Feld (für Nachdrucke)${fieldControl('identity_mapping.alias_field',m.identity_mapping.alias_field,cardFields,null,'z.B. baseId')}</label>
-      <label>Kartenname-Feld${fieldControl('identity_mapping.canonical_name_field',m.identity_mapping.canonical_name_field,cardFields)}</label>
-      <label>Regeltext-Feld${fieldControl('identity_mapping.rules_text_field',m.identity_mapping.rules_text_field,cardFields)}</label>
-      <label>Kartentyp-Feld${fieldControl('identity_mapping.card_type_field',m.identity_mapping.card_type_field,cardFields)}</label>
-    </div>
-    <p class="muted">Freie Attribute (z.B. Farbe, Kosten):</p>
-    <div class="admin-kv-list" data-attr-list="identity_mapping">${renderKvRows(m.identity_mapping.attributes,cardFields)}</div>
-    <button type="button" class="secondary-button small" data-add-attr="identity_mapping">+ Attribut hinzufügen</button>
-
-    <${h}>Printing-Zuordnung</${h}>
-    <div class="admin-form-grid">
-      <label>Set-Code-Feld${fieldControl('printing_mapping.set_code_field',m.printing_mapping.set_code_field,cardFields)}</label>
-      <label>Sammlernummer-Feld${fieldControl('printing_mapping.collector_number_field',m.printing_mapping.collector_number_field,cardFields)}</label>
-      <label>Seltenheit-Feld${fieldControl('printing_mapping.rarity_field',m.printing_mapping.rarity_field,cardFields)}</label>
-    </div>
-    <p class="muted">Freie Attribute:</p>
-    <div class="admin-kv-list" data-attr-list="printing_mapping">${renderKvRows(m.printing_mapping.attributes,cardFields)}</div>
-    <button type="button" class="secondary-button small" data-add-attr="printing_mapping">+ Attribut hinzufügen</button>
-
-    <${h}>Varianten</${h}>
-    <div class="admin-form-grid">
-      <label>Modus<select data-cfg="variant_mapping.mode">
-        <option value="expand_array_field" ${m.variant_mapping.mode!=='group_variants_by'?'selected':''}>1 Datensatz → mehrere Varianten (Array-Feld)</option>
-        <option value="group_variants_by" ${m.variant_mapping.mode==='group_variants_by'?'selected':''}>1 Zeile pro Variante</option>
-      </select></label>
-      <label>Array-Feld (Modus 1)${fieldControl('variant_mapping.field',m.variant_mapping.field,cardFields,null,'z.B. foilTypes')}</label>
-      <label>Finish-Feld (Modus 2)${fieldControl('variant_mapping.finish_field',m.variant_mapping.finish_field,cardFields,null,'z.B. finish')}</label>
-      <label>Standard-Finish, falls Feld leer<input data-cfg="variant_mapping.default" value="${escapeHtml((m.variant_mapping.default||['Normal']).join(','))}" placeholder="Normal"></label>
-      <label>Bild-Feld${fieldControl('variant_mapping.image_field',m.variant_mapping.image_field,cardFields,null,'z.B. images.full')}</label>
-    </div>
-
-    <${h}>Lookup-Tabellen <span class="muted">(Wert-Übersetzung, z.B. Seltenheits-Codes)</span></${h}>
-    <div class="admin-lookup-tables">${Object.entries(m.lookup_tables).map(([name,table])=>renderLookupTable(name,table,preview)).join('')}</div>
-    <button type="button" class="secondary-button small" data-add-lookup-table>+ Lookup-Tabelle hinzufügen</button>`;
-}
-function renderSourceRow(s,i,previewMap){
-  const type=s.type||'static-json';
-  const preview=previewMap?previewMap.get(i):null;
-  const previewStatus=preview?`<span class="admin-preview-status ok">✓ ${preview.card_count} Karten · ${preview.card_fields.length} Felder erkannt</span>`:'';
-  const override=sourceHasOverride(s);
-  return `<div class="admin-source-row" data-source-index="${i}">
-    <button type="button" class="icon-button admin-source-remove" data-remove-source="${i}" title="Quelle entfernen">✕</button>
-    <label>Sprache<input data-src="language" value="${escapeHtml(s.language||'EN')}"></label>
-    <label>Typ<select data-src="type">${SOURCE_TYPE_OPTIONS.map(([v,l])=>`<option value="${v}" ${type===v?'selected':''}>${l}</option>`).join('')}</select></label>
-    ${type==='github-release'?`
-      <label>Repo<input data-src="repo" value="${escapeHtml(s.repo||'')}" placeholder="owner/repo"></label>
-      <label>Tag<input data-src="tag" value="${escapeHtml(s.tag||'latest')}"></label>
-      <label>Asset-Muster (Regex)<input data-src="asset_pattern" value="${escapeHtml(s.asset_pattern||'')}" placeholder="z.B. \\.json$"></label>
-      <label>Format<select data-src="format"><option value="json" ${s.format!=='csv'?'selected':''}>JSON</option><option value="csv" ${s.format==='csv'?'selected':''}>CSV</option></select></label>
-    `:`<label>URL<input data-src="url" value="${escapeHtml(s.url||'')}" placeholder="https://..."></label>`}
-    ${type==='http-json'?`
-      <label class="checkbox-row"><input type="checkbox" data-src="paginate_enabled" ${s.paginate?'checked':''}> Paginierung</label>
-      <label>Pfad zu Einträgen je Seite<input data-src="paginate_items_path" value="${escapeHtml((s.paginate||{}).items_path||'')}"></label>
-      <label>Feld für nächste Seiten-URL<input data-src="paginate_next_field" value="${escapeHtml((s.paginate||{}).next_field||'')}"></label>
-      <label>ODER Seiten-Parameter<input data-src="paginate_page_param" value="${escapeHtml((s.paginate||{}).page_param||'')}" placeholder="z.B. page"></label>
-      <label>Max. Seiten<input type="number" min="1" data-src="paginate_max_pages" value="${(s.paginate||{}).max_pages||200}"></label>
-    `:''}
-    <div class="admin-source-headers">
-      <p class="muted">HTTP-Header (z.B. API-Key für zugangsbeschränkte Quellen):</p>
-      <div class="admin-kv-list" data-source-headers="${i}">${renderKvRows(s.headers,null,['Header-Name','Header-Wert'])}</div>
-      <button type="button" class="secondary-button small" data-add-source-header="${i}">+ Header</button>
-    </div>
-    <div class="admin-source-preview"><button type="button" class="secondary-button small" data-load-preview="${i}">Testdaten laden</button>${previewStatus}</div>
-    <label class="checkbox-row admin-source-override-toggle"><input type="checkbox" data-src-override ${override?'checked':''}> Eigene Feldzuordnung für diese Quelle <span class="muted">(nur nötig, wenn diese Quelle anders aufgebaut ist als die anderen)</span></label>
-    ${override?`<div class="admin-source-mapping">${renderMappingSections(normalizeMapping(s),preview?{setFields:preview.set_fields,cardFields:preview.card_fields,topLevelFields:preview.top_level_fields.map(f=>({path:f.path,example:`${f.count} Einträge`}))}:null,preview,'h5')}</div>`:''}
-  </div>`;
-}
-function renderLookupTable(name,table,preview){
-  const distinctFields=(preview?.card_fields||[]).filter(f=>f.distinct_values&&f.distinct_values.length);
-  return `<div class="admin-lookup-table" data-lookup-table="${escapeHtml(name)}">
-    <div class="admin-lookup-table-head"><input class="lookup-table-name" value="${escapeHtml(name)}" placeholder="Tabellenname, z.B. rarity_label"><button type="button" class="icon-button" data-remove-lookup-table title="Tabelle entfernen">✕</button></div>
-    <div class="admin-kv-list" data-lookup-entries>${renderKvRows(table)}</div>
-    <div class="admin-row-actions">
-      <button type="button" class="secondary-button small" data-add-lookup-entry>+ Eintrag</button>
-      ${distinctFields.length?`<select class="admin-lookup-adopt-field"><option value="">Werte aus Testdaten übernehmen …</option>${distinctFields.map(f=>`<option value="${escapeHtml(f.path)}">${escapeHtml(f.path)} (${f.distinct_values.length} Werte)</option>`).join('')}</select><button type="button" class="secondary-button small" data-adopt-lookup-values>Übernehmen</button>`:''}
-    </div>
-  </div>`;
-}
-function providerLevelPreview(previewMap){
-  if(!previewMap)return null;
-  const lastIndex=previewMap.get('_last');
-  return lastIndex===undefined?null:previewMap.get(lastIndex);
-}
-function renderProviderFormBody(cfg,previewMap){
-  const preview=providerLevelPreview(previewMap);
-  const fields=preview?{setFields:preview.set_fields,cardFields:preview.card_fields,topLevelFields:preview.top_level_fields.map(f=>({path:f.path,example:`${f.count} Einträge`}))}:null;
-  return `${preview?'':'<p class="muted">Lade Testdaten über eine Quelle unten, um alle Felder unten per Auswahl statt Texteingabe zuzuordnen.</p>'}
-    <div class="admin-form-grid">
-      <label>Bevorzugte Sprache<input data-cfg="preferred_language" value="${escapeHtml(cfg.preferred_language)}"></label>
-      <label>Akzentfarbe<input type="color" data-cfg="default_accent" value="${cfg.default_accent}"></label>
-      <label>Min. Sets (Sicherheitsgrenze)<input type="number" min="0" data-cfg="minimum_sets" value="${cfg.minimum_sets}"></label>
-      <label>Min. Karten (Sicherheitsgrenze)<input type="number" min="0" data-cfg="minimum_cards" value="${cfg.minimum_cards}"></label>
-    </div>
-    <h4>Quellen</h4>
-    <div class="admin-source-list">${cfg.sources.map((s,i)=>renderSourceRow(s,i,previewMap)).join('')}</div>
-    <button type="button" class="secondary-button small" data-add-source>+ Quelle hinzufügen</button>
-
-    <p class="admin-mapping-intro">Feldzuordnung – gilt für alle Quellen, außer eine Quelle hat oben eine eigene Zuordnung aktiviert:</p>
-    ${renderMappingSections(cfg,fields,preview)}`;
-}
-// Reads a mapping-shaped set of fields (sets_path/cards_path/*_mapping) from
-// wherever `find(selector)` looks -- the whole container for the provider-level
-// mapping (scoped to exclude source rows, see topFind), or a single source row
-// for that source's own override (naturally scoped, since it's a subtree).
-function readMapping(find){
-  const m={};
-  m.sets_path=find('[data-cfg="sets_path"]')?.value.trim()||'';
-  m.cards_path=find('[data-cfg="cards_path"]')?.value.trim()||'';
-  m.set_mapping={};
-  for(const field of ['code_field','name_field','set_type_field','release_date_field','printed_card_count_field','classifications_field'])
-    m.set_mapping[field]=find(`[data-cfg="set_mapping.${field}"]`)?.value.trim()||'';
-  m.identity_mapping={};
-  for(const field of ['id_field','alias_field','canonical_name_field','rules_text_field','card_type_field'])
-    m.identity_mapping[field]=find(`[data-cfg="identity_mapping.${field}"]`)?.value.trim()||'';
-  m.identity_mapping.attributes=readKvList(find('[data-attr-list="identity_mapping"]'));
-  m.printing_mapping={};
-  for(const field of ['set_code_field','collector_number_field','rarity_field'])
-    m.printing_mapping[field]=find(`[data-cfg="printing_mapping.${field}"]`)?.value.trim()||'';
-  m.printing_mapping.attributes=readKvList(find('[data-attr-list="printing_mapping"]'));
-  m.variant_mapping={
-    mode:find('[data-cfg="variant_mapping.mode"]')?.value||'expand_array_field',
-    field:find('[data-cfg="variant_mapping.field"]')?.value.trim()||'',
-    finish_field:find('[data-cfg="variant_mapping.finish_field"]')?.value.trim()||'',
-    default:(find('[data-cfg="variant_mapping.default"]')?.value||'Normal').split(',').map(x=>x.trim()).filter(Boolean),
-    image_field:find('[data-cfg="variant_mapping.image_field"]')?.value.trim()||'',
-  };
-  if(!m.variant_mapping.default.length)m.variant_mapping.default=['Normal'];
-  return m;
-}
-function readLookupTables(tableEls){
-  const tables={};
-  tableEls.forEach(tableEl=>{
-    const name=$('.lookup-table-name',tableEl).value.trim();
-    if(!name)return;
-    tables[name]=readKvList($('[data-lookup-entries]',tableEl));
-  });
-  return tables;
-}
-// The provider-level mapping and a source-level override both render with the
-// same [data-cfg]/[data-attr-list]/.admin-lookup-table markers -- topFind finds
-// the provider-level one by excluding anything nested in a source row.
-function topFind(container,selector){
-  return $$(selector,container).find(el=>!el.closest('.admin-source-row'));
-}
-function readProviderConfigFromDOM(container){
-  const cfg=providerConfigDefaults();
-  cfg.preferred_language=$('[data-cfg="preferred_language"]',container).value.trim()||'EN';
-  cfg.default_accent=$('[data-cfg="default_accent"]',container).value||'#6366f1';
-  cfg.minimum_sets=Number($('[data-cfg="minimum_sets"]',container).value)||0;
-  cfg.minimum_cards=Number($('[data-cfg="minimum_cards"]',container).value)||0;
-  Object.assign(cfg,readMapping(sel=>topFind(container,sel)));
-  cfg.lookup_tables=readLookupTables($$('.admin-lookup-table',container).filter(el=>!el.closest('.admin-source-row')));
-  cfg.sources=$$('.admin-source-row',container).map(readSourceRowConfig);
-  if(!cfg.sources.length)cfg.sources=[{language:'EN',type:'static-json',url:''}];
-  return cfg;
-}
-function readSourceRowConfig(row){
-  const type=$('[data-src="type"]',row).value;
-  const src={language:$('[data-src="language"]',row)?.value.trim()||'EN',type};
-  // Field reads are optional-chained: a type-change event fires before the row's
-  // fields are re-rendered for the *new* type, so the DOM here can still reflect
-  // the *previous* type's field set. Missing fields just default to empty/blank
-  // and get filled in once the re-render below catches up.
-  if(type==='github-release'){
-    src.repo=$('[data-src="repo"]',row)?.value.trim()||'';
-    src.tag=$('[data-src="tag"]',row)?.value.trim()||'latest';
-    src.asset_pattern=$('[data-src="asset_pattern"]',row)?.value.trim()||'';
-    src.format=$('[data-src="format"]',row)?.value||'json';
-  }else{
-    src.url=$('[data-src="url"]',row)?.value.trim()||'';
-  }
-  if(type==='http-json'){
-    const enabled=$('[data-src="paginate_enabled"]',row);
-    if(enabled&&enabled.checked){
-      const itemsPath=$('[data-src="paginate_items_path"]',row)?.value.trim()||'';
-      const nextField=$('[data-src="paginate_next_field"]',row)?.value.trim()||'';
-      const pageParam=$('[data-src="paginate_page_param"]',row)?.value.trim()||'';
-      const maxPages=Number($('[data-src="paginate_max_pages"]',row)?.value)||200;
-      src.paginate={...(itemsPath?{items_path:itemsPath}:{}),...(nextField?{next_field:nextField}:{}),...(pageParam?{page_param:pageParam}:{}),max_pages:maxPages};
-    }
-  }
-  const headerList=$(`[data-source-headers]`,row);
-  if(headerList){
-    const headers=readKvList(headerList);
-    if(Object.keys(headers).length)src.headers=headers;
-  }
-  const overrideCheckbox=$('[data-src-override]',row);
-  if(overrideCheckbox&&overrideCheckbox.checked){
-    const m=readMapping(sel=>$(sel,row));
-    if(m.sets_path)src.sets_path=m.sets_path;
-    if(m.cards_path)src.cards_path=m.cards_path;
-    src.set_mapping=m.set_mapping;
-    src.identity_mapping=m.identity_mapping;
-    src.printing_mapping=m.printing_mapping;
-    src.variant_mapping=m.variant_mapping;
-    const lookupTables=readLookupTables($$('.admin-lookup-table',row));
-    if(Object.keys(lookupTables).length)src.lookup_tables=lookupTables;
-  }
-  return src;
-}
-// Map<sourceIndex|'_last', previewResult> per form container -- each source can
-// load and keep its own test-data preview so per-source override mappings get
-// their own field dropdowns, independent of what other sources loaded.
-const providerPreviewCache=new WeakMap();
-function rerenderProviderForm(container,cfg){
-  container.innerHTML=renderProviderFormBody(cfg,providerPreviewCache.get(container));
-}
-// Resolves which mapping object a mapping-scoped button acts on: the source's
-// own override (if the button is inside a source row) or the provider-level cfg.
-function scopeTarget(cfg,el){
-  const row=el.closest('.admin-source-row');
-  return row?cfg.sources[Number(row.dataset.sourceIndex)]:cfg;
-}
-function wireProviderFormContainer(container){
-  container.addEventListener('click',async e=>{
-    const loadPreview=e.target.closest('[data-load-preview]');
-    if(loadPreview){
-      const row=loadPreview.closest('.admin-source-row');
-      const source=readSourceRowConfig(row);
-      if(!source.url&&!source.repo){toast('Bitte zuerst eine URL bzw. ein Repo angeben');return}
-      const index=Number(loadPreview.dataset.loadPreview);
-      loadPreview.disabled=true;loadPreview.textContent='Lädt …';
-      try{
-        const cardsPath=source.cards_path||topFind(container,'[data-cfg="cards_path"]')?.value.trim()||'';
-        const setsPath=source.sets_path||topFind(container,'[data-cfg="sets_path"]')?.value.trim()||'';
-        const result=await post('/api/admin/providers/preview-source',{source,cards_path:cardsPath,sets_path:setsPath});
-        let previewMap=providerPreviewCache.get(container);
-        if(!previewMap){previewMap=new Map();providerPreviewCache.set(container,previewMap);}
-        previewMap.set(index,result);
-        // '_last' feeds the *provider-level* mapping's preview, so only a source
-        // still using that shared mapping (no override of its own) should claim
-        // it -- otherwise loading test data for an overridden source would hijack
-        // the shared section's preview with a schema the other sources don't have.
-        if(!sourceHasOverride(source))previewMap.set('_last',index);
-        const cfg=readProviderConfigFromDOM(container);
-        // The backend guesses cards_path when none was set yet (the largest
-        // list-shaped top-level field), so what the preview just showed and
-        // what actually gets saved don't silently diverge -- write the guess
-        // into whichever scope the request used (this source's own override,
-        // or the shared provider-level field).
-        if(!cardsPath&&result.cards_path){
-          const target=sourceHasOverride(source)?cfg.sources[index]:cfg;
-          target.cards_path=result.cards_path;
-        }
-        rerenderProviderForm(container,cfg);
-        toast(`Testdaten geladen: ${result.card_count} Karten, ${result.card_fields.length} Felder erkannt`);
-      }catch(error){toast(error.message);loadPreview.disabled=false;loadPreview.textContent='Testdaten laden';}
-      return;
-    }
-    const adoptValues=e.target.closest('[data-adopt-lookup-values]');
-    if(adoptValues){
-      const tableEl=adoptValues.closest('.admin-lookup-table');
-      const fieldPath=$('.admin-lookup-adopt-field',tableEl).value;
-      const row=adoptValues.closest('.admin-source-row');
-      const previewMap=providerPreviewCache.get(container);
-      const preview=row?previewMap?.get(Number(row.dataset.sourceIndex)):providerLevelPreview(previewMap);
-      const field=preview&&preview.card_fields.find(f=>f.path===fieldPath);
-      if(!field||!field.distinct_values){toast('Bitte ein Feld mit Testdaten-Werten wählen');return}
-      const cfg=readProviderConfigFromDOM(container);
-      const target=scopeTarget(cfg,adoptValues);
-      const name=$('.lookup-table-name',tableEl).value.trim();
-      if(!name){toast('Bitte zuerst einen Tabellennamen vergeben');return}
-      target.lookup_tables=target.lookup_tables||{};
-      target.lookup_tables[name]=target.lookup_tables[name]||{};
-      field.distinct_values.forEach(value=>{if(!(value in target.lookup_tables[name]))target.lookup_tables[name][value]=''});
-      rerenderProviderForm(container,cfg);
-      return;
-    }
-    const addSource=e.target.closest('[data-add-source]');
-    if(addSource){const cfg=readProviderConfigFromDOM(container);cfg.sources.push({language:'EN',type:'static-json',url:''});rerenderProviderForm(container,cfg);return}
-    const removeSource=e.target.closest('[data-remove-source]');
-    if(removeSource){const cfg=readProviderConfigFromDOM(container);cfg.sources.splice(Number(removeSource.dataset.removeSource),1);if(!cfg.sources.length)cfg.sources.push({language:'EN',type:'static-json',url:''});rerenderProviderForm(container,cfg);return}
-    const addAttr=e.target.closest('[data-add-attr]');
-    if(addAttr){const cfg=readProviderConfigFromDOM(container);const target=scopeTarget(cfg,addAttr)[addAttr.dataset.addAttr];target.attributes[`neues_attribut_${Object.keys(target.attributes).length+1}`]='';rerenderProviderForm(container,cfg);return}
-    const addSourceHeader=e.target.closest('[data-add-source-header]');
-    if(addSourceHeader){
-      const cfg=readProviderConfigFromDOM(container);
-      const src=cfg.sources[Number(addSourceHeader.dataset.addSourceHeader)];
-      if(src){src.headers=src.headers||{};src.headers[`Header-${Object.keys(src.headers).length+1}`]='';}
-      rerenderProviderForm(container,cfg);return;
-    }
-    const addLookupTable=e.target.closest('[data-add-lookup-table]');
-    if(addLookupTable){const cfg=readProviderConfigFromDOM(container);const target=scopeTarget(cfg,addLookupTable);target.lookup_tables=target.lookup_tables||{};target.lookup_tables[`tabelle_${Object.keys(target.lookup_tables).length+1}`]={};rerenderProviderForm(container,cfg);return}
-    const addLookupEntry=e.target.closest('[data-add-lookup-entry]');
-    if(addLookupEntry){
-      const cfg=readProviderConfigFromDOM(container);
-      const target=scopeTarget(cfg,addLookupEntry);
-      const name=$('.lookup-table-name',addLookupEntry.closest('.admin-lookup-table')).value.trim();
-      if(name){target.lookup_tables=target.lookup_tables||{};target.lookup_tables[name]=target.lookup_tables[name]||{};target.lookup_tables[name][`schluessel_${Object.keys(target.lookup_tables[name]).length+1}`]='';}
-      rerenderProviderForm(container,cfg);return;
-    }
-    const removeLookupTable=e.target.closest('[data-remove-lookup-table]');
-    if(removeLookupTable){const cfg=readProviderConfigFromDOM(container);const target=scopeTarget(cfg,removeLookupTable);const name=$('.lookup-table-name',removeLookupTable.closest('.admin-lookup-table')).value.trim();delete target.lookup_tables[name];rerenderProviderForm(container,cfg);return}
-    const removeKvRow=e.target.closest('[data-remove-kv-row]');
-    if(removeKvRow){removeKvRow.closest('.admin-kv-row').remove();return}
-  });
-  container.addEventListener('change',e=>{
-    if(e.target.matches('[data-src="type"]')){const cfg=readProviderConfigFromDOM(container);rerenderProviderForm(container,cfg);return}
-    if(e.target.matches('[data-src-override]')){
-      const cfg=readProviderConfigFromDOM(container);
-      const row=e.target.closest('.admin-source-row');
-      const src=cfg.sources[Number(row.dataset.sourceIndex)];
-      if(e.target.checked)Object.assign(src,normalizeMapping(cfg));
-      else{delete src.sets_path;delete src.cards_path;delete src.set_mapping;delete src.identity_mapping;delete src.printing_mapping;delete src.variant_mapping;delete src.lookup_tables;}
-      rerenderProviderForm(container,cfg);
-      return;
-    }
-    // Any other <select> change (a mapping field dropdown, once test data is
-    // loaded) re-renders so the live card preview stays in sync. Scoped to
-    // <select> only, not plain <input>: a select's 'change' fires immediately
-    // on selection, but a text input's fires on blur -- and blurring one field
-    // by focusing another can land *during* an in-flight fill() of that other
-    // field, so a render triggered there would replace the very node the
-    // other interaction is still targeting. Selects don't have that deferred-
-    // blur window, so they're safe to react to unconditionally.
-    if(e.target.tagName==='SELECT'){
-      const cfg=readProviderConfigFromDOM(container);
-      rerenderProviderForm(container,cfg);
-    }
-  });
-}
 
 async function renderAdmin(){
   content.innerHTML='<div class="page-loader"><span></span><p>Admin-Bereich wird geladen …</p></div>';
@@ -757,22 +310,41 @@ async function renderAdmin(){
     </section>
     <section class="settings-section">
       <h2>Katalog-Provider</h2>
+      <p class="muted">Jeder Provider ist Python-Code, der bei Ausführung ein <code>fetch_catalog() -&gt; dict</code> definiert und in einem eigenen Prozess mit Zeitlimit läuft. Code läuft mit vollem Server-Zugriff — nur einfügen, dem du vertraust.</p>
       <div class="admin-table">${providers.map(p=>`<div class="admin-row" data-provider-row="${p.id}">
-        <div class="admin-row-head"><b>${escapeHtml(p.label)}</b><span class="muted">${p.game_id} · ${p.kind}${p.kind==='builtin'?' (fest verdrahtet)':''}</span></div>
+        <div class="admin-row-head"><b>${escapeHtml(p.label)}</b><span class="muted">${p.game_id} · Timeout ${p.timeout_seconds}s</span></div>
         <div class="admin-status"><span class="admin-status-badge status-${p.last_status||'none'}">${p.last_status||'noch nicht gelaufen'}</span><span class="muted">${p.last_run_at?date(p.last_run_at):'–'}</span></div>
         ${p.last_error?`<div class="admin-error">${escapeHtml(p.last_error)}</div>`:''}
         <div class="admin-row-actions">
           <button class="secondary-button" data-run-provider="${p.id}">Jetzt importieren</button>
-          ${p.kind==='declarative'?`<button class="secondary-button" data-edit-provider="${p.id}">Konfiguration</button>`:''}
-          ${p.kind!=='builtin'?`<button class="icon-button" data-delete-provider="${p.id}" title="Löschen">✕</button>`:''}
+          <button class="secondary-button" data-edit-provider="${p.id}">Code bearbeiten</button>
+          <button class="icon-button" data-delete-provider="${p.id}" title="Löschen">✕</button>
         </div>
-        ${p.kind==='declarative'?`<div class="admin-config-editor hidden" data-config-editor="${p.id}">${renderProviderFormBody(normalizeProviderConfig(p.config))}<button class="primary-button" data-save-config="${p.id}">Konfiguration speichern</button></div>`:''}
+        <div class="admin-config-editor hidden" data-config-editor="${p.id}">
+          <div class="admin-form-grid">
+            <label>Min. Sets (Sicherheitsgrenze)<input type="number" min="0" data-provider-field="minimum_sets" value="${p.minimum_sets}"></label>
+            <label>Min. Karten (Sicherheitsgrenze)<input type="number" min="0" data-provider-field="minimum_cards" value="${p.minimum_cards}"></label>
+            <label>Zeitlimit (Sekunden)<input type="number" min="10" data-provider-field="timeout_seconds" value="${p.timeout_seconds}"></label>
+          </div>
+          <textarea class="admin-code-editor" data-provider-code rows="20" spellcheck="false">${escapeHtml(p.code||'')}</textarea>
+          <button class="primary-button" data-save-code="${p.id}">Code speichern</button>
+        </div>
       </div>`).join('')}</div>
-      <details class="admin-add"><summary>+ Neuen deklarativen Provider anlegen</summary>
+      <details class="admin-add"><summary>+ Neuen Provider anlegen</summary>
         <div class="admin-form">
           <label>TCG<select id="admin-new-provider-game" class="select-control">${games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}</select></label>
-          <label>Label<input id="admin-new-provider-label" placeholder="z.B. Mein TCG (deklarativ)"></label>
-          <div id="admin-new-provider-form">${renderProviderFormBody(providerConfigDefaults())}</div>
+          <label>Label<input id="admin-new-provider-label" placeholder="z.B. Mein TCG"></label>
+          <div class="admin-form-grid">
+            <label>Min. Sets (Sicherheitsgrenze)<input type="number" min="0" id="admin-new-provider-minsets" value="0"></label>
+            <label>Min. Karten (Sicherheitsgrenze)<input type="number" min="0" id="admin-new-provider-mincards" value="0"></label>
+            <label>Zeitlimit (Sekunden)<input type="number" min="10" id="admin-new-provider-timeout" value="300"></label>
+          </div>
+          <label>Code<textarea class="admin-code-editor" id="admin-new-provider-code" rows="16" spellcheck="false" placeholder="from catalog_provider_contract import empty_catalog, fetch, put_identity, slug
+
+def fetch_catalog() -&gt; dict:
+    catalog = empty_catalog()
+    # ... Sets/Karten/Printings/Varianten in catalog eintragen ...
+    return catalog"></textarea></label>
           <button class="primary-button" id="admin-create-provider">Provider anlegen</button>
         </div>
       </details>
@@ -828,15 +400,18 @@ async function renderAdmin(){
     }catch(error){toast(error.message)}
     renderAdmin();
   });
-  $$('[data-config-editor]',content).forEach(editor=>wireProviderFormContainer(editor));
-  wireProviderFormContainer($('#admin-new-provider-form'));
   $$('[data-edit-provider]',content).forEach(button=>button.onclick=()=>{
     $(`[data-config-editor="${button.dataset.editProvider}"]`,content).classList.toggle('hidden');
   });
-  $$('[data-save-config]',content).forEach(button=>button.onclick=async()=>{
-    const editor=$(`[data-config-editor="${button.dataset.saveConfig}"]`,content);
-    const config=readProviderConfigFromDOM(editor);
-    try{await api(`/api/admin/providers/${button.dataset.saveConfig}`,{method:'PATCH',body:JSON.stringify({config})});toast('Konfiguration gespeichert');renderAdmin()}
+  $$('[data-save-code]',content).forEach(button=>button.onclick=async()=>{
+    const editor=$(`[data-config-editor="${button.dataset.saveCode}"]`,content);
+    const payload={
+      code:$('[data-provider-code]',editor).value,
+      minimum_sets:Number($('[data-provider-field="minimum_sets"]',editor).value)||0,
+      minimum_cards:Number($('[data-provider-field="minimum_cards"]',editor).value)||0,
+      timeout_seconds:Number($('[data-provider-field="timeout_seconds"]',editor).value)||300,
+    };
+    try{await api(`/api/admin/providers/${button.dataset.saveCode}`,{method:'PATCH',body:JSON.stringify(payload)});toast('Code gespeichert');renderAdmin()}
     catch(error){toast(error.message)}
   });
   $$('[data-delete-provider]',content).forEach(button=>button.onclick=async()=>{
@@ -844,9 +419,15 @@ async function renderAdmin(){
     toast('Provider gelöscht'); renderAdmin();
   });
   $('#admin-create-provider').onclick=async()=>{
-    const config=readProviderConfigFromDOM($('#admin-new-provider-form'));
+    const payload={
+      game_id:$('#admin-new-provider-game').value, label:$('#admin-new-provider-label').value.trim()||undefined,
+      code:$('#admin-new-provider-code').value,
+      minimum_sets:Number($('#admin-new-provider-minsets').value)||0,
+      minimum_cards:Number($('#admin-new-provider-mincards').value)||0,
+      timeout_seconds:Number($('#admin-new-provider-timeout').value)||300,
+    };
     try{
-      await post('/api/admin/providers',{game_id:$('#admin-new-provider-game').value,kind:'declarative',label:$('#admin-new-provider-label').value.trim()||undefined,config});
+      await post('/api/admin/providers',payload);
       toast('Provider angelegt'); renderAdmin();
     }catch(error){toast(error.message)}
   };

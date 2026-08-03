@@ -1,16 +1,18 @@
-"""Loads registered catalog providers and dispatches each to the function that
-produces its catalog dict, regardless of whether it's a first-party builtin
-importer, a declarative field-mapping config, or admin-supplied custom code.
+"""Loads registered catalog providers and dispatches each to its custom-code
+subprocess. Every provider -- including the ones DeckLedger ships with -- is
+`kind='custom_code'`: one uniform system instead of a hardcoded/builtin path
+plus a separate declarative interpreter.
 
-Kept separate from catalog_sync.py so a future custom-code subprocess runner
-can depend on this module without pulling in the whole Flask/app.py stack.
+Kept separate from catalog_sync.py so the subprocess runner can depend on
+this module without pulling in the whole Flask/app.py stack.
 """
 
 from __future__ import annotations
 
-import importlib
 import json
 import sqlite3
+
+from catalog_provider_runner import run_custom_code
 
 
 def load_enabled_providers(connection: sqlite3.Connection) -> list[dict]:
@@ -26,21 +28,10 @@ def provider_already_current(row: dict) -> bool:
     return bool(row["last_synced_version"]) and row["last_synced_version"] == row["provider_version"]
 
 
-def dispatch_provider(row: dict, languages: list[str]) -> dict:
-    if row["kind"] == "builtin":
-        # Lazy import: catalog_sync.py itself calls into this module, so a
-        # module-level `import catalog_sync` here would be circular. By the
-        # time a provider is actually dispatched, catalog_sync is already
-        # fully loaded and sits in sys.modules, so this resolves cleanly.
-        module_name, func_name = row["entrypoint"].split(":")
-        module = importlib.import_module(module_name)
-        return getattr(module, func_name)()
-    if row["kind"] == "declarative":
-        from catalog_provider_standard import run as run_standard
-        return run_standard(row, languages)
-    if row["kind"] == "custom_code":
-        raise NotImplementedError("Custom-Code-Provider (Tier 2) sind noch nicht implementiert.")
-    raise RuntimeError(f"Unbekannter Provider-Typ: {row['kind']}")
+def dispatch_provider(row: dict) -> dict:
+    if row["kind"] != "custom_code":
+        raise RuntimeError(f"Unbekannter Provider-Typ: {row['kind']}")
+    return run_custom_code(row["code"], row["timeout_seconds"])
 
 
 def mark_provider_result(connection: sqlite3.Connection, provider_id: str, *, ok: bool, now: str, summary: dict | None = None, error: str | None = None) -> None:

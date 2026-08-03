@@ -20,7 +20,6 @@ from flask import Flask, Response, g, jsonify, redirect, render_template, reques
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from catalog_provider_contract import digest, slug
-from catalog_provider_standard import extract_collection, iter_collection, load_source, resolve_path
 
 
 app = Flask(__name__)
@@ -151,8 +150,8 @@ CREATE TABLE IF NOT EXISTS catalog_metadata (
 );
 CREATE TABLE IF NOT EXISTS catalog_providers (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL REFERENCES games(id), label TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('builtin','declarative','custom_code')),
-  entrypoint TEXT, config TEXT, code TEXT,
+  kind TEXT NOT NULL CHECK(kind IN ('custom_code')),
+  code TEXT,
   minimum_sets INTEGER NOT NULL DEFAULT 0, minimum_cards INTEGER NOT NULL DEFAULT 0,
   timeout_seconds INTEGER NOT NULL DEFAULT 300,
   provider_version TEXT NOT NULL, last_synced_version TEXT,
@@ -337,21 +336,40 @@ def rarity_case_sql(game_id, column):
 
 
 GAME_COLUMNS = "id, module_id, name, short_name, module_version, languages, accent, enabled"
-BUILTIN_PROVIDERS = {
-    "lorcana": ("catalog_sync:import_lorcana", 15, 2500, "lorcana-v13"),
-    "one-piece": ("catalog_sync:import_one_piece", 20, 1000, "one-piece-v13"),
-    "hololive": ("catalog_sync:import_hololive", 10, 500, "hololive-v13"),
+# (minimum_sets, minimum_cards, timeout_seconds) per shipped Tier-2 provider.
+# Code itself lives in providers/<id>.py -- read at seed time, not embedded
+# here, so it stays normal syntax-highlighted, lintable Python in the repo.
+DEFAULT_PROVIDERS = {
+    "lorcana": (15, 2500, 300),
+    "one-piece": (20, 1000, 600),
+    "hololive": (10, 500, 600),
 }
 
 
-def seed_builtin_providers(connection):
-    for game_id, (entrypoint, minimum_sets, minimum_cards, provider_version) in BUILTIN_PROVIDERS.items():
-        connection.execute(
-            """INSERT OR IGNORE INTO catalog_providers
-               (id, game_id, label, kind, entrypoint, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
-               VALUES (?,?,?,'builtin',?,?,?,300,?,1,?,?)""",
-            (game_id, game_id, game_id, entrypoint, minimum_sets, minimum_cards, provider_version, now_iso(), now_iso()),
-        )
+def default_provider_code(game_id: str) -> str:
+    path = Path(__file__).with_name("providers") / f"{game_id.replace('-', '_')}.py"
+    return path.read_text(encoding="utf-8")
+
+
+def seed_default_providers(connection):
+    for game_id, (minimum_sets, minimum_cards, timeout_seconds) in DEFAULT_PROVIDERS.items():
+        code = default_provider_code(game_id)
+        version = digest(code)
+        existing = connection.execute("SELECT kind FROM catalog_providers WHERE id=?", (game_id,)).fetchone()
+        if existing is None:
+            connection.execute(
+                """INSERT INTO catalog_providers
+                   (id, game_id, label, kind, code, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
+                   VALUES (?,?,?,'custom_code',?,?,?,?,?,1,?,?)""",
+                (game_id, game_id, game_id, code, minimum_sets, minimum_cards, timeout_seconds, version, now_iso(), now_iso()),
+            )
+        elif existing[0] != "custom_code":
+            # One-time migration from the former hardcoded/builtin dispatch --
+            # never touches a row an admin has already converted or edited.
+            connection.execute(
+                "UPDATE catalog_providers SET kind='custom_code', code=?, provider_version=?, updated_at=? WHERE id=?",
+                (code, version, now_iso(), game_id),
+            )
 
 
 DEFAULT_DECK_RULESETS = {"lorcana": "lorcana-standard", "one-piece": "one-piece-standard", "hololive": "hololive-standard"}
@@ -391,7 +409,7 @@ def seed_database(connection):
             f"INSERT OR IGNORE INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)",
             [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA],
         )
-        seed_builtin_providers(connection)
+        seed_default_providers(connection)
         seed_default_deck_rulesets(connection)
         seed_default_price_methods(connection)
         seed_default_cardmarket_game_ids(connection)
@@ -404,7 +422,7 @@ def seed_database(connection):
         ],
     )
     connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA])
-    seed_builtin_providers(connection)
+    seed_default_providers(connection)
     seed_default_deck_rulesets(connection)
     seed_default_price_methods(connection)
     seed_default_cardmarket_game_ids(connection)
@@ -709,8 +727,6 @@ def admin_list_providers():
     rows = [dict(r) for r in db().execute("SELECT * FROM catalog_providers ORDER BY game_id")]
     for row in rows:
         row["last_summary"] = jload(row.get("last_summary"), {})
-        if row.get("config"):
-            row["config"] = jload(row["config"], {})
     return jsonify(rows)
 
 
@@ -721,21 +737,20 @@ def admin_create_provider():
     game_id = p.get("game_id")
     if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
         return jsonify({"error": "Spiel nicht gefunden"}), 404
-    kind = p.get("kind")
-    if kind != "declarative":
-        return jsonify({"error": "Aktuell können nur deklarative Provider angelegt werden"}), 400
+    code = p.get("code") or ""
+    if not code.strip():
+        return jsonify({"error": "Code darf nicht leer sein"}), 400
     provider_id = slug(p.get("id") or game_id)
     if db().execute("SELECT 1 FROM catalog_providers WHERE id=?", (provider_id,)).fetchone():
         return jsonify({"error": "Diese Provider-ID existiert bereits"}), 409
-    config_text = json.dumps(p.get("config") or {}, ensure_ascii=False)
     now = now_iso()
     db().execute(
         """INSERT INTO catalog_providers
-           (id, game_id, label, kind, config, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
-           VALUES (?,?,?,'declarative',?,?,?,?,?,1,?,?)""",
-        (provider_id, game_id, p.get("label") or game_id, config_text,
+           (id, game_id, label, kind, code, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
+           VALUES (?,?,?,'custom_code',?,?,?,?,?,1,?,?)""",
+        (provider_id, game_id, p.get("label") or game_id, code,
          int(p.get("minimum_sets") or 0), int(p.get("minimum_cards") or 0), int(p.get("timeout_seconds") or 300),
-         digest(config_text), now, now),
+         digest(code), now, now),
     )
     db().commit()
     return jsonify({"id": provider_id}), 201
@@ -749,10 +764,12 @@ def admin_update_provider(provider_id):
         return jsonify({"error": "provider not found"}), 404
     p = request.get_json(force=True)
     fields, values = [], []
-    if "config" in p:
-        config_text = json.dumps(p["config"], ensure_ascii=False)
-        fields += ["config=?", "provider_version=?"]
-        values += [config_text, digest(config_text)]
+    if "code" in p:
+        code = p["code"] or ""
+        if not code.strip():
+            return jsonify({"error": "Code darf nicht leer sein"}), 400
+        fields += ["code=?", "provider_version=?"]
+        values += [code, digest(code)]
     for key in ("label", "minimum_sets", "minimum_cards", "timeout_seconds"):
         if key in p:
             fields.append(f"{key}=?")
@@ -773,7 +790,7 @@ def admin_update_provider(provider_id):
 @app.delete("/api/admin/providers/<provider_id>")
 @admin_required
 def admin_delete_provider(provider_id):
-    db().execute("DELETE FROM catalog_providers WHERE id=? AND kind!='builtin'", (provider_id,))
+    db().execute("DELETE FROM catalog_providers WHERE id=?", (provider_id,))
     db().commit()
     return jsonify({"deleted": True})
 
@@ -901,114 +918,6 @@ def admin_delete_manual_card(game_id, identity_id):
     return jsonify({"deleted": True})
 
 
-PREVIEW_SAMPLE_RECORDS = 8
-PREVIEW_DISTINCT_VALUE_SCAN_LIMIT = 300
-PREVIEW_MAX_DISTINCT_VALUES = 40
-
-
-def discover_field_paths(record, prefix="", depth=0, max_depth=3):
-    paths = set()
-    if isinstance(record, dict):
-        for key, value in record.items():
-            path = f"{prefix}.{key}" if prefix else key
-            paths.add(path)
-            if depth < max_depth:
-                paths |= discover_field_paths(value, path, depth + 1, max_depth)
-    elif isinstance(record, list) and record and depth < max_depth:
-        # A list of dicts (e.g. one card's array of variant records) recurses
-        # into the first element's own fields, same as before. A list of plain
-        # values (e.g. imageUrls: ["https://..."]) has no sub-fields to recurse
-        # into, but the indexed path itself must still be offered -- otherwise
-        # a single-image-array field could never be selected as anything but
-        # the whole array, silently breaking whatever expects a plain string.
-        indexed_path = f"{prefix}[0]"
-        paths.add(indexed_path)
-        if isinstance(record[0], dict):
-            paths |= discover_field_paths(record[0], indexed_path, depth + 1, max_depth)
-    return paths
-
-
-def example_value_at_path(record, path):
-    value = resolve_path(record, path)
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, ensure_ascii=False)[:80]
-    return "" if value is None else str(value)[:80]
-
-
-def summarize_fields(paths, records):
-    scan_records = records[:PREVIEW_DISTINCT_VALUE_SCAN_LIMIT]
-    summary = []
-    for path in sorted(paths):
-        values, too_many = set(), False
-        for record in scan_records:
-            value = example_value_at_path(record, path)
-            if value:
-                values.add(value)
-            if len(values) > PREVIEW_MAX_DISTINCT_VALUES:
-                too_many = True
-                break
-        summary.append({
-            "path": path,
-            "example": example_value_at_path(records[0], path) if records else "",
-            "distinct_values": None if too_many else sorted(values),
-        })
-    return summary
-
-
-@app.post("/api/admin/providers/preview-source")
-@admin_required
-def admin_preview_source():
-    p = request.get_json(force=True)
-    source = p.get("source") or {}
-    if not source.get("type"):
-        return jsonify({"error": "Quellentyp fehlt"}), 400
-    try:
-        raw = load_source(source)
-    except Exception as exc:
-        return jsonify({"error": f"Quelle konnte nicht geladen werden: {exc}"}), 400
-
-    top_level_fields = []
-    if isinstance(raw, dict):
-        for key, value in raw.items():
-            if isinstance(value, list):
-                top_level_fields.append({"path": key, "count": len(value)})
-            elif isinstance(value, dict):
-                top_level_fields.append({"path": key, "count": len(value)})
-
-    cards_path = (p.get("cards_path") or "").strip() or None
-    sets_path = (p.get("sets_path") or "").strip() or None
-    if not cards_path and isinstance(raw, dict) and top_level_fields:
-        # A flat list source needs no cards_path at all -- but for a dict-shaped
-        # payload (the common case for JSON APIs/exports), guessing "no path
-        # means use the raw object itself" silently treats the payload's own
-        # top-level keys (meta/sets/products/...) as if each were a card. That
-        # produces a misleadingly successful-looking preview with garbage
-        # fields instead of a clear signal to pick a path. Guess the largest
-        # list-shaped top-level field instead -- overwhelmingly the cards list
-        # in practice -- and report the guess back so it actually gets saved,
-        # not just used for this preview.
-        cards_path = max(top_level_fields, key=lambda f: f["count"])["path"]
-    cards_collection = extract_collection(raw, cards_path) if cards_path else (raw if isinstance(raw, list) else None)
-    sets_collection = extract_collection(raw, sets_path) if sets_path else None
-
-    card_records = [record for _, record in iter_collection(cards_collection)]
-    set_records = [record for _, record in iter_collection(sets_collection)] if sets_collection is not None else []
-
-    card_field_paths = set()
-    for record in card_records[:PREVIEW_SAMPLE_RECORDS]:
-        card_field_paths |= discover_field_paths(record)
-    set_field_paths = set()
-    for record in set_records[:PREVIEW_SAMPLE_RECORDS]:
-        set_field_paths |= discover_field_paths(record)
-
-    return jsonify({
-        "top_level_fields": top_level_fields,
-        "cards_path": cards_path,
-        "card_count": len(card_records),
-        "card_fields": summarize_fields(card_field_paths, card_records),
-        "set_count": len(set_records),
-        "set_fields": summarize_fields(set_field_paths, set_records),
-    })
 
 
 @app.get("/api/games/<game_id>/sets")
