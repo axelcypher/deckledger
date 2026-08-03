@@ -185,6 +185,11 @@ body.editing .edit-indicator { display:block; }
 .set-compact-title{min-width:0}.set-compact-title .breadcrumbs{margin:0 0 4px}.set-compact-title h1{display:flex;align-items:baseline;gap:9px;margin:0;font-size:20px;white-space:nowrap}.set-compact-title h1 span{color:var(--brand-2);font-size:11px;letter-spacing:.08em}.set-compact-title small{color:var(--muted);font-size:9px;font-weight:500}
 .compact-stats{display:flex;align-items:stretch;gap:5px;margin-left:auto}.compact-stat{min-width:78px;padding:8px 10px;border-radius:8px;background:var(--surface-2)}.compact-stat span,.compact-stat b{display:block}.compact-stat span{color:var(--muted);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.compact-stat b{margin-top:2px;font:800 13px "Manrope"}.compact-stat.value{min-width:102px}.compact-badges{display:flex;gap:4px}.compact-badges .badge{padding:3px 6px}
 .card-toolbar { display:flex;align-items:center;gap:9px;margin-bottom:17px;flex-wrap:wrap; }
+.toolbar-filter-anchor { position:relative; }
+.toolbar-filter-popup { position:absolute;top:calc(100% + 8px);right:0;width:220px;padding:12px;border-radius:12px;background:#171f30;box-shadow:0 16px 40px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;gap:10px;z-index:30; }
+.toolbar-filter-popup.hidden { display:none; }
+.toolbar-filter-popup label { display:flex;flex-direction:column;gap:5px;font-size:10px;font-weight:750;color:var(--muted);text-transform:uppercase;letter-spacing:.06em; }
+.toolbar-filter-popup .select-control { width:100%; }
 .filter-search { position:relative; }.filter-search span{position:absolute;left:11px;top:9px;color:var(--muted)}.filter-search input{width:210px;height:36px;padding:0 12px 0 32px;border:1px solid var(--line);border-radius:9px;background:#fff;outline:none}.filter-search input:focus{border-color:#958bec;box-shadow:0 0 0 3px #eeecff}
 .select-control{height:36px;padding:0 29px 0 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:#535b69;font-size:11px;font-weight:600;}
 .card-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card-size,155px),1fr));gap:var(--card-gap,17px);align-items:start; }

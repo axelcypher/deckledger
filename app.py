@@ -314,6 +314,7 @@ RARITY_ORDER = {
         "Epic": 5, "Mythisch": 5,
         "Enchanted": 6, "Verzaubert": 6,
         "Iconic": 7, "Ikonisch": 7,
+        "Special": 8, "Speziell": 8,
     },
     "one-piece": {
         "C": 0, "UC": 1, "R": 2, "SR": 3, "SEC": 4, "L": 5,
@@ -324,6 +325,14 @@ RARITY_ORDER = {
     },
 }
 RARITY_FALLBACK_RANK = 900
+
+# Language-independent keys for Lorcana's icon-based rarity filter (one key covers both the
+# English and German printed label, since a single card can appear under either depending on
+# which language is being viewed).
+LORCANA_RARITY_KEYS = {
+    "common": 0, "uncommon": 1, "rare": 2, "super-rare": 3, "legendary": 4,
+    "epic": 5, "enchanted": 6, "iconic": 7, "special": 8,
+}
 
 
 def rarity_rank(game_id, rarity):
@@ -1050,7 +1059,7 @@ def game_card_rows(game_id, uid):
     ).fetchall()
 
 
-def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode=""):
+def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell=""):
     raw = [dict(row) for row in raw]
     if language != "combined":
         raw = [row for row in raw if row["language"] == language]
@@ -1060,13 +1069,18 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     for row in raw:
         row["identity_attrs"] = jload(row["identity_attrs"], {})
         identities.setdefault(row["identity_id"], []).append(row)
+    # When the foil filter is engaged, cards should be represented by their foil (Silver)
+    # printing -- both the shown art/price and the "owned" count -- instead of the normal one.
+    foil_display = bool(foil_mode)
     cards = []
     for variants in identities.values():
         preferred_language = language if language != "combined" else ("EN" if any(v["language"] == "EN" for v in variants) else variants[0]["language"])
         language_variants = [v for v in variants if v["language"] == preferred_language]
         representative = next((v for v in language_variants if v["variant_code"] in ("standard", "normal")), language_variants[0])
-        quantity = sum(v["quantity"] for v in variants)
         foil_variant = next((v for v in language_variants if v["finish"] == "Silver"), None)
+        if foil_display and foil_variant:
+            representative = foil_variant
+        quantity = foil_variant["quantity"] if (foil_display and foil_variant) else sum(v["quantity"] for v in variants)
         cards.append({
             **representative,
             "variants": variants,
@@ -1085,6 +1099,16 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     if rarity: cards = [card for card in cards if card["rarity"] == rarity]
     if foil_mode == "owned": cards = [card for card in cards if card["foil_quantity"] > 0]
     if foil_mode == "missing": cards = [card for card in cards if card["foil_quantity"] == 0]
+    if rarities:
+        selected_ranks = {LORCANA_RARITY_KEYS[key] for key in rarities if key in LORCANA_RARITY_KEYS}
+        cards = [card for card in cards if rarity_rank(game_id, card["rarity"]) in selected_ranks]
+    if costs:
+        cards = [card for card in cards if str(card["identity_attrs"].get("cost")) in costs]
+    if colors:
+        cards = [card for card in cards if any(part in (card["identity_attrs"].get("color") or "").split("-") for part in colors)]
+    if inkwell in ("true", "false"):
+        want = inkwell == "true"
+        cards = [card for card in cards if bool(card["identity_attrs"].get("inkwell")) == want]
     sorters = {
         "name": lambda card: card["canonical_name"],
         "rarity": lambda card: (rarity_rank(game_id, card["rarity"]), card["collector_number"]),
@@ -1131,15 +1155,19 @@ def set_cards(set_id):
     sort = request.args.get("sort", "number")
     rarity = request.args.get("rarity", "")
     foil = request.args.get("foil", "")
-    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil)
+    selected_rarities = [value for value in request.args.get("rarities", "").split(",") if value]
+    selected_costs = [value for value in request.args.get("costs", "").split(",") if value]
+    selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
+    inkwell = request.args.get("inkwell", "")
+    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell)
     rarity_sql = "SELECT DISTINCT rarity FROM printings WHERE set_id=?" + ("" if language == "combined" else " AND language=?")
     rarity_params = (set_id,) if language == "combined" else (set_id, language)
-    rarities = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(set_row["game_id"], r))
+    rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(set_row["game_id"], r))
     meta = dict(set_row)
     meta["classifications"] = jload(meta["classifications"], [])
     meta["languages"] = jload(meta["languages"], [])
     meta["release_dates"] = release_dates_for_set(set_id, meta["release_date"])
-    return jsonify({"set": meta, "cards": cards, "stats": stats, "rarities": rarities})
+    return jsonify({"set": meta, "cards": cards, "stats": stats, "rarities": rarity_options})
 
 
 @app.get("/api/games/<game_id>/cards")
@@ -1156,6 +1184,10 @@ def game_cards(game_id):
     set_order = request.args.get("set_order", "desc")
     rarity = request.args.get("rarity", "")
     foil = request.args.get("foil", "")
+    selected_rarities = [value for value in request.args.get("rarities", "").split(",") if value]
+    selected_costs = [value for value in request.args.get("costs", "").split(",") if value]
+    selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
+    inkwell = request.args.get("inkwell", "")
     if set_order not in {"asc", "desc"}:
         set_order = "desc"
     grouped_raw = {}
@@ -1171,9 +1203,9 @@ def game_cards(game_id):
     sets.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, set_order)))
     rarity_sql = "SELECT DISTINCT p.rarity FROM printings p JOIN sets s ON s.id=p.set_id WHERE s.game_id=?" + ("" if language == "combined" else " AND p.language=?")
     rarity_params = (game_id,) if language == "combined" else (game_id, language)
-    rarities = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(game_id, r))
+    rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(game_id, r))
     for set_row in sets:
-        cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil)
+        cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell)
         meta = dict(set_row)
         meta["classifications"] = jload(meta["classifications"], [])
         meta["visual_version"] = set_visual_version(set_row)
@@ -1190,7 +1222,7 @@ def game_cards(game_id):
         "playset": round(aggregate["playset_owned"] / max(1, aggregate["playset_total"]) * 100),
         "value": round(aggregate["value"], 2),
     })
-    return jsonify({"game": {**dict(game), "languages": jload(game["languages"], [])}, "groups": groups, "stats": aggregate, "rarities": rarities})
+    return jsonify({"game": {**dict(game), "languages": jload(game["languages"], [])}, "groups": groups, "stats": aggregate, "rarities": rarity_options})
 
 
 @app.get("/api/cards/<identity_id>")
@@ -2323,12 +2355,16 @@ def op_filter_icon(name):
 
 @app.get("/lorcana-filter-icon/<name>")
 def lorcana_filter_icon(name):
-    if not re.fullmatch(r"(?:amber|amethyst|emerald|ruby|sapphire|steel|cost|inkable)\.png", name):
+    if re.fullmatch(r"(?:amber|amethyst|emerald|ruby|sapphire|steel|cost|inkable)\.png", name):
+        mimetype = "image/png"
+    elif re.fullmatch(r"rarity-(?:common|uncommon|rare|super-rare|legendary|epic|enchanted|iconic|special)\.svg", name):
+        mimetype = "image/svg+xml"
+    else:
         return Response(status=404)
     path = PUBLIC_DIR / "icons" / "lorcana" / name
     if not path.is_file():
         return Response(status=404)
-    return send_file(path, mimetype="image/png", conditional=True, etag=True, max_age=0)
+    return send_file(path, mimetype=mimetype, conditional=True, etag=True, max_age=0)
 
 
 def card_back_placeholder(game_row):
