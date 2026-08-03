@@ -1074,6 +1074,7 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     # printing -- both the shown art/price and the "owned" count -- instead of the normal one.
     foil_display = bool(foil_mode)
     cards = []
+    premium_cards = []
     for variants in identities.values():
         preferred_language = language if language != "combined" else ("EN" if any(v["language"] == "EN" for v in variants) else variants[0]["language"])
         language_variants = [v for v in variants if v["language"] == preferred_language]
@@ -1097,7 +1098,9 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
         # Epic/Enchanted/Iconic reprints are a separate printing under the same gameplay
         # identity (their own collector number, e.g. #206 for an Enchanted reprint of a card
         # normally at #21) -- list each as its own card at that number too, instead of only
-        # being reachable by hovering the base printing's tile.
+        # being reachable by hovering the base printing's tile. Kept in a separate bucket so
+        # they're browsable/filterable like any other card but don't inflate Base/Playset% --
+        # those track completion of the base+foil ladder, which premium tiers sit outside of.
         if game_id == "lorcana":
             premium_printing_ids = {v["printing_id"] for v in language_variants if rarity_rank(game_id, v["rarity"]) in LORCANA_PREMIUM_RANKS and v["printing_id"] != representative["printing_id"]}
             for printing_id in premium_printing_ids:
@@ -1107,7 +1110,7 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
                     continue
                 premium_representative = printing_language_variants[0]
                 premium_foil_variant = next((v for v in printing_language_variants if v["finish"] == "Silver"), None)
-                cards.append({
+                premium_cards.append({
                     **premium_representative,
                     "variants": printing_variants,
                     "languages": sorted({v["language"] for v in printing_variants}),
@@ -1120,6 +1123,7 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
                     "foil_quantity": premium_foil_variant["quantity"] if premium_foil_variant else 0,
                 })
     unfiltered_cards = cards
+    cards = cards + premium_cards
     if mode == "owned": cards = [card for card in cards if card["quantity"] > 0]
     if mode == "missing": cards = [card for card in cards if card["quantity"] == 0]
     if rarity: cards = [card for card in cards if card["rarity"] == rarity]
@@ -1147,7 +1151,13 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     all_variants = [variant for variants in identities.values() for variant in variants]
     total = len(unfiltered_cards)
     owned = sum(1 for card in unfiltered_cards if card["quantity"] > 0)
-    foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal"]
+    # Foil% tracks the standard Silver alternate; Lorcana's Epic/Enchanted/Iconic prints use
+    # their own one-off finish names (Lava, Magma, ...) that also aren't "Normal" but belong to
+    # the separate premium-tier bucket (see premium_cards above), not the base+foil ladder.
+    if game_id == "lorcana":
+        foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal" and rarity_rank(game_id, variant["rarity"]) not in LORCANA_PREMIUM_RANKS]
+    else:
+        foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal"]
     playset_owned = sum(1 for card in unfiltered_cards if card["quantity"] >= 4)
     stats = {
         "owned": owned,

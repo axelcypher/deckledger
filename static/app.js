@@ -648,7 +648,8 @@ function lorcanaVariantGroups(languageVariants){
   const normal=languageVariants.filter(x=>x.finish==='Normal');
   const foil=languageVariants.filter(x=>x.finish==='Silver');
   const premium=languageVariants.filter(x=>LORCANA_PREMIUM_TIER[x.rarity]);
-  const groups=[{tier:'normal',items:normal}];
+  const groups=[];
+  if(normal.length)groups.push({tier:'normal',items:normal});
   if(foil.length)groups.push({tier:'foil',items:foil});
   if(premium.length)groups.push({tier:'premium',items:premium,rarityLabel:LORCANA_PREMIUM_TIER[premium[0].rarity]});
   return groups;
@@ -672,7 +673,7 @@ function cardTile(card,foilDisplayActive=false){
   // Hovering cycles through a card's other printings. For Lorcana specifically,
   // the Silver/foil finish is skipped -- every card has one, so it adds no
   // information -- only genuinely rarer premium tiers (Enchanted etc.) cycle in.
-  const premiumVariants=isLorcana?(lorcanaVariantGroups(languageVariants).find(g=>g.tier==='premium')?.items||[]):[];
+  const premiumVariants=isLorcana?(lorcanaVariantGroups(languageVariants).find(g=>g.tier==='premium')?.items||[]).filter(x=>x!==v):[];
   const cycle=isLorcana?[v,...premiumVariants]:[v,...languageVariants.filter(x=>x!==v)];
   cardCycleRegistry.set(v.variant_id,cycle);
   const badgesHtml=isLorcana?lorcanaVariantBadges(languageVariants):(card.quantity?`<span class="owned-pill">×${card.quantity}</span>`:'');
