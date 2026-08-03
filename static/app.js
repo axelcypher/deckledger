@@ -712,7 +712,7 @@ async function renderCollection(preserve=false){
     <div class="browser-summary"><div><span>VARIANTEN</span><b>${data.stats.variants}</b></div><div><span>EXEMPLARE</span><b>${data.stats.copies}</b></div><div><span>MARKTWERT</span><b>${money(data.stats.value)}</b></div></div>
     <div class="card-toolbar browser-toolbar"><div class="filter-search"><span>⌕</span><input id="collection-q" value="${escapeHtml(f.q)}" placeholder="Sammlung durchsuchen"></div><select id="collection-set" class="select-control"><option value="">Alle Sets</option>${data.sets.map(s=>`<option value="${s.id}" ${f.set_id===s.id?'selected':''}>${escapeHtml(s.code)} · ${escapeHtml(s.name)}</option>`).join('')}</select><select id="collection-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select><select id="collection-rarity" class="select-control"><option value="">Alle Seltenheiten</option>${['Common','Uncommon','Rare','Super Rare','Legendary','Secret Rare'].map(x=>`<option ${f.rarity===x?'selected':''}>${x}</option>`).join('')}</select><select id="collection-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select><select id="collection-mode" class="select-control"><option value="all">Alle Karten</option><option value="duplicates">Nur Duplikate</option><option value="watchlisted">Auf Watchlist</option></select><select id="collection-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="set">Set</option><option value="rarity">Seltenheit</option><option value="value">Wert</option><option value="quantity">Menge</option></select></div>
     <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
-  $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>openOverlay('export-modal');bindCardEvents();bindBrowserFilters('collection',()=>renderCollection(true));
+  $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};bindCardEvents();bindBrowserFilters('collection',()=>renderCollection(true));
 }
 
 function bindBrowserFilters(prefix,render){
@@ -1060,6 +1060,13 @@ function setImportMode(mode){
   $('#import-preview').classList.remove('visible');$('#import-preview').innerHTML='';
   $('#apply-import').disabled=true;
 }
+function setIeMode(mode){
+  $$('.importexport-toggle button').forEach(b=>b.classList.toggle('active',b.dataset.ieMode===mode));
+  $('#importexport-import-section').classList.toggle('hidden',mode!=='import');
+  $('#importexport-export-section').classList.toggle('hidden',mode!=='export');
+  $('#importexport-title').textContent=mode==='import'?'Listenimport':'Sammlung exportieren';
+  $('#importexport-eyebrow').textContent=mode==='import'?'SAMMLUNG ERWEITERN':'DATENHOHEIT';
+}
 
 async function handleImportJsonFile(file){
   const nameLabel=$('#import-json-filename');
@@ -1078,6 +1085,9 @@ function wireGlobalEvents(){
   $$('[data-route]').forEach(el=>el.onclick=()=>{if(el.dataset.route==='decks')state.deckId=null;routeTo(el.dataset.route)});
   $('#mobile-menu').onclick=()=>$('.sidebar').classList.toggle('open');
   $('#sidebar-collapse').onclick=()=>{document.body.classList.toggle('sidebar-collapsed');post('/api/settings',{sidebarCollapsed:document.body.classList.contains('sidebar-collapsed')})};
+  $('#user-avatar').onclick=()=>{const hidden=$('#user-popup').classList.toggle('hidden');$('#user-avatar').setAttribute('aria-expanded',String(!hidden))};
+  document.addEventListener('click',e=>{const popup=$('#user-popup');if(!popup.classList.contains('hidden')&&!e.target.closest('#user-popup')&&e.target.id!=='user-avatar'){popup.classList.add('hidden');$('#user-avatar').setAttribute('aria-expanded','false')}});
+  $('#user-popup').addEventListener('click',e=>{if(e.target.closest('.nav-item')){$('#user-popup').classList.add('hidden');$('#user-avatar').setAttribute('aria-expanded','false')}});
   $('#global-game-filter').onchange=e=>{setActiveGame(e.target.value);refreshWatchCount();if(['collection','watchlist','decks'].includes(state.route))routeTo(state.route);else routeTo('game',e.target.value)};
   $('#edit-toggle').onclick=()=>{state.edit=!state.edit;document.body.classList.toggle('editing',state.edit);$('#edit-panel').classList.toggle('on',state.edit);$('#edit-toggle').setAttribute('aria-checked',String(state.edit));toast(state.edit?'Edit Mode aktiviert':'Edit Mode beendet')};
   $('#quick-toggle').onclick=()=>{state.quick=!state.quick;if(state.quick&&!state.edit){state.edit=true;document.body.classList.add('editing');$('#edit-panel').classList.add('on');$('#edit-toggle').setAttribute('aria-checked','true')}$('#quick-toggle').classList.toggle('active',state.quick);if(state.route==='set')renderSet(state.set.id,true);toast(state.quick?'Quick Entry aktiv: Klick fügt eine Karte hinzu.':'Quick Entry beendet')};
@@ -1086,9 +1096,9 @@ function wireGlobalEvents(){
   let searchTimer;$('#global-search-input').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>doSearch(e.target.value),220)};
   $$('.overlay').forEach(o=>o.addEventListener('mousedown',e=>{if(e.target===o)closeOverlay(o.id)}));$$('[data-close]').forEach(b=>b.onclick=()=>closeOverlay(b.dataset.close));
   const syncImportLanguage=()=>{const lang=state.boot.settings?.defaultLanguages?.[$('#import-game').value];if(lang)$('#import-language').value=lang};
-  $('#import-open').onclick=()=>{setImportMode('text');$('#import-game').value=state.activeGameId;syncImportLanguage();openOverlay('import-modal')};
+  $('#importexport-open').onclick=()=>{setIeMode('import');setImportMode('text');$('#import-game').value=state.activeGameId;syncImportLanguage();openOverlay('import-modal')};
   $('#import-game').onchange=syncImportLanguage;
-  $('#export-open').onclick=()=>openOverlay('export-modal');
+  $$('.importexport-toggle button').forEach(btn=>btn.onclick=()=>setIeMode(btn.dataset.ieMode));
   $$('.import-mode-toggle button').forEach(btn=>btn.onclick=()=>setImportMode(btn.dataset.importMode));
   $('#import-json-file').onchange=e=>handleImportJsonFile(e.target.files[0]);
   $('#preview-import').onclick=previewImport;
