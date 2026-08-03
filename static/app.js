@@ -87,7 +87,19 @@ function setActiveGame(gameId, persist=true) {
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
   state.watchlistId=null; state.deckId=null;
-  if(changed||isInitial){const defaultLang=state.boot.settings?.defaultLanguages?.[gameId];state.language=defaultLang||'combined';state.setType='all';state.setSort='type';state.setDirection='desc';state.collectionFilters={q:'',set_id:'',language:defaultLang||'all',rarity:'',finish:'',mode:'all',sort:'number'};state.watchFilters={q:'',set_id:'',language:defaultLang||'all',finish:'',sort:'added'};state.deckFilters={q:'',set_id:'',language:defaultLang||(gameId==='one-piece'?'EN':'all'),type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};state.deckZone='main'}
+  if(changed||isInitial){
+    // Settings shows languages[0] as each game's assumed default even before
+    // the user ever touches that dropdown (it's only actually saved once they
+    // do) -- falling back to the same value here instead of a generic 'all'/
+    // 'combined' keeps every page consistent with what Settings implies is
+    // already the default, not just what got explicitly saved.
+    const defaultLang=state.boot.settings?.defaultLanguages?.[gameId]||state.game.languages[0];
+    state.language=defaultLang;state.setType='all';state.setSort='type';state.setDirection='desc';
+    state.collectionFilters={q:'',set_id:'',language:defaultLang,rarity:'',finish:'',mode:'all',sort:'number'};
+    state.watchFilters={q:'',set_id:'',language:defaultLang,finish:'',sort:'added'};
+    state.deckFilters={q:'',set_id:'',language:defaultLang,type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};
+    state.deckZone='main';
+  }
   if(persist) post('/api/settings',{activeGameId:gameId});
 }
 
@@ -203,7 +215,14 @@ function paintBannerSlide(index){
   track.innerHTML=cardsHtml+cardsHtml;
   const duration=Math.max(14,slide.cards.length*1.5);
   track.style.setProperty('--marquee-duration',`${duration}s`);
-  track.style.animation='none'; void track.offsetWidth; track.style.animation='';
+  // Restarting a CSS animation after changing its duration needs a real
+  // reflow between clearing and reapplying it. A single synchronous
+  // offsetWidth read is the classic trick but is unreliable in some Firefox
+  // versions specifically for this case (the animation silently never
+  // restarts on some loads) -- a double rAF forces the browser through an
+  // actual paint in between and restarts consistently across engines.
+  track.style.animation='none';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{track.style.animation=''}));
   const label=$('#home-banner-label');
   if(label)label.textContent=`${slide.mode==='value'?'Wertvollste Karten':'Neueste Karten'} deiner Sammlung`;
   return duration;
@@ -616,7 +635,11 @@ function cardTile(card){
   const isLorcana=(v.game_id||state.activeGameId)==='lorcana';
   const foil=isLorcana?languageVariants.find(x=>x.finish==='Silver'):null;
   const visual=finishPresentation(v);
-  const cycle=[v,...languageVariants.filter(x=>x!==v)];
+  // Hovering cycles through a card's other printings. For Lorcana specifically,
+  // the Silver/foil finish is skipped -- every card has one, so it adds no
+  // information -- only genuinely rarer premium tiers (Enchanted etc.) cycle in.
+  const premiumVariants=isLorcana?(lorcanaVariantGroups(languageVariants).find(g=>g.tier==='premium')?.items||[]):[];
+  const cycle=isLorcana?[v,...premiumVariants]:[v,...languageVariants.filter(x=>x!==v)];
   cardCycleRegistry.set(v.variant_id,cycle);
   const badgesHtml=isLorcana?lorcanaVariantBadges(languageVariants):(card.quantity?`<span class="owned-pill">×${card.quantity}</span>`:'');
   const quantityHtml=isLorcana&&foil
@@ -626,9 +649,15 @@ function cardTile(card){
   const imageHtml=cycle.length>1
     ?`<div class="card-flip-stack"><img class="cycle-img front" loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}"><img class="cycle-img back" loading="lazy" decoding="async" alt="" aria-hidden="true"></div>`
     :`<img loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}">`;
-  const playsetHtml=card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓ 4×</span>`:'';
+  // A playset (4 copies) gets its own badge per finish -- base and foil count
+  // separately, so a 4x foil playset doesn't need 4 base copies too to show.
+  const ribbons=isLorcana
+    ?`${v.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">4×</span>`:''}${foil&&foil.quantity>=4?`<span class="playset-badge foil" title="Foil-Playset komplett · 4 Exemplare">4×</span>`:''}`
+    :(card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">4×</span>`:'');
+  const playsetHtml=ribbons?`<div class="playset-ribbons">${ribbons}</div>`:'';
   return `<article class="card-tile ${card.quantity?'owned':'missing'} ${card.variant_count>3?'complex':''}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
-    <div class="card-image-wrap card-finish-frame ${visual.effect}">${imageHtml}<button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${playsetHtml}${quantityHtml}</div>
+    <div class="card-image-wrap card-finish-frame ${visual.effect}">${imageHtml}<button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
+    ${playsetHtml}
     <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${languageVariants.slice(0,3).map(x=>`<span class="variant-chip">${escapeHtml(x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
 
@@ -664,7 +693,7 @@ function bindCardEvents(watchlistId=null){
         frame.className=`card-image-wrap card-finish-frame ${finishPresentation(variant).effect}`;
         if(priceEl)priceEl.textContent=price(variant.price);
       };
-      tile.addEventListener('mouseenter',()=>{cycleIndex=0;cycleTimer=setInterval(advance,900)});
+      tile.addEventListener('mouseenter',()=>{cycleIndex=0;cycleTimer=setInterval(advance,1800)});
       tile.addEventListener('mouseleave',()=>{clearInterval(cycleTimer);reset()});
     }
   });
@@ -1095,7 +1124,7 @@ function wireGlobalEvents(){
   document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen()}if(e.key==='Escape')$$('.overlay:not(.hidden)').forEach(x=>closeOverlay(x.id));if(state.modalCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){const btn=e.key==='ArrowLeft'?'[data-card-nav="-1"]':e.key==='ArrowRight'?'[data-card-nav="1"]':e.key==='ArrowUp'?'[data-variant-nav="-1"]':'[data-variant-nav="1"]';$(btn,$('#card-dialog'))?.click()}});
   let searchTimer;$('#global-search-input').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>doSearch(e.target.value),220)};
   $$('.overlay').forEach(o=>o.addEventListener('mousedown',e=>{if(e.target===o)closeOverlay(o.id)}));$$('[data-close]').forEach(b=>b.onclick=()=>closeOverlay(b.dataset.close));
-  const syncImportLanguage=()=>{const lang=state.boot.settings?.defaultLanguages?.[$('#import-game').value];if(lang)$('#import-language').value=lang};
+  const syncImportLanguage=()=>{const gameId=$('#import-game').value;const game=state.boot.games.find(g=>g.id===gameId);const lang=state.boot.settings?.defaultLanguages?.[gameId]||game?.languages[0];if(lang)$('#import-language').value=lang};
   $('#importexport-open').onclick=()=>{setIeMode('import');setImportMode('text');$('#import-game').value=state.activeGameId;syncImportLanguage();openOverlay('import-modal')};
   $('#import-game').onchange=syncImportLanguage;
   $$('.importexport-toggle button').forEach(btn=>btn.onclick=()=>setIeMode(btn.dataset.ieMode));
