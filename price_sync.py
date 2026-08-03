@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(__file__), "deckledger.db"))
 LOCK_PATH = os.path.join(os.path.dirname(DB_PATH), "price-sync.lock")
 CARDMARKET_BASE = "https://downloads.s3.cardmarket.com/productCatalog"
-CARDMARKET_GAMES = {"one-piece": (18, "OnePiece"), "lorcana": (19, "Lorcana")}
+CARDMARKET_GAMES = {"one-piece": 18, "lorcana": 19}
 PROVIDER_ID = "cardmarket"
 TCGCSV_BASE = "https://tcgcsv.com/tcgplayer/87"
 TCGCSV_UPDATED = "https://tcgcsv.com/last-updated.txt"
@@ -639,23 +639,58 @@ def metadata_value(connection, key: str, default=None):
         return default
 
 
-def synchronize(if_needed=False, dry_run=False) -> dict:
-    payloads = {}
-    for game_id, (number, _) in CARDMARKET_GAMES.items():
-        product_url = f"{CARDMARKET_BASE}/productList/products_singles_{number}.json"
-        guide_url = f"{CARDMARKET_BASE}/priceGuide/price_guide_{number}.json"
-        payloads[game_id] = (product_url, guide_url, fetch_json(product_url), fetch_json(guide_url))
-    tcgplayer_payloads, tcgplayer_version, tcgplayer_observed = load_tcgplayer_hololive()
-    rates = ecb_rates()
-    versions = {game: {"products": data[2].get("createdAt"), "prices": data[3].get("createdAt")} for game, data in payloads.items()}
-    versions["hololive_en"] = tcgplayer_version
-    versions["hololive_jp"] = {"date": local_today().isoformat()}
-    versions["exchange_rates"] = rates
+CARDMARKET_MATCHERS = {"lorcana": map_lorcana, "one-piece": map_one_piece}
 
+
+def resolve_price_assignments(connection) -> dict[str, set[str]]:
+    """{price_method: {game_id, ...}} -- which games use which price pipeline this run.
+
+    Each of a game's own languages resolves its per-language override first,
+    falling back to the game's primary `price_method`; a game ends up in a
+    method's set if *any* of its languages resolve to it. Data-driven so the
+    dispatch below never hardcodes a game_id -- only the pipelines themselves
+    (which external site, how matching works) stay bespoke code, exactly like
+    catalog_providers' `kind='builtin'` importers.
+    """
+    overrides = {(r["game_id"], r["language"]): r["price_method"] for r in connection.execute("SELECT game_id, language, price_method FROM game_price_overrides")}
+    assignments = defaultdict(set)
+    for row in connection.execute("SELECT id, languages, price_method FROM games"):
+        for language in json.loads(row["languages"]):
+            method = overrides.get((row["id"], language), row["price_method"])
+            if method:
+                assignments[method].add(row["id"])
+    return assignments
+
+
+def synchronize(if_needed=False, dry_run=False) -> dict:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     try:
         connection.executescript(PRICE_SCHEMA)
+        assignments = resolve_price_assignments(connection)
+        cardmarket_game_ids = assignments.get("cardmarket", set())
+        hololive_tcgcsv = "hololive" in assignments.get("tcgcsv", set())
+        hololive_yuyutei = "hololive" in assignments.get("yuyutei", set())
+
+        payloads = {}
+        for game_id in cardmarket_game_ids:
+            number = CARDMARKET_GAMES.get(game_id)
+            if number is None:
+                continue  # assigned to Cardmarket, but no Cardmarket-side numeric id configured for it yet
+            product_url = f"{CARDMARKET_BASE}/productList/products_singles_{number}.json"
+            guide_url = f"{CARDMARKET_BASE}/priceGuide/price_guide_{number}.json"
+            payloads[game_id] = (product_url, guide_url, fetch_json(product_url), fetch_json(guide_url))
+        tcgplayer_payloads = tcgplayer_version = tcgplayer_observed = None
+        if hololive_tcgcsv:
+            tcgplayer_payloads, tcgplayer_version, tcgplayer_observed = load_tcgplayer_hololive()
+        rates = ecb_rates()
+        versions = {game: {"products": data[2].get("createdAt"), "prices": data[3].get("createdAt")} for game, data in payloads.items()}
+        if hololive_tcgcsv:
+            versions["hololive_en"] = tcgplayer_version
+        if hololive_yuyutei:
+            versions["hololive_jp"] = {"date": local_today().isoformat()}
+        versions["exchange_rates"] = rates
+
         if if_needed and metadata_value(connection, "price_sync_versions") == versions:
             result = metadata_value(connection, "price_sync_counts", {})
             result["skipped"] = "Die täglichen Marktdateien sind bereits importiert."
@@ -665,10 +700,11 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             products = products_data.get("products") or []
             guide_rows = guide_data.get("priceGuides") or []
             guides.update({str(row["idProduct"]): row for row in guide_rows})
-            if game_id == "lorcana":
-                mappings, audit = map_lorcana(connection, products)
-            else:
-                mappings, audit = map_one_piece(connection, products)
+            matcher = CARDMARKET_MATCHERS.get(game_id)
+            if not matcher:
+                audits[game_id] = {"skipped": "kein Cardmarket-Matcher für dieses Spiel hinterlegt"}
+                continue
+            mappings, audit = matcher(connection, products)
             for mapping in mappings:
                 mapping["provider_id"] = PROVIDER_ID
                 mapping["external_product_id"] = str(mapping["product"]["idProduct"])
@@ -682,24 +718,27 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             all_mappings.extend(mappings)
             audits[game_id] = audit
 
-        tcgplayer_mappings, tcgplayer_audit = map_hololive_tcgplayer(connection, tcgplayer_payloads, rates)
-        for mapping in tcgplayer_mappings:
-            mapping["observed_at"] = tcgplayer_observed or datetime.now(timezone.utc).isoformat()
-        all_mappings.extend(tcgplayer_mappings)
-        audits["hololive_en"] = tcgplayer_audit
+        if hololive_tcgcsv:
+            tcgplayer_mappings, tcgplayer_audit = map_hololive_tcgplayer(connection, tcgplayer_payloads, rates)
+            for mapping in tcgplayer_mappings:
+                mapping["observed_at"] = tcgplayer_observed or datetime.now(timezone.utc).isoformat()
+            all_mappings.extend(tcgplayer_mappings)
+            audits["hololive_en"] = tcgplayer_audit
 
-        yuyutei_products, yuyutei_load_audit = load_yuyutei_hololive(connection)
-        yuyutei_mappings, yuyutei_audit = map_hololive_yuyutei(connection, yuyutei_products, rates)
-        yuyutei_observed = datetime.now(timezone.utc).isoformat()
-        for mapping in yuyutei_mappings:
-            mapping["observed_at"] = yuyutei_observed
-        audits["hololive_jp"] = {**yuyutei_load_audit, **yuyutei_audit}
-        yuyutei_success = not audits["hololive_jp"].get("transient_failures") and len(yuyutei_mappings) >= 500
-        if yuyutei_success:
-            all_mappings.extend(yuyutei_mappings)
-        else:
-            audits["hololive_jp"]["preserved_previous_data"] = True
-            versions["hololive_jp"] = {"incomplete": yuyutei_observed}
+        yuyutei_success = False
+        if hololive_yuyutei:
+            yuyutei_products, yuyutei_load_audit = load_yuyutei_hololive(connection)
+            yuyutei_mappings, yuyutei_audit = map_hololive_yuyutei(connection, yuyutei_products, rates)
+            yuyutei_observed = datetime.now(timezone.utc).isoformat()
+            for mapping in yuyutei_mappings:
+                mapping["observed_at"] = yuyutei_observed
+            audits["hololive_jp"] = {**yuyutei_load_audit, **yuyutei_audit}
+            yuyutei_success = not audits["hololive_jp"].get("transient_failures") and len(yuyutei_mappings) >= 500
+            if yuyutei_success:
+                all_mappings.extend(yuyutei_mappings)
+            else:
+                audits["hololive_jp"]["preserved_previous_data"] = True
+                versions["hololive_jp"] = {"incomplete": yuyutei_observed}
 
         counts = defaultdict(int)
         observation_rows = []
@@ -722,7 +761,7 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
                 if mapping.get("language"):
                     counts[f"{mapping['game_id']}_{mapping['provider_id']}_{mapping['language'].lower()}_{metric}"] += 1
 
-        if not yuyutei_success:
+        if hololive_yuyutei and not yuyutei_success:
             counts["hololive_yuyutei_mappings"] = connection.execute(
                 "SELECT COUNT(*) FROM marketplace_products WHERE provider_id='yuyutei' AND game_id='hololive'"
             ).fetchone()[0]
@@ -734,11 +773,16 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             counts["hololive_yuyutei_preserved"] = 1
 
         # A provider format change must never silently erase working mappings.
-        if counts["lorcana_cardmarket_mappings"] < 5000 or counts["one-piece_cardmarket_mappings"] < 400:
-            raise RuntimeError(f"Cardmarket-Matching unter Sicherheitsgrenze: {dict(counts)}")
-        if counts["one-piece_cardmarket_en_mappings"] < 400 or counts["one-piece_cardmarket_jp_mappings"] < 400:
-            raise RuntimeError(f"Sprachgetrenntes One-Piece-Matching unter Sicherheitsgrenze: {dict(counts)}")
-        if counts["hololive_tcgplayer_mappings"] < 500:
+        # Each floor only applies to a game/method actually dispatched this run --
+        # a game an admin unassigns from a method must not trip its old floor.
+        if "lorcana" in cardmarket_game_ids and counts["lorcana_cardmarket_mappings"] < 5000:
+            raise RuntimeError(f"Cardmarket-Matching (Lorcana) unter Sicherheitsgrenze: {dict(counts)}")
+        if "one-piece" in cardmarket_game_ids:
+            if counts["one-piece_cardmarket_mappings"] < 400:
+                raise RuntimeError(f"Cardmarket-Matching (One Piece) unter Sicherheitsgrenze: {dict(counts)}")
+            if counts["one-piece_cardmarket_en_mappings"] < 400 or counts["one-piece_cardmarket_jp_mappings"] < 400:
+                raise RuntimeError(f"Sprachgetrenntes One-Piece-Matching unter Sicherheitsgrenze: {dict(counts)}")
+        if hololive_tcgcsv and counts["hololive_tcgplayer_mappings"] < 500:
             raise RuntimeError(f"Hololive-Matching unter Sicherheitsgrenze: {dict(counts)}")
         result = {"counts": dict(counts), "versions": versions, "audits": audits}
         if dry_run:
@@ -746,7 +790,11 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
 
         matched_at = datetime.now(timezone.utc).isoformat()
         connection.execute("BEGIN")
-        providers_to_replace = [PROVIDER_ID, "tcgplayer", "optcgapi"]
+        providers_to_replace = ["optcgapi"]
+        if cardmarket_game_ids:
+            providers_to_replace.append(PROVIDER_ID)
+        if hololive_tcgcsv:
+            providers_to_replace.append("tcgplayer")
         if yuyutei_success:
             providers_to_replace.append("yuyutei")
         placeholders = ",".join("?" for _ in providers_to_replace)
@@ -776,11 +824,11 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             "price_sync_last_success": matched_at,
             "price_sync_sources": {game: {"products": data[0], "prices": data[1]} for game, data in payloads.items()},
         }
-        metadata["price_sync_sources"].update({
-            "hololive_en": {"provider": "TCGplayer via TCGCSV", "groups": f"{TCGCSV_BASE}/groups", "updated": TCGCSV_UPDATED},
-            "hololive_jp": {"provider": "Yuyutei retail", "sets": YUYUTEI_BASE},
-            "exchange_rates": {"provider": "European Central Bank", "url": ECB_RATES},
-        })
+        if hololive_tcgcsv:
+            metadata["price_sync_sources"]["hololive_en"] = {"provider": "TCGplayer via TCGCSV", "groups": f"{TCGCSV_BASE}/groups", "updated": TCGCSV_UPDATED}
+        if hololive_yuyutei:
+            metadata["price_sync_sources"]["hololive_jp"] = {"provider": "Yuyutei retail", "sets": YUYUTEI_BASE}
+        metadata["price_sync_sources"]["exchange_rates"] = {"provider": "European Central Bank", "url": ECB_RATES}
         connection.executemany(
             "INSERT OR REPLACE INTO catalog_metadata(key,value) VALUES(?,?)",
             [(key, json.dumps(value, ensure_ascii=False)) for key, value in metadata.items()],

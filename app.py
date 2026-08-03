@@ -19,6 +19,9 @@ from urllib.request import Request, urlopen
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from catalog_provider_contract import digest, slug
+from catalog_provider_standard import extract_collection, iter_collection, load_source, resolve_path
+
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "deckledger-local-development-key")
@@ -75,21 +78,22 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS games (
   id TEXT PRIMARY KEY, module_id TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT NOT NULL,
-  module_version TEXT NOT NULL, languages TEXT NOT NULL, accent TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1
+  module_version TEXT NOT NULL, languages TEXT NOT NULL, accent TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+  rarity_order TEXT NOT NULL DEFAULT '{}', price_method TEXT, deck_ruleset TEXT
 );
 CREATE TABLE IF NOT EXISTS sets (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL REFERENCES games(id), code TEXT NOT NULL, name TEXT NOT NULL,
   set_type TEXT NOT NULL, release_date TEXT, printed_card_count INTEGER, classifications TEXT NOT NULL,
-  accent TEXT NOT NULL
+  accent TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'imported'
 );
 CREATE TABLE IF NOT EXISTS card_identities (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL REFERENCES games(id), canonical_name TEXT NOT NULL,
-  rules_text TEXT, card_type TEXT, attributes TEXT NOT NULL
+  rules_text TEXT, card_type TEXT, attributes TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'imported'
 );
 CREATE TABLE IF NOT EXISTS printings (
   id TEXT PRIMARY KEY, identity_id TEXT NOT NULL REFERENCES card_identities(id), game_id TEXT NOT NULL REFERENCES games(id),
   set_id TEXT NOT NULL REFERENCES sets(id), collector_number TEXT NOT NULL, language TEXT NOT NULL,
-  rarity TEXT NOT NULL, attributes TEXT NOT NULL
+  rarity TEXT NOT NULL, attributes TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'imported'
 );
 CREATE TABLE IF NOT EXISTS variants (
   id TEXT PRIMARY KEY, printing_id TEXT NOT NULL REFERENCES printings(id), game_id TEXT NOT NULL REFERENCES games(id),
@@ -145,6 +149,21 @@ CREATE TABLE IF NOT EXISTS user_settings (
 CREATE TABLE IF NOT EXISTS catalog_metadata (
   key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS catalog_providers (
+  id TEXT PRIMARY KEY, game_id TEXT NOT NULL REFERENCES games(id), label TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('builtin','declarative','custom_code')),
+  entrypoint TEXT, config TEXT, code TEXT,
+  minimum_sets INTEGER NOT NULL DEFAULT 0, minimum_cards INTEGER NOT NULL DEFAULT 0,
+  timeout_seconds INTEGER NOT NULL DEFAULT 300,
+  provider_version TEXT NOT NULL, last_synced_version TEXT,
+  last_run_at TEXT, last_status TEXT, last_summary TEXT, last_error TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS game_price_overrides (
+  game_id TEXT NOT NULL REFERENCES games(id), language TEXT NOT NULL, price_method TEXT NOT NULL,
+  PRIMARY KEY (game_id, language)
+);
+CREATE INDEX IF NOT EXISTS idx_catalog_providers_game ON catalog_providers(game_id);
 CREATE INDEX IF NOT EXISTS idx_printings_set ON printings(set_id);
 CREATE INDEX IF NOT EXISTS idx_printings_identity_language ON printings(identity_id,language,set_id);
 CREATE INDEX IF NOT EXISTS idx_variants_printing ON variants(printing_id);
@@ -166,6 +185,107 @@ FORMAT_PROFILES = {
         {"id": "standard", "name": "Official Standard", "description": "Offizielles Constructed-Regelset", "zones": [{"id":"oshi","name":"Oshi","target":1},{"id":"main","name":"Main Deck","target":50},{"id":"cheer","name":"Cheer Deck","target":20}], "rules_url": "https://en.hololive-official-cardgame.com/wp-content/themes/tcg_en/assets/img/rule/official_rule_book_ver1_02.pdf"},
     ],
 }
+
+
+def validate_lorcana_deck(deck, cards, counts):
+    errors, warnings = [], []
+    if counts.get("main", 0) < 60:
+        errors.append(f'Noch {60-counts.get("main",0)} Karten bis zum Minimum von 60.')
+    names = {}
+    colors = set()
+    for c in cards:
+        names[c["canonical_name"]] = names.get(c["canonical_name"], 0) + c["quantity"]
+        attrs = jload(c["attributes"], {})
+        colors.add(attrs.get("color"))
+        if str(c.get("set_type") or "").lower() == "quest":
+            errors.append(f'{c["canonical_name"]} ist eine Quest-Karte und nicht für Constructed-Decks zulässig.')
+        if deck["format_id"] == "core" and attrs.get("legality") in ("future", "rotated", "banned"):
+            errors.append(f'{c["canonical_name"]} ist im Core-Format nicht legal.')
+    if len(colors - {None}) > 2:
+        errors.append("Das Deck enthält mehr als zwei Tintenfarben.")
+    for name, qty in names.items():
+        if qty > 4:
+            errors.append(f'{name}: maximal 4 Exemplare erlaubt.')
+    return errors, warnings
+
+
+def validate_one_piece_deck(deck, cards, counts):
+    errors, warnings = [], []
+    if counts.get("leader", 0) != 1:
+        errors.append("Genau 1 Leader ist erforderlich.")
+    if counts.get("main", 0) != 50:
+        errors.append(f'Hauptdeck: {counts.get("main",0)}/50 Karten.')
+    # Explicit DON!! artwork is optional. Any open slots are represented by
+    # the standard DON!! card in the builder and do not have to be stored.
+    if counts.get("don", 0) > 10:
+        errors.append(f'DON!!-Deck: maximal 10 Karten ({counts.get("don",0)}/10).')
+    numbers = {}
+    for c in cards:
+        if c["zone"] == "main":
+            numbers[c["collector_number"]] = numbers.get(c["collector_number"], 0) + c["quantity"]
+    for number, qty in numbers.items():
+        if qty > 4:
+            errors.append(f'{number}: maximal 4 Exemplare erlaubt.')
+    if any(c["card_type"] != "Leader" for c in cards if c["zone"] == "leader"):
+        errors.append("In der Leader-Zone sind nur Leader-Karten erlaubt.")
+    if any(c["card_type"] == "Leader" or c["card_type"] == "DON!!" for c in cards if c["zone"] == "main"):
+        errors.append("Leader- und DON!!-Karten dürfen nicht ins Hauptdeck.")
+    if any(c["card_type"] != "DON!!" for c in cards if c["zone"] == "don"):
+        errors.append("Das DON!!-Deck darf nur DON!!-Karten enthalten.")
+    leader = next((c for c in cards if c["zone"] == "leader"), None)
+    if leader:
+        leader_color = jload(leader["attributes"], {}).get("color")
+        invalid = [c["canonical_name"] for c in cards if c["zone"] == "main" and jload(c["attributes"], {}).get("color") != leader_color]
+        if invalid:
+            warnings.append(f'{len(invalid)} Karten entsprechen nicht der Leader-Farbe {leader_color}.')
+    return errors, warnings
+
+
+def validate_hololive_deck(deck, cards, counts):
+    errors, warnings = [], []
+    if counts.get("oshi", 0) != 1:
+        errors.append("Genau 1 Oshi holomem ist erforderlich.")
+    if counts.get("main", 0) != 50:
+        errors.append(f'Main Deck: {counts.get("main",0)}/50 Karten.')
+    if counts.get("cheer", 0) != 20:
+        errors.append(f'Cheer Deck: {counts.get("cheer",0)}/20 Karten.')
+    numbers = {}
+    for c in cards:
+        if c["zone"] == "main":
+            numbers[c["collector_number"]] = numbers.get(c["collector_number"], 0) + c["quantity"]
+    for number, qty in numbers.items():
+        if qty > 4:
+            errors.append(f'{number}: maximal 4 Exemplare im Main Deck erlaubt.')
+    if any(zone_for_card_type("hololive-standard", c["card_type"]) != "oshi" for c in cards if c["zone"] == "oshi"):
+        errors.append("In der Oshi-Zone ist nur ein Oshi holomem erlaubt.")
+    if any(zone_for_card_type("hololive-standard", c["card_type"]) != "main" for c in cards if c["zone"] == "main"):
+        errors.append("Oshi- und Cheer-Karten dürfen nicht ins Main Deck.")
+    if any(zone_for_card_type("hololive-standard", c["card_type"]) != "cheer" for c in cards if c["zone"] == "cheer"):
+        errors.append("Das Cheer Deck darf nur Cheer-Karten enthalten.")
+    return errors, warnings
+
+
+# Bespoke deck-legality rules per game stay code (they're real business logic,
+# not data), but which ruleset a game uses is a `games.deck_ruleset` value,
+# not a hardcoded game_id check -- see deck_validation() / zone_for_card_type().
+DECK_RULESETS = {
+    "lorcana-standard": {"zone_for_card_type": {}, "validate": validate_lorcana_deck},
+    "one-piece-standard": {"zone_for_card_type": {"Leader": "leader", "DON!!": "don"}, "validate": validate_one_piece_deck},
+    "hololive-standard": {
+        "zone_for_card_type": {"Oshi": "oshi", "Oshi holomem": "oshi", "推しホロメン": "oshi", "Cheer": "cheer", "エール": "cheer"},
+        "validate": validate_hololive_deck,
+    },
+}
+
+
+def zone_for_card_type(deck_ruleset, card_type):
+    mapping = (DECK_RULESETS.get(deck_ruleset) or {}).get("zone_for_card_type", {})
+    return mapping.get(str(card_type or "").strip(), "main")
+
+
+def game_deck_ruleset(game_id):
+    row = db().execute("SELECT deck_ruleset FROM games WHERE id=?", (game_id,)).fetchone()
+    return row["deck_ruleset"] if row else None
 
 
 GAME_DATA = [
@@ -216,12 +336,53 @@ def rarity_case_sql(game_id, column):
     return f"CASE {column} {whens} ELSE {RARITY_FALLBACK_RANK} END"
 
 
+GAME_COLUMNS = "id, module_id, name, short_name, module_version, languages, accent, enabled"
+BUILTIN_PROVIDERS = {
+    "lorcana": ("catalog_sync:import_lorcana", 15, 2500, "lorcana-v13"),
+    "one-piece": ("catalog_sync:import_one_piece", 20, 1000, "one-piece-v13"),
+    "hololive": ("catalog_sync:import_hololive", 10, 500, "hololive-v13"),
+}
+
+
+def seed_builtin_providers(connection):
+    for game_id, (entrypoint, minimum_sets, minimum_cards, provider_version) in BUILTIN_PROVIDERS.items():
+        connection.execute(
+            """INSERT OR IGNORE INTO catalog_providers
+               (id, game_id, label, kind, entrypoint, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
+               VALUES (?,?,?,'builtin',?,?,?,300,?,1,?,?)""",
+            (game_id, game_id, game_id, entrypoint, minimum_sets, minimum_cards, provider_version, now_iso(), now_iso()),
+        )
+
+
+DEFAULT_DECK_RULESETS = {"lorcana": "lorcana-standard", "one-piece": "one-piece-standard", "hololive": "hololive-standard"}
+DEFAULT_PRICE_METHODS = {"lorcana": "cardmarket", "one-piece": "cardmarket", "hololive": "tcgcsv"}
+DEFAULT_PRICE_OVERRIDES = [("hololive", "JP", "yuyutei")]
+
+
+def seed_default_deck_rulesets(connection):
+    for game_id, ruleset in DEFAULT_DECK_RULESETS.items():
+        connection.execute("UPDATE games SET deck_ruleset=? WHERE id=? AND deck_ruleset IS NULL", (ruleset, game_id))
+
+
+def seed_default_price_methods(connection):
+    for game_id, method in DEFAULT_PRICE_METHODS.items():
+        connection.execute("UPDATE games SET price_method=? WHERE id=? AND price_method IS NULL", (method, game_id))
+    for game_id, language, method in DEFAULT_PRICE_OVERRIDES:
+        connection.execute(
+            "INSERT OR IGNORE INTO game_price_overrides(game_id, language, price_method) VALUES(?,?,?)",
+            (game_id, language, method),
+        )
+
+
 def seed_database(connection):
     if connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
         connection.executemany(
-            "INSERT OR IGNORE INTO games VALUES(?,?,?,?,?,?,?,1)",
+            f"INSERT OR IGNORE INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)",
             [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA],
         )
+        seed_builtin_providers(connection)
+        seed_default_deck_rulesets(connection)
+        seed_default_price_methods(connection)
         return
     connection.executemany(
         "INSERT INTO users(username, display_name, password_hash, role, created_at) VALUES(?,?,?,?,?)",
@@ -230,7 +391,9 @@ def seed_database(connection):
             ("admin", "DeckLedger Admin", generate_password_hash("admin"), "admin", now_iso()),
         ],
     )
-    connection.executemany("INSERT INTO games VALUES(?,?,?,?,?,?,?,1)", [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA])
+    connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA])
+    seed_builtin_providers(connection)
+    seed_default_deck_rulesets(connection)
 
 
 def init_database():
@@ -240,6 +403,17 @@ def init_database():
     deck_columns = {row[1] for row in connection.execute("PRAGMA table_info(decks)")}
     if "cover_variant_id" not in deck_columns:
         connection.execute("ALTER TABLE decks ADD COLUMN cover_variant_id TEXT REFERENCES variants(id)")
+    game_columns = {row[1] for row in connection.execute("PRAGMA table_info(games)")}
+    if "rarity_order" not in game_columns:
+        connection.execute("ALTER TABLE games ADD COLUMN rarity_order TEXT NOT NULL DEFAULT '{}'")
+    if "price_method" not in game_columns:
+        connection.execute("ALTER TABLE games ADD COLUMN price_method TEXT")
+    if "deck_ruleset" not in game_columns:
+        connection.execute("ALTER TABLE games ADD COLUMN deck_ruleset TEXT")
+    for table in ("sets", "card_identities", "printings"):
+        columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if "source_type" not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN source_type TEXT NOT NULL DEFAULT 'imported'")
     # Gunicorn workers can import the app concurrently on a fresh volume.
     # Serialize the one-time seed so both workers never insert the demo user.
     connection.execute("BEGIN IMMEDIATE")
@@ -266,6 +440,19 @@ def login_required(view):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "authentication required"}), 401
             return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        row = db().execute("SELECT role FROM users WHERE id=?", (user_id(),)).fetchone()
+        if not row or row["role"] != "admin":
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "admin access required"}), 403
+            return redirect(url_for("index"))
         return view(*args, **kwargs)
     return wrapped
 
@@ -417,6 +604,370 @@ def refresh_prices():
     return jsonify({
         "counts": jload(counts[0], {}) if counts else {},
         "synced_at": jload(synced[0]) if synced else None,
+    })
+
+
+@app.get("/api/admin/games")
+@admin_required
+def admin_list_games():
+    rows = [dict(r) for r in db().execute("SELECT * FROM games ORDER BY name")]
+    for row in rows:
+        row["languages"] = jload(row["languages"], [])
+        row["rarity_order"] = jload(row["rarity_order"], {})
+    return jsonify(rows)
+
+
+@app.post("/api/admin/games")
+@admin_required
+def admin_create_game():
+    p = request.get_json(force=True)
+    name = (p.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Name ist erforderlich"}), 400
+    game_id = slug(p.get("id") or name)
+    if not re.fullmatch(r"[a-z0-9-]+", game_id):
+        return jsonify({"error": "Ungültige Spiel-ID"}), 400
+    if db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+        return jsonify({"error": "Diese Spiel-ID existiert bereits"}), 409
+    languages = p.get("languages") or ["EN"]
+    short_name = (p.get("short_name") or name)[:40]
+    accent = p.get("accent") or "#6366f1"
+    db().execute(
+        "INSERT INTO games(id, module_id, name, short_name, module_version, languages, accent, enabled) VALUES(?,?,?,?,?,?,?,1)",
+        (game_id, game_id, name, short_name, "0.1.0", json.dumps(languages), accent),
+    )
+    db().commit()
+    return jsonify({"id": game_id}), 201
+
+
+@app.patch("/api/admin/games/<game_id>")
+@admin_required
+def admin_update_game(game_id):
+    if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+        return jsonify({"error": "game not found"}), 404
+    p = request.get_json(force=True)
+    fields, values = [], []
+    for key in ("name", "short_name", "accent", "price_method", "deck_ruleset"):
+        if key in p:
+            fields.append(f"{key}=?")
+            values.append(p[key] or None)
+    if "languages" in p:
+        fields.append("languages=?")
+        values.append(json.dumps(p["languages"]))
+    if "rarity_order" in p:
+        fields.append("rarity_order=?")
+        values.append(json.dumps(p["rarity_order"]))
+    if "enabled" in p:
+        fields.append("enabled=?")
+        values.append(1 if p["enabled"] else 0)
+    if not fields:
+        return jsonify({"error": "keine Felder zum Aktualisieren"}), 400
+    values.append(game_id)
+    db().execute(f"UPDATE games SET {','.join(fields)} WHERE id=?", values)
+    db().commit()
+    return jsonify({"saved": True})
+
+
+CARD_BACK_UPLOAD_DIR = Path(os.path.dirname(DB_PATH)) / "card-backs"
+
+
+@app.post("/api/admin/games/<game_id>/card-back")
+@admin_required
+def admin_upload_card_back(game_id):
+    if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+        return jsonify({"error": "game not found"}), 404
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "Keine Datei übermittelt"}), 400
+    CARD_BACK_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    file.save(CARD_BACK_UPLOAD_DIR / f"{game_id}.jpg")
+    return jsonify({"saved": True})
+
+
+@app.get("/api/admin/providers")
+@admin_required
+def admin_list_providers():
+    rows = [dict(r) for r in db().execute("SELECT * FROM catalog_providers ORDER BY game_id")]
+    for row in rows:
+        row["last_summary"] = jload(row.get("last_summary"), {})
+        if row.get("config"):
+            row["config"] = jload(row["config"], {})
+    return jsonify(rows)
+
+
+@app.post("/api/admin/providers")
+@admin_required
+def admin_create_provider():
+    p = request.get_json(force=True)
+    game_id = p.get("game_id")
+    if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+        return jsonify({"error": "Spiel nicht gefunden"}), 404
+    kind = p.get("kind")
+    if kind != "declarative":
+        return jsonify({"error": "Aktuell können nur deklarative Provider angelegt werden"}), 400
+    provider_id = slug(p.get("id") or game_id)
+    if db().execute("SELECT 1 FROM catalog_providers WHERE id=?", (provider_id,)).fetchone():
+        return jsonify({"error": "Diese Provider-ID existiert bereits"}), 409
+    config_text = json.dumps(p.get("config") or {}, ensure_ascii=False)
+    now = now_iso()
+    db().execute(
+        """INSERT INTO catalog_providers
+           (id, game_id, label, kind, config, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
+           VALUES (?,?,?,'declarative',?,?,?,?,?,1,?,?)""",
+        (provider_id, game_id, p.get("label") or game_id, config_text,
+         int(p.get("minimum_sets") or 0), int(p.get("minimum_cards") or 0), int(p.get("timeout_seconds") or 300),
+         digest(config_text), now, now),
+    )
+    db().commit()
+    return jsonify({"id": provider_id}), 201
+
+
+@app.patch("/api/admin/providers/<provider_id>")
+@admin_required
+def admin_update_provider(provider_id):
+    row = db().execute("SELECT * FROM catalog_providers WHERE id=?", (provider_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "provider not found"}), 404
+    p = request.get_json(force=True)
+    fields, values = [], []
+    if "config" in p:
+        config_text = json.dumps(p["config"], ensure_ascii=False)
+        fields += ["config=?", "provider_version=?"]
+        values += [config_text, digest(config_text)]
+    for key in ("label", "minimum_sets", "minimum_cards", "timeout_seconds"):
+        if key in p:
+            fields.append(f"{key}=?")
+            values.append(p[key])
+    if "enabled" in p:
+        fields.append("enabled=?")
+        values.append(1 if p["enabled"] else 0)
+    if not fields:
+        return jsonify({"error": "keine Felder zum Aktualisieren"}), 400
+    fields.append("updated_at=?")
+    values.append(now_iso())
+    values.append(provider_id)
+    db().execute(f"UPDATE catalog_providers SET {','.join(fields)} WHERE id=?", values)
+    db().commit()
+    return jsonify({"saved": True})
+
+
+@app.delete("/api/admin/providers/<provider_id>")
+@admin_required
+def admin_delete_provider(provider_id):
+    db().execute("DELETE FROM catalog_providers WHERE id=? AND kind!='builtin'", (provider_id,))
+    db().commit()
+    return jsonify({"deleted": True})
+
+
+@app.post("/api/admin/providers/<provider_id>/run")
+@admin_required
+def admin_run_provider(provider_id):
+    row = db().execute("SELECT timeout_seconds FROM catalog_providers WHERE id=?", (provider_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "provider not found"}), 404
+    try:
+        process = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("catalog_sync.py")), "--provider", provider_id],
+            capture_output=True, text=True, timeout=row["timeout_seconds"] + 30, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Der Import hat das Zeitlimit überschritten."}), 504
+    updated = db().execute("SELECT last_status, last_summary, last_error, last_run_at FROM catalog_providers WHERE id=?", (provider_id,)).fetchone()
+    return jsonify({
+        "returncode": process.returncode,
+        "status": updated["last_status"] if updated else None,
+        "summary": jload(updated["last_summary"], {}) if updated else {},
+        "error": updated["last_error"] if updated else None,
+        "run_at": updated["last_run_at"] if updated else None,
+        "log": (process.stdout[-2000:] + process.stderr[-2000:]) if process.returncode else None,
+    })
+
+
+@app.get("/api/admin/games/<game_id>/manual-cards")
+@admin_required
+def admin_list_manual_cards(game_id):
+    identities = [dict(r) for r in db().execute(
+        "SELECT * FROM card_identities WHERE game_id=? AND source_type='manual-override' ORDER BY canonical_name", (game_id,)
+    )]
+    for identity in identities:
+        identity["attributes"] = jload(identity["attributes"], {})
+        printings = [dict(p) for p in db().execute("SELECT * FROM printings WHERE identity_id=?", (identity["id"],))]
+        for printing in printings:
+            printing["attributes"] = jload(printing["attributes"], {})
+            variants = [dict(v) for v in db().execute("SELECT * FROM variants WHERE printing_id=?", (printing["id"],))]
+            for variant in variants:
+                variant["attributes"] = jload(variant["attributes"], {})
+            printing["variants"] = variants
+        identity["printings"] = printings
+    return jsonify(identities)
+
+
+@app.post("/api/admin/games/<game_id>/manual-cards")
+@admin_required
+def admin_create_manual_card(game_id):
+    if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+        return jsonify({"error": "game not found"}), 404
+    p = request.get_json(force=True)
+    name = (p.get("canonical_name") or "").strip()
+    if not name:
+        return jsonify({"error": "Kartenname ist erforderlich"}), 400
+    key = slug(p.get("key") or name)
+
+    set_id = p.get("set_id")
+    if set_id:
+        if not db().execute("SELECT 1 FROM sets WHERE id=? AND game_id=?", (set_id, game_id)).fetchone():
+            return jsonify({"error": "Set nicht gefunden"}), 404
+    else:
+        set_code = (p.get("new_set_code") or "").strip()
+        if not set_code:
+            return jsonify({"error": "Set auswählen oder neuen Set-Code angeben"}), 400
+        set_id = f"{game_id}-{slug(set_code)}"
+        if not db().execute("SELECT 1 FROM sets WHERE id=?", (set_id,)).fetchone():
+            db().execute(
+                "INSERT INTO sets VALUES(?,?,?,?,?,?,?,?,?,'manual-override')",
+                (set_id, game_id, set_code, p.get("new_set_name") or set_code, "Set", None, None, "[]", "#6366f1"),
+            )
+
+    identity_id = f"{game_id}-card-{key}"
+    existing_identity = db().execute("SELECT source_type FROM card_identities WHERE id=?", (identity_id,)).fetchone()
+    if existing_identity and existing_identity["source_type"] != "manual-override":
+        return jsonify({"error": "Dieser Kartenschlüssel gehört zu einer importierten Karte – bitte einen anderen Schlüssel wählen."}), 409
+    db().execute(
+        """INSERT INTO card_identities VALUES(?,?,?,?,?,?,'manual-override') ON CONFLICT(id) DO UPDATE SET
+           canonical_name=excluded.canonical_name,rules_text=excluded.rules_text,card_type=excluded.card_type,attributes=excluded.attributes""",
+        (identity_id, game_id, name, p.get("rules_text") or "", p.get("card_type") or "Unknown", json.dumps(p.get("attributes") or {}, ensure_ascii=False)),
+    )
+
+    language = p.get("language") or "EN"
+    collector_number = p.get("collector_number") or key
+    printing_id = f"{game_id}-print-{slug(set_id)}-{key}-{language.lower()}"
+    existing_printing = db().execute("SELECT source_type FROM printings WHERE id=?", (printing_id,)).fetchone()
+    if existing_printing and existing_printing["source_type"] != "manual-override":
+        return jsonify({"error": "Dieses Printing gehört zu importierten Daten – bitte einen anderen Schlüssel oder eine andere Sprache wählen."}), 409
+    db().execute(
+        """INSERT INTO printings VALUES(?,?,?,?,?,?,?,?,'manual-override') ON CONFLICT(id) DO UPDATE SET
+           identity_id=excluded.identity_id,set_id=excluded.set_id,collector_number=excluded.collector_number,rarity=excluded.rarity""",
+        (printing_id, identity_id, game_id, set_id, collector_number, language, p.get("rarity") or "Unknown", json.dumps({}, ensure_ascii=False)),
+    )
+
+    finish = p.get("finish") or "Normal"
+    is_parallel = 1 if p.get("is_parallel") else 0
+    variant_code = "normal" if finish in ("Normal", "None") else slug(finish)
+    variant_id = f"{printing_id}-{variant_code}"
+    db().execute(
+        """INSERT INTO variants VALUES(?,?,?,?,?,?,?,'manual-override',?) ON CONFLICT(id) DO UPDATE SET
+           finish=excluded.finish,is_parallel=excluded.is_parallel,attributes=excluded.attributes""",
+        (variant_id, printing_id, game_id, variant_code, finish, key, is_parallel,
+         json.dumps({"imageUrl": p["image_url"]} if p.get("image_url") else {}, ensure_ascii=False)),
+    )
+    db().commit()
+    return jsonify({"identity_id": identity_id, "printing_id": printing_id, "variant_id": variant_id}), 201
+
+
+@app.delete("/api/admin/games/<game_id>/manual-cards/<identity_id>")
+@admin_required
+def admin_delete_manual_card(game_id, identity_id):
+    row = db().execute("SELECT source_type FROM card_identities WHERE id=? AND game_id=?", (identity_id, game_id)).fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    if row["source_type"] != "manual-override":
+        return jsonify({"error": "Nur manuell angelegte Karten können hier gelöscht werden."}), 400
+    variant_filter = "variant_id IN (SELECT v.id FROM variants v JOIN printings p ON p.id=v.printing_id WHERE p.identity_id=?)"
+    for table in ("collection_entries", "deck_cards", "watchlist_entries", "named_watchlist_entries", "marketplace_products", "price_observations"):
+        db().execute(f"DELETE FROM {table} WHERE {variant_filter}", (identity_id,))
+    db().execute("DELETE FROM variants WHERE printing_id IN (SELECT id FROM printings WHERE identity_id=?)", (identity_id,))
+    db().execute("DELETE FROM printings WHERE identity_id=?", (identity_id,))
+    db().execute("DELETE FROM card_identities WHERE id=?", (identity_id,))
+    db().commit()
+    return jsonify({"deleted": True})
+
+
+PREVIEW_SAMPLE_RECORDS = 8
+PREVIEW_DISTINCT_VALUE_SCAN_LIMIT = 300
+PREVIEW_MAX_DISTINCT_VALUES = 40
+
+
+def discover_field_paths(record, prefix="", depth=0, max_depth=3):
+    paths = set()
+    if isinstance(record, dict):
+        for key, value in record.items():
+            path = f"{prefix}.{key}" if prefix else key
+            paths.add(path)
+            if depth < max_depth:
+                paths |= discover_field_paths(value, path, depth + 1, max_depth)
+    elif isinstance(record, list) and record and depth < max_depth and isinstance(record[0], dict):
+        paths |= discover_field_paths(record[0], f"{prefix}[0]", depth + 1, max_depth)
+    return paths
+
+
+def example_value_at_path(record, path):
+    value = resolve_path(record, path)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)[:80]
+    return "" if value is None else str(value)[:80]
+
+
+def summarize_fields(paths, records):
+    scan_records = records[:PREVIEW_DISTINCT_VALUE_SCAN_LIMIT]
+    summary = []
+    for path in sorted(paths):
+        values, too_many = set(), False
+        for record in scan_records:
+            value = example_value_at_path(record, path)
+            if value:
+                values.add(value)
+            if len(values) > PREVIEW_MAX_DISTINCT_VALUES:
+                too_many = True
+                break
+        summary.append({
+            "path": path,
+            "example": example_value_at_path(records[0], path) if records else "",
+            "distinct_values": None if too_many else sorted(values),
+        })
+    return summary
+
+
+@app.post("/api/admin/providers/preview-source")
+@admin_required
+def admin_preview_source():
+    p = request.get_json(force=True)
+    source = p.get("source") or {}
+    if not source.get("type"):
+        return jsonify({"error": "Quellentyp fehlt"}), 400
+    try:
+        raw = load_source(source)
+    except Exception as exc:
+        return jsonify({"error": f"Quelle konnte nicht geladen werden: {exc}"}), 400
+
+    top_level_fields = []
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            if isinstance(value, list):
+                top_level_fields.append({"path": key, "count": len(value)})
+            elif isinstance(value, dict):
+                top_level_fields.append({"path": key, "count": len(value)})
+
+    cards_path = (p.get("cards_path") or "").strip() or None
+    sets_path = (p.get("sets_path") or "").strip() or None
+    cards_collection = extract_collection(raw, cards_path) if cards_path else (raw if isinstance(raw, (list, dict)) else None)
+    sets_collection = extract_collection(raw, sets_path) if sets_path else None
+
+    card_records = [record for _, record in iter_collection(cards_collection)]
+    set_records = [record for _, record in iter_collection(sets_collection)] if sets_collection is not None else []
+
+    card_field_paths = set()
+    for record in card_records[:PREVIEW_SAMPLE_RECORDS]:
+        card_field_paths |= discover_field_paths(record)
+    set_field_paths = set()
+    for record in set_records[:PREVIEW_SAMPLE_RECORDS]:
+        set_field_paths |= discover_field_paths(record)
+
+    return jsonify({
+        "top_level_fields": top_level_fields,
+        "card_count": len(card_records),
+        "card_fields": summarize_fields(card_field_paths, card_records),
+        "set_count": len(set_records),
+        "set_fields": summarize_fields(set_field_paths, set_records),
     })
 
 
@@ -873,15 +1424,6 @@ def game_formats(game_id):
     return jsonify(FORMAT_PROFILES.get(game_id,[]))
 
 
-def deck_zone_for_card(game_id, card_type):
-    card_type = str(card_type or "").strip()
-    if game_id == "one-piece":
-        if card_type == "Leader": return "leader"
-        if card_type == "DON!!": return "don"
-    elif game_id == "hololive":
-        if card_type in {"Oshi", "Oshi holomem", "推しホロメン"}: return "oshi"
-        if card_type in {"Cheer", "エール"}: return "cheer"
-    return "main"
 
 
 @app.get("/api/deckbuilder/catalog")
@@ -997,11 +1539,12 @@ def deck_catalog():
           WHERE {where} GROUP BY v.id ORDER BY {order_by} LIMIT ? OFFSET ?""",
         [user_id(), *values, limit, offset],
     ).fetchall()
+    deck_ruleset = game_deck_ruleset(game_id)
     result = []
     for item in rows:
         card = dict(item)
         card["attributes"] = jload(card.pop("identity_attrs"), {})
-        card["suggested_zone"] = deck_zone_for_card(game_id, card["card_type"])
+        card["suggested_zone"] = zone_for_card_type(deck_ruleset, card["card_type"])
         result.append(card)
     sets = [dict(row) for row in db().execute(
         "SELECT id,code,name FROM sets WHERE game_id=? ORDER BY release_date DESC", (game_id,)
@@ -1086,51 +1629,21 @@ def deck_validation(deck_id):
     cards=[dict(r) for r in db().execute("""SELECT dc.*,i.canonical_name,i.attributes,p.collector_number,p.language,p.rarity,i.card_type,s.set_type
       FROM deck_cards dc JOIN variants v ON v.id=dc.variant_id JOIN printings p ON p.id=v.printing_id
       JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id WHERE dc.deck_id=?""",(deck_id,))]
-    counts={zone:sum(c["quantity"] for c in cards if c["zone"]==zone) for zone in ("main","leader","don","oshi","cheer")};errors=[];warnings=[]
     game=deck["game_id"]
-    if game=="lorcana":
-        if counts["main"]<60:errors.append(f'Noch {60-counts["main"]} Karten bis zum Minimum von 60.')
-        names={};colors=set()
-        for c in cards:
-            names[c["canonical_name"]]=names.get(c["canonical_name"],0)+c["quantity"]
-            attrs=jload(c["attributes"],{});colors.add(attrs.get("color"))
-            if str(c.get("set_type") or "").lower()=="quest":errors.append(f'{c["canonical_name"]} ist eine Quest-Karte und nicht für Constructed-Decks zulässig.')
-            if deck["format_id"]=="core" and attrs.get("legality") in ("future","rotated","banned"):errors.append(f'{c["canonical_name"]} ist im Core-Format nicht legal.')
-        if len(colors-{None})>2:errors.append("Das Deck enthält mehr als zwei Tintenfarben.")
-        for name,qty in names.items():
-            if qty>4:errors.append(f'{name}: maximal 4 Exemplare erlaubt.')
-    elif game=="one-piece":
-        if counts["leader"]!=1:errors.append("Genau 1 Leader ist erforderlich.")
-        if counts["main"]!=50:errors.append(f'Hauptdeck: {counts["main"]}/50 Karten.')
-        # Explicit DON!! artwork is optional. Any open slots are represented by
-        # the standard DON!! card in the builder and do not have to be stored.
-        if counts["don"]>10:errors.append(f'DON!!-Deck: maximal 10 Karten ({counts["don"]}/10).')
-        numbers={}
-        for c in cards:
-            if c["zone"]=="main":numbers[c["collector_number"]]=numbers.get(c["collector_number"],0)+c["quantity"]
-        for number,qty in numbers.items():
-            if qty>4:errors.append(f'{number}: maximal 4 Exemplare erlaubt.')
-        if any(c["card_type"]!="Leader" for c in cards if c["zone"]=="leader"):errors.append("In der Leader-Zone sind nur Leader-Karten erlaubt.")
-        if any(c["card_type"]=="Leader" or c["card_type"]=="DON!!" for c in cards if c["zone"]=="main"):errors.append("Leader- und DON!!-Karten dürfen nicht ins Hauptdeck.")
-        if any(c["card_type"]!="DON!!" for c in cards if c["zone"]=="don"):errors.append("Das DON!!-Deck darf nur DON!!-Karten enthalten.")
-        leader=next((c for c in cards if c["zone"]=="leader"),None)
-        if leader:
-            leader_color=jload(leader["attributes"],{}).get("color")
-            invalid=[c["canonical_name"] for c in cards if c["zone"]=="main" and jload(c["attributes"],{}).get("color")!=leader_color]
-            if invalid:warnings.append(f'{len(invalid)} Karten entsprechen nicht der Leader-Farbe {leader_color}.')
-    else:
-        if counts["oshi"]!=1:errors.append("Genau 1 Oshi holomem ist erforderlich.")
-        if counts["main"]!=50:errors.append(f'Main Deck: {counts["main"]}/50 Karten.')
-        if counts["cheer"]!=20:errors.append(f'Cheer Deck: {counts["cheer"]}/20 Karten.')
-        numbers={}
-        for c in cards:
-            if c["zone"]=="main":numbers[c["collector_number"]]=numbers.get(c["collector_number"],0)+c["quantity"]
-        for number,qty in numbers.items():
-            if qty>4:errors.append(f'{number}: maximal 4 Exemplare im Main Deck erlaubt.')
-        if any(deck_zone_for_card(game,c["card_type"])!="oshi" for c in cards if c["zone"]=="oshi"):errors.append("In der Oshi-Zone ist nur ein Oshi holomem erlaubt.")
-        if any(deck_zone_for_card(game,c["card_type"])!="main" for c in cards if c["zone"]=="main"):errors.append("Oshi- und Cheer-Karten dürfen nicht ins Main Deck.")
-        if any(deck_zone_for_card(game,c["card_type"])!="cheer" for c in cards if c["zone"]=="cheer"):errors.append("Das Cheer Deck darf nur Cheer-Karten enthalten.")
     profile=next((p for p in FORMAT_PROFILES.get(game,[]) if p["id"]==deck["format_id"]),FORMAT_PROFILES.get(game,[{}])[0])
+    zone_ids=[z["id"] for z in profile.get("zones",[])] or ["main"]
+    counts={zone:sum(c["quantity"] for c in cards if c["zone"]==zone) for zone in zone_ids}
+    ruleset=DECK_RULESETS.get(game_deck_ruleset(game))
+    if ruleset:
+        errors,warnings=ruleset["validate"](deck,cards,counts)
+    else:
+        # No bespoke ruleset assigned: fall back to checking each zone's target
+        # count from the format profile, without any game-specific extra rules.
+        errors,warnings=[],[]
+        for zone in profile.get("zones",[]):
+            target=zone.get("target")
+            if target and counts.get(zone["id"],0)!=target:
+                errors.append(f'{zone["name"]}: {counts.get(zone["id"],0)}/{target} Karten.')
     return {"valid":not errors,"errors":errors,"warnings":warnings,"counts":counts,"rules_url":profile.get("rules_url"),"profile":profile}
 
 
@@ -1192,6 +1705,7 @@ def parse_deck_text(text, game_id):
     released printing is picked automatically and the alternative count is surfaced so the result
     is inspectable in the preview rather than silently guessed.
     """
+    deck_ruleset = game_deck_ruleset(game_id)
     results = []
     for line_no, original in enumerate(text.splitlines(), 1):
         line = original.strip()
@@ -1238,7 +1752,7 @@ def parse_deck_text(text, game_id):
             "message": message,
             "alt_printings": alt_count,
             "match": selected,
-            "zone": deck_zone_for_card(game_id, selected["card_type"]) if selected else None,
+            "zone": zone_for_card_type(deck_ruleset, selected["card_type"]) if selected else None,
         })
     return results
 
@@ -1292,7 +1806,7 @@ def update_deck_card(deck_id):
     if deck["game_id"]=="lorcana" and str(card["set_type"] or "").lower()=="quest":return jsonify({"error":"Quest-Karten sind nicht für Lorcana-Constructed-Decks zulässig."}),400
     profile=next((item for item in FORMAT_PROFILES.get(deck["game_id"],[]) if item["id"]==deck["format_id"]),None)
     allowed_zones={item["id"] for item in (profile or {}).get("zones",[])} or {"main"}
-    suggested_zone=deck_zone_for_card(deck["game_id"],card["card_type"])
+    suggested_zone=zone_for_card_type(game_deck_ruleset(deck["game_id"]),card["card_type"])
     zone=p.get("zone")
     if not zone or zone=="auto":zone=suggested_zone
     if zone not in allowed_zones:return jsonify({"error":"Diese Zone gehört nicht zum gewählten Regelprofil."}),400
@@ -1822,14 +2336,31 @@ def lorcana_filter_icon(name):
     return send_file(path, mimetype="image/png", conditional=True, etag=True, max_age=0)
 
 
+def card_back_placeholder(game_row):
+    name = xml_escape.escape(game_row["short_name"] or game_row["name"])
+    accent = game_row["accent"] or "#6366f1"
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="560" viewBox="0 0 400 560">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{accent}" stop-opacity=".9"/><stop offset="1" stop-color="#11151f"/></linearGradient></defs>
+      <rect width="400" height="560" rx="22" fill="url(#g)"/>
+      <rect x="18" y="18" width="364" height="524" rx="14" fill="none" stroke="#ffffff" stroke-opacity=".28" stroke-width="3"/>
+      <text x="200" y="290" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="34" fill="#ffffff">{name}</text>
+    </svg>'''
+
+
 @app.get("/card-back/<game_id>")
 def card_back(game_id):
-    if not re.fullmatch(r"[a-z-]+", game_id):
+    if not re.fullmatch(r"[a-z0-9-]+", game_id):
         return Response(status=404)
+    uploaded = CARD_BACK_UPLOAD_DIR / f"{game_id}.jpg"
+    if uploaded.is_file():
+        return send_file(uploaded, mimetype="image/jpeg", conditional=True, etag=True, max_age=0)
     path = PUBLIC_DIR / f"{game_id}-back.jpg"
-    if not path.is_file():
+    if path.is_file():
+        return send_file(path, mimetype="image/jpeg", conditional=True, etag=True, max_age=604800)
+    game_row = db().execute("SELECT short_name, name, accent FROM games WHERE id=?", (game_id,)).fetchone()
+    if not game_row:
         return Response(status=404)
-    return send_file(path, mimetype="image/jpeg", conditional=True, etag=True, max_age=604800)
+    return Response(card_back_placeholder(game_row), mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/health")

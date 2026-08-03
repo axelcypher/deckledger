@@ -8,25 +8,21 @@ leave the application with a half-written catalogue.
 from __future__ import annotations
 
 import argparse
-import hashlib
-import html
 import io
 import json
 import re
 import sqlite3
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from urllib.parse import urljoin
-from urllib.request import Request, urlopen
 
-from app import DB_PATH, GAME_DATA, SCHEMA
+from app import DB_PATH, SCHEMA
+from catalog_provider_contract import USER_AGENT, clean, digest, empty_catalog, fetch, fetch_bytes, fill_missing_printed_card_counts, merge, put_identity, slug
+from catalog_provider_registry import dispatch_provider, get_provider, load_enabled_providers, mark_provider_result, provider_already_current
 
 
-USER_AGENT = "DeckLedger/1.0 (+local collection manager)"
-CATALOG_VERSION = "real-catalog-v13"
 ONE_PIECE_DON_API = "https://www.optcgapi.com/api/allDonCards/"
 ONE_PIECE_DON_DOCS = "https://www.optcgapi.com/documentation"
 ONE_PIECE_DON_JP_PDF = "https://asia-en.onepiece-cardgame.com/pdf/don-cardlist.pdf"
@@ -88,62 +84,8 @@ LORCANA_TFC_21_MISPRINT = {
 }
 
 
-def fetch(url: str, attempts: int = 3) -> str:
-    error = None
-    for attempt in range(attempts):
-        try:
-            request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json"})
-            with urlopen(request, timeout=40) as response:
-                return response.read().decode("utf-8", "ignore")
-        except Exception as exc:  # Network failures are retried, then fail the sync.
-            error = exc
-            time.sleep(1.5 * (attempt + 1))
-    raise RuntimeError(f"Quelle nicht erreichbar: {url}: {error}")
-
-
-def fetch_bytes(url: str, attempts: int = 3) -> bytes:
-    error = None
-    for attempt in range(attempts):
-        try:
-            request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/pdf,image/*,*/*"})
-            with urlopen(request, timeout=90) as response:
-                return response.read()
-        except Exception as exc:
-            error = exc
-            time.sleep(1.5 * (attempt + 1))
-    raise RuntimeError(f"Binärquelle nicht erreichbar: {url}: {error}")
-
-
-def clean(value: str | None) -> str:
-    if not value:
-        return ""
-    value = html.unescape(value)
-    value = re.sub(r"<br\s*/?>", "\n", value, flags=re.I)
-    value = re.sub(r"<[^>]+>", " ", value)
-    return re.sub(r"\s+", " ", value).strip()
-
-
-def slug(value: object) -> str:
-    text = re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
-    return text or hashlib.sha1(str(value).encode()).hexdigest()[:12]
-
-
-def digest(value: str) -> str:
-    return hashlib.sha1(value.encode()).hexdigest()[:12]
-
-
 def iso_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
-def empty_catalog() -> dict:
-    return {"sets": {}, "identities": {}, "printings": {}, "variants": {}, "sources": {}}
-
-
-def put_identity(catalog: dict, record: dict, prefer: bool = False) -> None:
-    old = catalog["identities"].get(record["id"])
-    if old is None or prefer:
-        catalog["identities"][record["id"]] = record
 
 
 def import_lorcana() -> dict:
@@ -1024,30 +966,10 @@ def import_hololive() -> dict:
     return catalog
 
 
-def merge(target: dict, source: dict) -> None:
-    for key, incoming in source["sets"].items():
-        existing = target["sets"].get(key)
-        if existing is None or incoming.get("_source_language") == "EN" or existing.get("_source_language") != "EN":
-            target["sets"][key] = incoming
-    for key, incoming in source["identities"].items():
-        existing = target["identities"].get(key)
-        incoming_language = incoming.get("attributes", {}).get("sourceLanguage")
-        existing_language = (existing or {}).get("attributes", {}).get("sourceLanguage")
-        if existing is None or incoming_language == "EN" or existing_language != "EN":
-            target["identities"][key] = incoming
-    for key, incoming in source["printings"].items():
-        existing = target["printings"].get(key)
-        incoming_virtual = incoming.get("attributes", {}).get("virtualPoolSource", False)
-        existing_virtual = (existing or {}).get("attributes", {}).get("virtualPoolSource", False)
-        if existing is None or (existing_virtual and not incoming_virtual):
-            target["printings"][key] = incoming
-    for section in ("variants", "sources"):
-        target[section].update(source[section])
-
-
-def validate(catalog: dict) -> None:
+def validate(catalog: dict, provider_minimums: dict[str, tuple[int, int]]) -> None:
+    game_ids = {record["game_id"] for section in ("sets", "identities", "printings", "variants") for record in catalog[section].values()}
     counts = {}
-    for game_id in ("lorcana", "one-piece", "hololive"):
+    for game_id in game_ids:
         counts[game_id] = {
             "sets": sum(1 for x in catalog["sets"].values() if x["game_id"] == game_id),
             "cards": sum(1 for x in catalog["identities"].values() if x["game_id"] == game_id),
@@ -1055,10 +977,10 @@ def validate(catalog: dict) -> None:
             "variants": sum(1 for x in catalog["variants"].values() if x["game_id"] == game_id),
         }
     print(json.dumps(counts, indent=2), flush=True)
-    minimums = {"lorcana": (15, 2500), "one-piece": (20, 1000), "hololive": (10, 500)}
-    for game_id, (minimum_sets, minimum_cards) in minimums.items():
-        if counts[game_id]["sets"] < minimum_sets or counts[game_id]["cards"] < minimum_cards:
-            raise RuntimeError(f"Validierung fehlgeschlagen: {game_id} ist unvollständig ({counts[game_id]})")
+    for game_id, (minimum_sets, minimum_cards) in provider_minimums.items():
+        found = counts.get(game_id, {"sets": 0, "cards": 0})
+        if found["sets"] < minimum_sets or found["cards"] < minimum_cards:
+            raise RuntimeError(f"Validierung fehlgeschlagen: {game_id} ist unvollständig ({found})")
     dangling = [v["id"] for v in catalog["variants"].values() if v["printing_id"] not in catalog["printings"]]
     if dangling:
         raise RuntimeError(f"Validierung fehlgeschlagen: {len(dangling)} Varianten ohne Printing")
@@ -1175,15 +1097,19 @@ def migrate_hololive_virtual_pools(connection: sqlite3.Connection) -> dict[str, 
     return stats
 
 
-def write_database(catalog: dict) -> None:
+def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
     connection = sqlite3.connect(DB_PATH)
     connection.execute("PRAGMA foreign_keys=ON")
     connection.executescript(SCHEMA)
     connection.execute("BEGIN IMMEDIATE")
     try:
-        previous = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_version'").fetchone()
-        previous_version = json.loads(previous[0]) if previous else ""
-        upgrading_real_catalog = isinstance(previous_version, str) and previous_version.startswith("real-catalog-")
+        previous_format = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_format'").fetchone()
+        previous_version = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_version'").fetchone()
+        upgrading_real_catalog = bool(
+            (previous_format and json.loads(previous_format[0]) == "real-catalog")
+            # Back-compat for databases from before per-provider versioning existed.
+            or (previous_version and isinstance(json.loads(previous_version[0]), str) and json.loads(previous_version[0]).startswith("real-catalog-"))
+        )
         if not upgrading_real_catalog:
             # This is the one-time transition away from the former fabricated IDs.
             for table in (
@@ -1193,26 +1119,20 @@ def write_database(catalog: dict) -> None:
             ):
                 connection.execute(f"DELETE FROM {table}")
         connection.executemany(
-            """INSERT INTO games VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(id) DO UPDATE SET
-               module_id=excluded.module_id,name=excluded.name,short_name=excluded.short_name,
-               module_version=excluded.module_version,languages=excluded.languages,accent=excluded.accent,enabled=1""",
-            [(a, b, c, d, e, json.dumps(f, ensure_ascii=False), g) for a, b, c, d, e, f, g in GAME_DATA],
-        )
-        connection.executemany(
-            """INSERT INTO sets VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+            """INSERT INTO sets VALUES(?,?,?,?,?,?,?,?,?,'imported') ON CONFLICT(id) DO UPDATE SET
                game_id=excluded.game_id,code=excluded.code,name=excluded.name,set_type=excluded.set_type,
                release_date=excluded.release_date,printed_card_count=excluded.printed_card_count,
                classifications=excluded.classifications,accent=excluded.accent""",
             [(x["id"], x["game_id"], x["code"], x["name"], x["set_type"], x["release_date"], x["printed_card_count"], json.dumps(x["classifications"], ensure_ascii=False), x["accent"]) for x in catalog["sets"].values()],
         )
         connection.executemany(
-            """INSERT INTO card_identities VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+            """INSERT INTO card_identities VALUES(?,?,?,?,?,?,'imported') ON CONFLICT(id) DO UPDATE SET
                game_id=excluded.game_id,canonical_name=excluded.canonical_name,rules_text=excluded.rules_text,
                card_type=excluded.card_type,attributes=excluded.attributes""",
             [(x["id"], x["game_id"], x["canonical_name"], x["rules_text"], x["card_type"], json.dumps(x["attributes"], ensure_ascii=False)) for x in catalog["identities"].values()],
         )
         connection.executemany(
-            """INSERT INTO printings VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+            """INSERT INTO printings VALUES(?,?,?,?,?,?,?,?,'imported') ON CONFLICT(id) DO UPDATE SET
                identity_id=excluded.identity_id,game_id=excluded.game_id,set_id=excluded.set_id,
                collector_number=excluded.collector_number,language=excluded.language,
                rarity=excluded.rarity,attributes=excluded.attributes""",
@@ -1241,14 +1161,29 @@ def write_database(catalog: dict) -> None:
             ):
                 connection.execute(f"CREATE TEMP TABLE {table}(id TEXT PRIMARY KEY)")
                 connection.executemany(f"INSERT INTO {table}(id) VALUES(?)", ((key,) for key in records))
-            for table in ("deck_cards", "named_watchlist_entries", "watchlist_entries", "collection_entries", "marketplace_products", "price_observations"):
-                connection.execute(f"DELETE FROM {table} WHERE variant_id NOT IN (SELECT id FROM incoming_variants)")
-            connection.execute("DELETE FROM variants WHERE id NOT IN (SELECT id FROM incoming_variants)")
-            connection.execute("DELETE FROM printings WHERE id NOT IN (SELECT id FROM incoming_printings)")
-            connection.execute("DELETE FROM card_identities WHERE id NOT IN (SELECT id FROM incoming_identities)")
-            connection.execute("DELETE FROM sets WHERE id NOT IN (SELECT id FROM incoming_sets)")
+            if fetched_game_ids:
+                # Providers that did not run this pass (untouched games) and manually
+                # entered records must never be pruned just because their game's catalog
+                # dict is absent from this run's `catalog` argument.
+                placeholders = ",".join("?" for _ in fetched_game_ids)
+                for temp_table, source_table in (
+                    ("incoming_variants", "variants"), ("incoming_printings", "printings"),
+                    ("incoming_identities", "card_identities"), ("incoming_sets", "sets"),
+                ):
+                    connection.execute(
+                        f"""INSERT OR IGNORE INTO {temp_table}(id)
+                            SELECT id FROM {source_table}
+                            WHERE game_id NOT IN ({placeholders}) OR source_type='manual-override'""",
+                        tuple(fetched_game_ids),
+                    )
+                for table in ("deck_cards", "named_watchlist_entries", "watchlist_entries", "collection_entries", "marketplace_products", "price_observations"):
+                    connection.execute(f"DELETE FROM {table} WHERE variant_id NOT IN (SELECT id FROM incoming_variants)")
+                connection.execute("DELETE FROM variants WHERE id NOT IN (SELECT id FROM incoming_variants)")
+                connection.execute("DELETE FROM printings WHERE id NOT IN (SELECT id FROM incoming_printings)")
+                connection.execute("DELETE FROM card_identities WHERE id NOT IN (SELECT id FROM incoming_identities)")
+                connection.execute("DELETE FROM sets WHERE id NOT IN (SELECT id FROM incoming_sets)")
         metadata = {
-            "catalog_version": CATALOG_VERSION,
+            "catalog_format": "real-catalog",
             "catalog_synced_at": iso_now(),
             "catalog_sources": catalog["sources"],
             "catalog_counts": {key: len(catalog[key]) for key in ("sets", "identities", "printings", "variants")},
@@ -1265,31 +1200,77 @@ def write_database(catalog: dict) -> None:
         connection.close()
 
 
-def already_current() -> bool:
-    connection = sqlite3.connect(DB_PATH)
+def provider_game_languages(connection: sqlite3.Connection, game_id: str) -> list[str]:
+    row = connection.execute("SELECT languages FROM games WHERE id=?", (game_id,)).fetchone()
+    return json.loads(row["languages"]) if row else []
+
+
+def run_single_provider(connection: sqlite3.Connection, provider_id: str) -> int:
+    provider = get_provider(connection, provider_id)
+    if not provider:
+        print(f"Unbekannter Provider: {provider_id}", file=sys.stderr, flush=True)
+        return 1
+    now = iso_now()
     try:
-        connection.executescript(SCHEMA)
-        row = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_version'").fetchone()
-        return bool(row and json.loads(row[0]) == CATALOG_VERSION)
-    finally:
-        connection.close()
+        catalog = dispatch_provider(provider, provider_game_languages(connection, provider["game_id"]))
+        fill_missing_printed_card_counts(catalog)
+        validate(catalog, {provider["game_id"]: (provider["minimum_sets"] or 0, provider["minimum_cards"] or 0)})
+        write_database(catalog, {provider["game_id"]})
+        counts = {"sets": len(catalog["sets"]), "cards": len(catalog["identities"])}
+        mark_provider_result(connection, provider_id, ok=True, now=now, summary=counts)
+        connection.commit()
+        print(f"{provider['label']}: Import erfolgreich.", flush=True)
+        return 0
+    except Exception as exc:
+        mark_provider_result(connection, provider_id, ok=False, now=now, error=str(exc))
+        connection.commit()
+        print(f"{provider['label']}: Import fehlgeschlagen: {exc}", file=sys.stderr, flush=True)
+        return 1
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Real card catalogue sync")
-    parser.add_argument("--if-needed", action="store_true", help="skip a database already imported with this importer version")
+    parser.add_argument("--if-needed", action="store_true", help="skip providers already imported at their current version")
+    parser.add_argument("--provider", help="run exactly one provider id, ignoring staleness")
     args = parser.parse_args()
-    if args.if_needed and already_current():
-        print("Realer Kartenkatalog ist bereits vorhanden.", flush=True)
+
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
+    try:
+        if args.provider:
+            return run_single_provider(connection, args.provider)
+
+        providers = load_enabled_providers(connection)
+        stale = [p for p in providers if not (args.if_needed and provider_already_current(p))]
+        if args.if_needed and not stale:
+            print("Alle Kataloge sind aktuell.", flush=True)
+            return 0
+
+        combined = empty_catalog()
+        fetched_game_ids = set()
+        provider_minimums = {}
+        for provider in stale:
+            print(f"{provider['label']}: Import startet …", flush=True)
+            catalog = dispatch_provider(provider, provider_game_languages(connection, provider["game_id"]))
+            merge(combined, catalog)
+            fetched_game_ids.add(provider["game_id"])
+            provider_minimums[provider["game_id"]] = (provider["minimum_sets"] or 0, provider["minimum_cards"] or 0)
+
+        fill_missing_printed_card_counts(combined)
+        validate(combined, provider_minimums)
+        write_database(combined, fetched_game_ids)
+        now = iso_now()
+        for provider in stale:
+            counts = {
+                "sets": sum(1 for x in combined["sets"].values() if x["game_id"] == provider["game_id"]),
+                "cards": sum(1 for x in combined["identities"].values() if x["game_id"] == provider["game_id"]),
+            }
+            mark_provider_result(connection, provider["id"], ok=True, now=now, summary=counts)
+        connection.commit()
+        print("Der reale Kartenkatalog wurde atomar gespeichert.", flush=True)
         return 0
-    combined = empty_catalog()
-    for label, importer in (("Lorcana", import_lorcana), ("One Piece", import_one_piece), ("hololive", import_hololive)):
-        print(f"{label}: Import startet …", flush=True)
-        merge(combined, importer())
-    validate(combined)
-    write_database(combined)
-    print("Der reale Kartenkatalog wurde atomar gespeichert.", flush=True)
-    return 0
+    finally:
+        connection.close()
 
 
 if __name__ == "__main__":

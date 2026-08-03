@@ -102,6 +102,7 @@ function routeTo(route, data) {
   if(route==='watchlist') renderWatchlist();
   if(route==='decks') renderDeckbuilder();
   if(route==='settings') renderSettings();
+  if(route==='admin') renderAdmin();
   $('.sidebar').classList.remove('open');
 }
 
@@ -278,6 +279,449 @@ function renderSettings(){
     await post('/api/settings',{homeBanner:updated});
     state.boot.settings.homeBanner=updated;
     toast('Banner-Einstellung gespeichert');
+  });
+}
+
+const DECK_RULESET_OPTIONS=[['','Keine'],['lorcana-standard','Lorcana Standard'],['one-piece-standard','One Piece Standard'],['hololive-standard','hololive Standard']];
+const PRICE_METHOD_OPTIONS=[['','Keine'],['cardmarket','Cardmarket'],['tcgcsv','TCGCSV / TCGplayer'],['yuyutei','Yuyutei']];
+const SOURCE_TYPE_OPTIONS=[['static-json','Statische JSON-Datei'],['http-json','HTTP JSON-API'],['csv','CSV-Datei'],['github-release','GitHub Release']];
+
+function providerConfigDefaults(){
+  return {
+    sources:[{language:'EN',type:'static-json',url:''}],
+    preferred_language:'EN', sets_path:'', cards_path:'',
+    set_mapping:{code_field:'$key',name_field:'',set_type_field:'',release_date_field:'',printed_card_count_field:'',classifications_field:''},
+    identity_mapping:{id_field:'id',alias_field:'',canonical_name_field:'',rules_text_field:'',card_type_field:'',attributes:{}},
+    printing_mapping:{set_code_field:'',collector_number_field:'',rarity_field:'',attributes:{}},
+    variant_mapping:{mode:'expand_array_field',field:'',default:['Normal'],image_field:'',finish_field:''},
+    lookup_tables:{},
+    default_accent:'#6366f1', minimum_sets:0, minimum_cards:0,
+  };
+}
+function normalizeProviderConfig(cfg){
+  const d=providerConfigDefaults(); cfg=cfg||{};
+  return {
+    sources:(cfg.sources&&cfg.sources.length?cfg.sources:d.sources).map(s=>({...s})),
+    preferred_language:cfg.preferred_language||d.preferred_language,
+    sets_path:cfg.sets_path||'', cards_path:cfg.cards_path||'',
+    set_mapping:{...d.set_mapping,...(cfg.set_mapping||{})},
+    identity_mapping:{...d.identity_mapping,...(cfg.identity_mapping||{}),attributes:{...((cfg.identity_mapping||{}).attributes||{})}},
+    printing_mapping:{...d.printing_mapping,...(cfg.printing_mapping||{}),attributes:{...((cfg.printing_mapping||{}).attributes||{})}},
+    variant_mapping:{...d.variant_mapping,...(cfg.variant_mapping||{})},
+    lookup_tables:{...(cfg.lookup_tables||{})},
+    default_accent:cfg.default_accent||d.default_accent,
+    minimum_sets:cfg.minimum_sets||0, minimum_cards:cfg.minimum_cards||0,
+  };
+}
+function renderKvRows(obj,fieldOptions){
+  return Object.entries(obj||{}).map(([k,v])=>{
+    const valueField=fieldOptions?`<select class="kv-value">${fieldSelectOptions(v,fieldOptions)}</select>`:`<input class="kv-value" value="${escapeHtml(v)}" placeholder="Feld in der Quelle">`;
+    return `<div class="admin-kv-row"><input class="kv-key" value="${escapeHtml(k)}" placeholder="Attributname">${valueField}<button type="button" class="icon-button" data-remove-kv-row title="Entfernen">✕</button></div>`;
+  }).join('');
+}
+function readKvList(listEl){
+  const result={};
+  if(!listEl)return result;
+  $$('.admin-kv-row',listEl).forEach(row=>{
+    const key=$('.kv-key',row).value.trim();
+    const value=$('.kv-value',row).value.trim();
+    if(key)result[key]=value;
+  });
+  return result;
+}
+function fieldSelectOptions(currentValue,fieldSummaries,extra){
+  const options=fieldSummaries||[]; extra=extra||[];
+  const knownExtra=extra.some(([v])=>v===currentValue);
+  const knownField=options.some(f=>f.path===currentValue);
+  let html='<option value="">– kein Feld –</option>';
+  html+=extra.map(([v,l])=>`<option value="${escapeHtml(v)}" ${currentValue===v?'selected':''}>${escapeHtml(l)}</option>`).join('');
+  if(currentValue&&!knownExtra&&!knownField)html+=`<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)} (aktuell, nicht in Testdaten gefunden)</option>`;
+  html+=options.map(f=>`<option value="${escapeHtml(f.path)}" ${currentValue===f.path?'selected':''}>${escapeHtml(f.path)}${f.example?` — „${escapeHtml(f.example)}“`:''}</option>`).join('');
+  return html;
+}
+function fieldControl(dataCfg,currentValue,fieldSummaries,extra,placeholder){
+  if(fieldSummaries)return `<select data-cfg="${dataCfg}">${fieldSelectOptions(currentValue,fieldSummaries,extra)}</select>`;
+  return `<input data-cfg="${dataCfg}" value="${escapeHtml(currentValue)}" ${placeholder?`placeholder="${escapeHtml(placeholder)}"`:''}>`;
+}
+function renderSourceRow(s,i,preview){
+  const type=s.type||'static-json';
+  const previewStatus=preview&&preview._sourceIndex===i?`<span class="admin-preview-status ok">✓ ${preview.card_count} Karten · ${preview.card_fields.length} Felder erkannt</span>`:'';
+  return `<div class="admin-source-row" data-source-index="${i}">
+    <button type="button" class="icon-button admin-source-remove" data-remove-source="${i}" title="Quelle entfernen">✕</button>
+    <label>Sprache<input data-src="language" value="${escapeHtml(s.language||'EN')}"></label>
+    <label>Typ<select data-src="type">${SOURCE_TYPE_OPTIONS.map(([v,l])=>`<option value="${v}" ${type===v?'selected':''}>${l}</option>`).join('')}</select></label>
+    ${type==='github-release'?`
+      <label>Repo<input data-src="repo" value="${escapeHtml(s.repo||'')}" placeholder="owner/repo"></label>
+      <label>Tag<input data-src="tag" value="${escapeHtml(s.tag||'latest')}"></label>
+      <label>Asset-Muster (Regex)<input data-src="asset_pattern" value="${escapeHtml(s.asset_pattern||'')}" placeholder="z.B. \\.json$"></label>
+      <label>Format<select data-src="format"><option value="json" ${s.format!=='csv'?'selected':''}>JSON</option><option value="csv" ${s.format==='csv'?'selected':''}>CSV</option></select></label>
+    `:`<label>URL<input data-src="url" value="${escapeHtml(s.url||'')}" placeholder="https://..."></label>`}
+    ${type==='http-json'?`
+      <label class="checkbox-row"><input type="checkbox" data-src="paginate_enabled" ${s.paginate?'checked':''}> Paginierung</label>
+      <label>Pfad zu Einträgen je Seite<input data-src="paginate_items_path" value="${escapeHtml((s.paginate||{}).items_path||'')}"></label>
+      <label>Feld für nächste Seiten-URL<input data-src="paginate_next_field" value="${escapeHtml((s.paginate||{}).next_field||'')}"></label>
+      <label>ODER Seiten-Parameter<input data-src="paginate_page_param" value="${escapeHtml((s.paginate||{}).page_param||'')}" placeholder="z.B. page"></label>
+      <label>Max. Seiten<input type="number" min="1" data-src="paginate_max_pages" value="${(s.paginate||{}).max_pages||200}"></label>
+    `:''}
+    <div class="admin-source-preview"><button type="button" class="secondary-button small" data-load-preview="${i}">Testdaten laden</button>${previewStatus}</div>
+  </div>`;
+}
+function renderLookupTable(name,table,preview){
+  const distinctFields=(preview?.card_fields||[]).filter(f=>f.distinct_values&&f.distinct_values.length);
+  return `<div class="admin-lookup-table" data-lookup-table="${escapeHtml(name)}">
+    <div class="admin-lookup-table-head"><input class="lookup-table-name" value="${escapeHtml(name)}" placeholder="Tabellenname, z.B. rarity_label"><button type="button" class="icon-button" data-remove-lookup-table title="Tabelle entfernen">✕</button></div>
+    <div class="admin-kv-list" data-lookup-entries>${renderKvRows(table)}</div>
+    <div class="admin-row-actions">
+      <button type="button" class="secondary-button small" data-add-lookup-entry>+ Eintrag</button>
+      ${distinctFields.length?`<select class="admin-lookup-adopt-field"><option value="">Werte aus Testdaten übernehmen …</option>${distinctFields.map(f=>`<option value="${escapeHtml(f.path)}">${escapeHtml(f.path)} (${f.distinct_values.length} Werte)</option>`).join('')}</select><button type="button" class="secondary-button small" data-adopt-lookup-values>Übernehmen</button>`:''}
+    </div>
+  </div>`;
+}
+function renderProviderFormBody(cfg,preview){
+  const setFields=preview?preview.set_fields:null, cardFields=preview?preview.card_fields:null;
+  const topLevelFields=preview?preview.top_level_fields.map(f=>({path:f.path,example:`${f.count} Einträge`})):null;
+  return `${preview?'':'<p class="muted">Lade Testdaten über eine Quelle unten, um alle Felder unten per Auswahl statt Texteingabe zuzuordnen.</p>'}
+    <div class="admin-form-grid">
+      <label>Bevorzugte Sprache<input data-cfg="preferred_language" value="${escapeHtml(cfg.preferred_language)}"></label>
+      <label>Akzentfarbe<input type="color" data-cfg="default_accent" value="${cfg.default_accent}"></label>
+      <label>Min. Sets (Sicherheitsgrenze)<input type="number" min="0" data-cfg="minimum_sets" value="${cfg.minimum_sets}"></label>
+      <label>Min. Karten (Sicherheitsgrenze)<input type="number" min="0" data-cfg="minimum_cards" value="${cfg.minimum_cards}"></label>
+      <label>Pfad zu Sets in der Quelle${fieldControl('sets_path',cfg.sets_path,topLevelFields,null,'z.B. sets – leer bei flacher Liste')}</label>
+      <label>Pfad zu Karten in der Quelle${fieldControl('cards_path',cfg.cards_path,topLevelFields,null,'z.B. cards – leer bei flacher Liste')}</label>
+    </div>
+    <h4>Quellen</h4>
+    <div class="admin-source-list">${cfg.sources.map((s,i)=>renderSourceRow(s,i,preview)).join('')}</div>
+    <button type="button" class="secondary-button small" data-add-source>+ Quelle hinzufügen</button>
+
+    <h4>Set-Zuordnung</h4>
+    <div class="admin-form-grid">
+      <label>Code-Feld${fieldControl('set_mapping.code_field',cfg.set_mapping.code_field,setFields,[['$key','$key (Objekt-Schlüssel)']],'$key bei schlüsselbasierten Objekten')}</label>
+      <label>Name-Feld${fieldControl('set_mapping.name_field',cfg.set_mapping.name_field,setFields)}</label>
+      <label>Set-Typ-Feld${fieldControl('set_mapping.set_type_field',cfg.set_mapping.set_type_field,setFields)}</label>
+      <label>Erscheinungsdatum-Feld${fieldControl('set_mapping.release_date_field',cfg.set_mapping.release_date_field,setFields)}</label>
+      <label>Kartenanzahl-Feld${fieldControl('set_mapping.printed_card_count_field',cfg.set_mapping.printed_card_count_field,setFields,null,'leer = automatisch berechnet')}</label>
+      <label>Klassifikationen-Feld${fieldControl('set_mapping.classifications_field',cfg.set_mapping.classifications_field,setFields)}</label>
+    </div>
+
+    <h4>Karten-Identität</h4>
+    <div class="admin-form-grid">
+      <label>ID-Feld${fieldControl('identity_mapping.id_field',cfg.identity_mapping.id_field,cardFields)}</label>
+      <label>Alias-Feld (für Nachdrucke)${fieldControl('identity_mapping.alias_field',cfg.identity_mapping.alias_field,cardFields,null,'z.B. baseId')}</label>
+      <label>Kartenname-Feld${fieldControl('identity_mapping.canonical_name_field',cfg.identity_mapping.canonical_name_field,cardFields)}</label>
+      <label>Regeltext-Feld${fieldControl('identity_mapping.rules_text_field',cfg.identity_mapping.rules_text_field,cardFields)}</label>
+      <label>Kartentyp-Feld${fieldControl('identity_mapping.card_type_field',cfg.identity_mapping.card_type_field,cardFields)}</label>
+    </div>
+    <p class="muted">Freie Attribute (z.B. Farbe, Kosten):</p>
+    <div class="admin-kv-list" data-attr-list="identity_mapping">${renderKvRows(cfg.identity_mapping.attributes,cardFields)}</div>
+    <button type="button" class="secondary-button small" data-add-attr="identity_mapping">+ Attribut hinzufügen</button>
+
+    <h4>Printing-Zuordnung</h4>
+    <div class="admin-form-grid">
+      <label>Set-Code-Feld${fieldControl('printing_mapping.set_code_field',cfg.printing_mapping.set_code_field,cardFields)}</label>
+      <label>Sammlernummer-Feld${fieldControl('printing_mapping.collector_number_field',cfg.printing_mapping.collector_number_field,cardFields)}</label>
+      <label>Seltenheit-Feld${fieldControl('printing_mapping.rarity_field',cfg.printing_mapping.rarity_field,cardFields)}</label>
+    </div>
+    <p class="muted">Freie Attribute:</p>
+    <div class="admin-kv-list" data-attr-list="printing_mapping">${renderKvRows(cfg.printing_mapping.attributes,cardFields)}</div>
+    <button type="button" class="secondary-button small" data-add-attr="printing_mapping">+ Attribut hinzufügen</button>
+
+    <h4>Varianten</h4>
+    <div class="admin-form-grid">
+      <label>Modus<select data-cfg="variant_mapping.mode">
+        <option value="expand_array_field" ${cfg.variant_mapping.mode!=='group_variants_by'?'selected':''}>1 Datensatz → mehrere Varianten (Array-Feld)</option>
+        <option value="group_variants_by" ${cfg.variant_mapping.mode==='group_variants_by'?'selected':''}>1 Zeile pro Variante</option>
+      </select></label>
+      <label>Array-Feld (Modus 1)${fieldControl('variant_mapping.field',cfg.variant_mapping.field,cardFields,null,'z.B. foilTypes')}</label>
+      <label>Finish-Feld (Modus 2)${fieldControl('variant_mapping.finish_field',cfg.variant_mapping.finish_field,cardFields,null,'z.B. finish')}</label>
+      <label>Standard-Finish, falls Feld leer<input data-cfg="variant_mapping.default" value="${escapeHtml((cfg.variant_mapping.default||['Normal']).join(','))}" placeholder="Normal"></label>
+      <label>Bild-Feld${fieldControl('variant_mapping.image_field',cfg.variant_mapping.image_field,cardFields,null,'z.B. images.full')}</label>
+    </div>
+
+    <h4>Lookup-Tabellen <span class="muted">(Wert-Übersetzung, z.B. Seltenheits-Codes)</span></h4>
+    <div class="admin-lookup-tables">${Object.entries(cfg.lookup_tables).map(([name,table])=>renderLookupTable(name,table,preview)).join('')}</div>
+    <button type="button" class="secondary-button small" data-add-lookup-table>+ Lookup-Tabelle hinzufügen</button>`;
+}
+function readProviderConfigFromDOM(container){
+  const cfg=providerConfigDefaults();
+  cfg.preferred_language=$('[data-cfg="preferred_language"]',container).value.trim()||'EN';
+  cfg.default_accent=$('[data-cfg="default_accent"]',container).value||'#6366f1';
+  cfg.minimum_sets=Number($('[data-cfg="minimum_sets"]',container).value)||0;
+  cfg.minimum_cards=Number($('[data-cfg="minimum_cards"]',container).value)||0;
+  cfg.sets_path=$('[data-cfg="sets_path"]',container).value.trim();
+  cfg.cards_path=$('[data-cfg="cards_path"]',container).value.trim();
+  for(const field of ['code_field','name_field','set_type_field','release_date_field','printed_card_count_field','classifications_field'])
+    cfg.set_mapping[field]=$(`[data-cfg="set_mapping.${field}"]`,container).value.trim();
+  for(const field of ['id_field','alias_field','canonical_name_field','rules_text_field','card_type_field'])
+    cfg.identity_mapping[field]=$(`[data-cfg="identity_mapping.${field}"]`,container).value.trim();
+  cfg.identity_mapping.attributes=readKvList($('[data-attr-list="identity_mapping"]',container));
+  for(const field of ['set_code_field','collector_number_field','rarity_field'])
+    cfg.printing_mapping[field]=$(`[data-cfg="printing_mapping.${field}"]`,container).value.trim();
+  cfg.printing_mapping.attributes=readKvList($('[data-attr-list="printing_mapping"]',container));
+  cfg.variant_mapping.mode=$('[data-cfg="variant_mapping.mode"]',container).value;
+  cfg.variant_mapping.field=$('[data-cfg="variant_mapping.field"]',container).value.trim();
+  cfg.variant_mapping.finish_field=$('[data-cfg="variant_mapping.finish_field"]',container).value.trim();
+  cfg.variant_mapping.default=$('[data-cfg="variant_mapping.default"]',container).value.split(',').map(x=>x.trim()).filter(Boolean);
+  if(!cfg.variant_mapping.default.length)cfg.variant_mapping.default=['Normal'];
+  cfg.variant_mapping.image_field=$('[data-cfg="variant_mapping.image_field"]',container).value.trim();
+  cfg.sources=$$('.admin-source-row',container).map(readSourceRowConfig);
+  if(!cfg.sources.length)cfg.sources=[{language:'EN',type:'static-json',url:''}];
+  cfg.lookup_tables={};
+  $$('.admin-lookup-table',container).forEach(tableEl=>{
+    const name=$('.lookup-table-name',tableEl).value.trim();
+    if(!name)return;
+    cfg.lookup_tables[name]=readKvList($('[data-lookup-entries]',tableEl));
+  });
+  return cfg;
+}
+function readSourceRowConfig(row){
+  const type=$('[data-src="type"]',row).value;
+  const src={language:$('[data-src="language"]',row)?.value.trim()||'EN',type};
+  // Field reads are optional-chained: a type-change event fires before the row's
+  // fields are re-rendered for the *new* type, so the DOM here can still reflect
+  // the *previous* type's field set. Missing fields just default to empty/blank
+  // and get filled in once the re-render below catches up.
+  if(type==='github-release'){
+    src.repo=$('[data-src="repo"]',row)?.value.trim()||'';
+    src.tag=$('[data-src="tag"]',row)?.value.trim()||'latest';
+    src.asset_pattern=$('[data-src="asset_pattern"]',row)?.value.trim()||'';
+    src.format=$('[data-src="format"]',row)?.value||'json';
+  }else{
+    src.url=$('[data-src="url"]',row)?.value.trim()||'';
+  }
+  if(type==='http-json'){
+    const enabled=$('[data-src="paginate_enabled"]',row);
+    if(enabled&&enabled.checked){
+      const itemsPath=$('[data-src="paginate_items_path"]',row)?.value.trim()||'';
+      const nextField=$('[data-src="paginate_next_field"]',row)?.value.trim()||'';
+      const pageParam=$('[data-src="paginate_page_param"]',row)?.value.trim()||'';
+      const maxPages=Number($('[data-src="paginate_max_pages"]',row)?.value)||200;
+      src.paginate={...(itemsPath?{items_path:itemsPath}:{}),...(nextField?{next_field:nextField}:{}),...(pageParam?{page_param:pageParam}:{}),max_pages:maxPages};
+    }
+  }
+  return src;
+}
+const providerPreviewCache=new WeakMap();
+function rerenderProviderForm(container,cfg){
+  container.innerHTML=renderProviderFormBody(cfg,providerPreviewCache.get(container));
+}
+function wireProviderFormContainer(container){
+  container.addEventListener('click',async e=>{
+    const loadPreview=e.target.closest('[data-load-preview]');
+    if(loadPreview){
+      const row=loadPreview.closest('.admin-source-row');
+      const source=readSourceRowConfig(row);
+      if(!source.url&&!source.repo){toast('Bitte zuerst eine URL bzw. ein Repo angeben');return}
+      const index=Number(loadPreview.dataset.loadPreview);
+      loadPreview.disabled=true;loadPreview.textContent='Lädt …';
+      try{
+        const cardsPath=$('[data-cfg="cards_path"]',container)?.value.trim()||'';
+        const setsPath=$('[data-cfg="sets_path"]',container)?.value.trim()||'';
+        const result=await post('/api/admin/providers/preview-source',{source,cards_path:cardsPath,sets_path:setsPath});
+        result._sourceIndex=index;
+        providerPreviewCache.set(container,result);
+        const cfg=readProviderConfigFromDOM(container);
+        rerenderProviderForm(container,cfg);
+        toast(`Testdaten geladen: ${result.card_count} Karten, ${result.card_fields.length} Felder erkannt`);
+      }catch(error){toast(error.message);loadPreview.disabled=false;loadPreview.textContent='Testdaten laden';}
+      return;
+    }
+    const adoptValues=e.target.closest('[data-adopt-lookup-values]');
+    if(adoptValues){
+      const tableEl=adoptValues.closest('.admin-lookup-table');
+      const fieldPath=$('.admin-lookup-adopt-field',tableEl).value;
+      const preview=providerPreviewCache.get(container);
+      const field=preview&&preview.card_fields.find(f=>f.path===fieldPath);
+      if(!field||!field.distinct_values){toast('Bitte ein Feld mit Testdaten-Werten wählen');return}
+      const cfg=readProviderConfigFromDOM(container);
+      const name=$('.lookup-table-name',tableEl).value.trim();
+      if(!name){toast('Bitte zuerst einen Tabellennamen vergeben');return}
+      cfg.lookup_tables[name]=cfg.lookup_tables[name]||{};
+      field.distinct_values.forEach(value=>{if(!(value in cfg.lookup_tables[name]))cfg.lookup_tables[name][value]=''});
+      rerenderProviderForm(container,cfg);
+      return;
+    }
+    const addSource=e.target.closest('[data-add-source]');
+    if(addSource){const cfg=readProviderConfigFromDOM(container);cfg.sources.push({language:'EN',type:'static-json',url:''});rerenderProviderForm(container,cfg);return}
+    const removeSource=e.target.closest('[data-remove-source]');
+    if(removeSource){const cfg=readProviderConfigFromDOM(container);cfg.sources.splice(Number(removeSource.dataset.removeSource),1);if(!cfg.sources.length)cfg.sources.push({language:'EN',type:'static-json',url:''});rerenderProviderForm(container,cfg);return}
+    const addAttr=e.target.closest('[data-add-attr]');
+    if(addAttr){const cfg=readProviderConfigFromDOM(container);cfg[addAttr.dataset.addAttr].attributes[`neues_attribut_${Object.keys(cfg[addAttr.dataset.addAttr].attributes).length+1}`]='';rerenderProviderForm(container,cfg);return}
+    const addLookupTable=e.target.closest('[data-add-lookup-table]');
+    if(addLookupTable){const cfg=readProviderConfigFromDOM(container);cfg.lookup_tables[`tabelle_${Object.keys(cfg.lookup_tables).length+1}`]={};rerenderProviderForm(container,cfg);return}
+    const addLookupEntry=e.target.closest('[data-add-lookup-entry]');
+    if(addLookupEntry){const cfg=readProviderConfigFromDOM(container);const name=$('.lookup-table-name',addLookupEntry.closest('.admin-lookup-table')).value.trim();if(name)cfg.lookup_tables[name]=cfg.lookup_tables[name]||{};if(name)cfg.lookup_tables[name][`schluessel_${Object.keys(cfg.lookup_tables[name]||{}).length+1}`]='';rerenderProviderForm(container,cfg);return}
+    const removeLookupTable=e.target.closest('[data-remove-lookup-table]');
+    if(removeLookupTable){const cfg=readProviderConfigFromDOM(container);const name=$('.lookup-table-name',removeLookupTable.closest('.admin-lookup-table')).value.trim();delete cfg.lookup_tables[name];rerenderProviderForm(container,cfg);return}
+    const removeKvRow=e.target.closest('[data-remove-kv-row]');
+    if(removeKvRow){removeKvRow.closest('.admin-kv-row').remove();return}
+  });
+  container.addEventListener('change',e=>{
+    if(e.target.matches('[data-src="type"]')){const cfg=readProviderConfigFromDOM(container);rerenderProviderForm(container,cfg);}
+  });
+}
+
+async function renderAdmin(){
+  content.innerHTML='<div class="page-loader"><span></span><p>Admin-Bereich wird geladen …</p></div>';
+  const [games,providers]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers')]);
+  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">VERWALTUNG</span><h1>Admin</h1><p>TCGs, Katalog-Provider und Zuordnungen verwalten.</p></div></div>
+    <section class="settings-section">
+      <h2>TCGs</h2>
+      <div class="admin-table">${games.map(g=>`<div class="admin-row" data-game-row="${g.id}">
+        <div class="admin-row-head"><b>${escapeHtml(g.name)}</b><span class="muted">${g.id} · ${g.languages.join('/')}</span></div>
+        <label>Preisquelle<select class="select-control" data-game-field="price_method" data-game="${g.id}">${PRICE_METHOD_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.price_method||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
+        <label>Deck-Ruleset<select class="select-control" data-game-field="deck_ruleset" data-game="${g.id}">${DECK_RULESET_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.deck_ruleset||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
+        <label>Card-Back<input type="file" accept="image/jpeg" data-card-back="${g.id}"></label>
+      </div>`).join('')}</div>
+      <details class="admin-add"><summary>+ Neues TCG anlegen</summary>
+        <div class="admin-form">
+          <label>Name<input id="admin-new-game-name" placeholder="z.B. Mein neues TCG"></label>
+          <label>Kurzname<input id="admin-new-game-short" placeholder="z.B. MTCG"></label>
+          <label>Sprachen (Komma-getrennt)<input id="admin-new-game-langs" placeholder="EN,DE" value="EN"></label>
+          <label>Akzentfarbe<input id="admin-new-game-accent" type="color" value="#6366f1"></label>
+          <button class="primary-button" id="admin-create-game">TCG anlegen</button>
+        </div>
+      </details>
+    </section>
+    <section class="settings-section">
+      <h2>Katalog-Provider</h2>
+      <div class="admin-table">${providers.map(p=>`<div class="admin-row" data-provider-row="${p.id}">
+        <div class="admin-row-head"><b>${escapeHtml(p.label)}</b><span class="muted">${p.game_id} · ${p.kind}${p.kind==='builtin'?' (fest verdrahtet)':''}</span></div>
+        <div class="admin-status"><span class="admin-status-badge status-${p.last_status||'none'}">${p.last_status||'noch nicht gelaufen'}</span><span class="muted">${p.last_run_at?date(p.last_run_at):'–'}</span></div>
+        ${p.last_error?`<div class="admin-error">${escapeHtml(p.last_error)}</div>`:''}
+        <div class="admin-row-actions">
+          <button class="secondary-button" data-run-provider="${p.id}">Jetzt importieren</button>
+          ${p.kind==='declarative'?`<button class="secondary-button" data-edit-provider="${p.id}">Konfiguration</button>`:''}
+          ${p.kind!=='builtin'?`<button class="icon-button" data-delete-provider="${p.id}" title="Löschen">✕</button>`:''}
+        </div>
+        ${p.kind==='declarative'?`<div class="admin-config-editor hidden" data-config-editor="${p.id}">${renderProviderFormBody(normalizeProviderConfig(p.config))}<button class="primary-button" data-save-config="${p.id}">Konfiguration speichern</button></div>`:''}
+      </div>`).join('')}</div>
+      <details class="admin-add"><summary>+ Neuen deklarativen Provider anlegen</summary>
+        <div class="admin-form">
+          <label>TCG<select id="admin-new-provider-game" class="select-control">${games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}</select></label>
+          <label>Label<input id="admin-new-provider-label" placeholder="z.B. Mein TCG (deklarativ)"></label>
+          <div id="admin-new-provider-form">${renderProviderFormBody(providerConfigDefaults())}</div>
+          <button class="primary-button" id="admin-create-provider">Provider anlegen</button>
+        </div>
+      </details>
+    </section>
+    <section class="settings-section">
+      <h2>Manuelle Karten</h2>
+      <p class="muted">Direkt eingetragene Karten – sofort wirksam, werden nie durch einen Sync-Lauf entfernt oder überschrieben.</p>
+      <label>TCG<select id="admin-manual-game" class="select-control">${games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}</select></label>
+      <div class="admin-table" id="admin-manual-cards-list"></div>
+      <details class="admin-add"><summary>+ Karte manuell hinzufügen</summary>
+        <div class="admin-form">
+          <label>Vorhandenes Set<select id="admin-manual-set" class="select-control"><option value="">– neues Set unten anlegen –</option></select></label>
+          <label>Neuer Set-Code<input id="admin-manual-new-set-code" placeholder="nur falls kein Set gewählt"></label>
+          <label>Neuer Set-Name<input id="admin-manual-new-set-name"></label>
+          <label>Kartenname<input id="admin-manual-name"></label>
+          <label>Kartenschlüssel (optional, sonst aus Name)<input id="admin-manual-key"></label>
+          <label>Regeltext<textarea id="admin-manual-rules" rows="3"></textarea></label>
+          <label>Kartentyp<input id="admin-manual-type" placeholder="z.B. Character"></label>
+          <label>Sammlernummer<input id="admin-manual-number"></label>
+          <label>Sprache<input id="admin-manual-language" value="EN"></label>
+          <label>Seltenheit<input id="admin-manual-rarity"></label>
+          <label>Finish<input id="admin-manual-finish" value="Normal" placeholder="Normal, Foil, ..."></label>
+          <label class="checkbox-row"><input type="checkbox" id="admin-manual-parallel"> Parallel / Alternative Art</label>
+          <label>Bild-URL<input id="admin-manual-image" placeholder="https://..."></label>
+          <button class="primary-button" id="admin-manual-create">Karte speichern</button>
+        </div>
+      </details>
+    </section>`;
+  $$('[data-game-field]',content).forEach(select=>select.onchange=async e=>{
+    await api(`/api/admin/games/${select.dataset.game}`,{method:'PATCH',body:JSON.stringify({[select.dataset.gameField]:e.target.value||null})});
+    toast('Gespeichert');
+  });
+  $$('[data-card-back]',content).forEach(input=>input.onchange=async e=>{
+    const file=e.target.files[0]; if(!file)return;
+    const form=new FormData(); form.append('file',file);
+    const response=await fetch(`/api/admin/games/${input.dataset.cardBack}/card-back`,{method:'POST',body:form});
+    if(response.ok)toast('Card-Back hochgeladen'); else toast('Upload fehlgeschlagen');
+  });
+  $('#admin-create-game').onclick=async()=>{
+    const name=$('#admin-new-game-name').value.trim();
+    if(!name){toast('Name ist erforderlich');return}
+    const languages=$('#admin-new-game-langs').value.split(',').map(x=>x.trim()).filter(Boolean);
+    try{
+      await post('/api/admin/games',{name,short_name:$('#admin-new-game-short').value.trim()||name,languages,accent:$('#admin-new-game-accent').value});
+      toast('TCG angelegt'); renderAdmin();
+    }catch(error){toast(error.message)}
+  };
+  $$('[data-run-provider]',content).forEach(button=>button.onclick=async()=>{
+    button.disabled=true; button.textContent='Läuft …';
+    try{
+      const result=await post(`/api/admin/providers/${button.dataset.runProvider}/run`,{});
+      toast(result.status==='ok'?'Import erfolgreich':`Import fehlgeschlagen: ${result.error||'unbekannter Fehler'}`);
+    }catch(error){toast(error.message)}
+    renderAdmin();
+  });
+  $$('[data-config-editor]',content).forEach(editor=>wireProviderFormContainer(editor));
+  wireProviderFormContainer($('#admin-new-provider-form'));
+  $$('[data-edit-provider]',content).forEach(button=>button.onclick=()=>{
+    $(`[data-config-editor="${button.dataset.editProvider}"]`,content).classList.toggle('hidden');
+  });
+  $$('[data-save-config]',content).forEach(button=>button.onclick=async()=>{
+    const editor=$(`[data-config-editor="${button.dataset.saveConfig}"]`,content);
+    const config=readProviderConfigFromDOM(editor);
+    try{await api(`/api/admin/providers/${button.dataset.saveConfig}`,{method:'PATCH',body:JSON.stringify({config})});toast('Konfiguration gespeichert');renderAdmin()}
+    catch(error){toast(error.message)}
+  });
+  $$('[data-delete-provider]',content).forEach(button=>button.onclick=async()=>{
+    await api(`/api/admin/providers/${button.dataset.deleteProvider}`,{method:'DELETE'});
+    toast('Provider gelöscht'); renderAdmin();
+  });
+  $('#admin-create-provider').onclick=async()=>{
+    const config=readProviderConfigFromDOM($('#admin-new-provider-form'));
+    try{
+      await post('/api/admin/providers',{game_id:$('#admin-new-provider-game').value,kind:'declarative',label:$('#admin-new-provider-label').value.trim()||undefined,config});
+      toast('Provider angelegt'); renderAdmin();
+    }catch(error){toast(error.message)}
+  };
+  $('#admin-manual-game').onchange=e=>loadManualCardsSection(e.target.value);
+  $('#admin-manual-create').onclick=async()=>{
+    const name=$('#admin-manual-name').value.trim();
+    if(!name){toast('Kartenname ist erforderlich');return}
+    const gameId=$('#admin-manual-game').value;
+    const payload={
+      canonical_name:name, key:$('#admin-manual-key').value.trim()||undefined,
+      set_id:$('#admin-manual-set').value||undefined,
+      new_set_code:$('#admin-manual-new-set-code').value.trim()||undefined,
+      new_set_name:$('#admin-manual-new-set-name').value.trim()||undefined,
+      rules_text:$('#admin-manual-rules').value.trim(), card_type:$('#admin-manual-type').value.trim()||undefined,
+      collector_number:$('#admin-manual-number').value.trim()||undefined, language:$('#admin-manual-language').value.trim()||'EN',
+      rarity:$('#admin-manual-rarity').value.trim()||undefined, finish:$('#admin-manual-finish').value.trim()||'Normal',
+      is_parallel:$('#admin-manual-parallel').checked, image_url:$('#admin-manual-image').value.trim()||undefined,
+    };
+    try{
+      await post(`/api/admin/games/${gameId}/manual-cards`,payload);
+      toast('Karte gespeichert');
+      $('#admin-manual-name').value='';$('#admin-manual-key').value='';$('#admin-manual-rules').value='';$('#admin-manual-number').value='';$('#admin-manual-rarity').value='';$('#admin-manual-image').value='';$('#admin-manual-parallel').checked=false;
+      loadManualCardsSection(gameId);
+    }catch(error){toast(error.message)}
+  };
+  loadManualCardsSection(games[0]?.id);
+}
+
+async function loadManualCardsSection(gameId){
+  if(!gameId)return;
+  $('#admin-manual-game').value=gameId;
+  const setSelect=$('#admin-manual-set');
+  const sets=await api(`/api/games/${gameId}/sets`);
+  setSelect.innerHTML=`<option value="">– neues Set unten anlegen –</option>${sets.map(s=>`<option value="${s.id}">${escapeHtml(s.code)} · ${escapeHtml(s.name)}</option>`).join('')}`;
+  await renderManualCards(gameId);
+}
+
+async function renderManualCards(gameId){
+  const list=$('#admin-manual-cards-list');
+  const cards=await api(`/api/admin/games/${gameId}/manual-cards`);
+  list.innerHTML=cards.length?cards.map(c=>`<div class="admin-row" data-manual-card="${c.id}">
+      <div class="admin-row-head"><b>${escapeHtml(c.canonical_name)}</b><span class="muted">${escapeHtml(c.id)}</span></div>
+      <div class="muted">${c.printings.map(p=>`${escapeHtml(p.collector_number)} · ${escapeHtml(p.language)} · ${escapeHtml(p.rarity)} (${p.variants.map(v=>escapeHtml(v.finish)).join(', ')})`).join(' / ')||'keine Printings'}</div>
+      <button class="icon-button" data-delete-manual-card="${c.id}" title="Löschen">✕</button>
+    </div>`).join(''):'<p class="muted">Noch keine manuellen Karten für dieses TCG.</p>';
+  $$('[data-delete-manual-card]',list).forEach(button=>button.onclick=async()=>{
+    await api(`/api/admin/games/${gameId}/manual-cards/${button.dataset.deleteManualCard}`,{method:'DELETE'});
+    toast('Karte gelöscht'); renderManualCards(gameId);
   });
 }
 
@@ -905,6 +1349,6 @@ function wireGlobalEvents(){
 }
 
 async function init(){
-  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
