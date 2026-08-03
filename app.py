@@ -968,7 +968,18 @@ def admin_preview_source():
 
     cards_path = (p.get("cards_path") or "").strip() or None
     sets_path = (p.get("sets_path") or "").strip() or None
-    cards_collection = extract_collection(raw, cards_path) if cards_path else (raw if isinstance(raw, (list, dict)) else None)
+    if not cards_path and isinstance(raw, dict) and top_level_fields:
+        # A flat list source needs no cards_path at all -- but for a dict-shaped
+        # payload (the common case for JSON APIs/exports), guessing "no path
+        # means use the raw object itself" silently treats the payload's own
+        # top-level keys (meta/sets/products/...) as if each were a card. That
+        # produces a misleadingly successful-looking preview with garbage
+        # fields instead of a clear signal to pick a path. Guess the largest
+        # list-shaped top-level field instead -- overwhelmingly the cards list
+        # in practice -- and report the guess back so it actually gets saved,
+        # not just used for this preview.
+        cards_path = max(top_level_fields, key=lambda f: f["count"])["path"]
+    cards_collection = extract_collection(raw, cards_path) if cards_path else (raw if isinstance(raw, list) else None)
     sets_collection = extract_collection(raw, sets_path) if sets_path else None
 
     card_records = [record for _, record in iter_collection(cards_collection)]
@@ -983,6 +994,7 @@ def admin_preview_source():
 
     return jsonify({
         "top_level_fields": top_level_fields,
+        "cards_path": cards_path,
         "card_count": len(card_records),
         "card_fields": summarize_fields(card_field_paths, card_records),
         "set_count": len(set_records),

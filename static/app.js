@@ -645,6 +645,15 @@ function wireProviderFormContainer(container){
         // the shared section's preview with a schema the other sources don't have.
         if(!sourceHasOverride(source))previewMap.set('_last',index);
         const cfg=readProviderConfigFromDOM(container);
+        // The backend guesses cards_path when none was set yet (the largest
+        // list-shaped top-level field), so what the preview just showed and
+        // what actually gets saved don't silently diverge -- write the guess
+        // into whichever scope the request used (this source's own override,
+        // or the shared provider-level field).
+        if(!cardsPath&&result.cards_path){
+          const target=sourceHasOverride(source)?cfg.sources[index]:cfg;
+          target.cards_path=result.cards_path;
+        }
         rerenderProviderForm(container,cfg);
         toast(`Testdaten geladen: ${result.card_count} Karten, ${result.card_fields.length} Felder erkannt`);
       }catch(error){toast(error.message);loadPreview.disabled=false;loadPreview.textContent='Testdaten laden';}
