@@ -763,6 +763,7 @@ def resolve_price_assignments(connection) -> dict[str, set[str]]:
 def synchronize(if_needed=False, dry_run=False) -> dict:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
     try:
         connection.executescript(PRICE_SCHEMA)
         assignments = resolve_price_assignments(connection)

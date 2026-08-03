@@ -60,6 +60,11 @@ def db():
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
         g.db.execute("PRAGMA journal_mode = WAL")
+        # Without this, two connections writing at the same instant (a web
+        # request racing a background catalog_sync.py/price_sync.py run, or
+        # just two concurrent gunicorn threads) fail immediately with
+        # "database is locked" instead of one briefly waiting its turn.
+        g.db.execute("PRAGMA busy_timeout = 10000")
     return g.db
 
 
@@ -431,6 +436,7 @@ def seed_database(connection):
 def init_database():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
+    connection.execute("PRAGMA busy_timeout = 10000")
     connection.executescript(SCHEMA)
     deck_columns = {row[1] for row in connection.execute("PRAGMA table_info(decks)")}
     if "cover_variant_id" not in deck_columns:

@@ -160,6 +160,11 @@ def migrate_hololive_virtual_pools(connection: sqlite3.Connection) -> dict[str, 
 def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
     connection = sqlite3.connect(DB_PATH)
     connection.execute("PRAGMA foreign_keys=ON")
+    # A web request writing at the same instant (e.g. an admin editing a deck)
+    # would otherwise fail immediately with "database is locked" rather than
+    # one side briefly waiting -- this run holds a write lock for its whole
+    # multi-table BEGIN IMMEDIATE transaction below.
+    connection.execute("PRAGMA busy_timeout = 10000")
     connection.executescript(SCHEMA)
     connection.execute("BEGIN IMMEDIATE")
     try:
@@ -291,6 +296,7 @@ def main() -> int:
 
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
     try:
         if args.provider:
             return run_single_provider(connection, args.provider)
