@@ -28,7 +28,6 @@ from zoneinfo import ZoneInfo
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(__file__), "deckledger.db"))
 LOCK_PATH = os.path.join(os.path.dirname(DB_PATH), "price-sync.lock")
 CARDMARKET_BASE = "https://downloads.s3.cardmarket.com/productCatalog"
-CARDMARKET_GAMES = {"one-piece": 18, "lorcana": 19}
 PROVIDER_ID = "cardmarket"
 TCGCSV_BASE = "https://tcgcsv.com/tcgplayer/87"
 TCGCSV_UPDATED = "https://tcgcsv.com/last-updated.txt"
@@ -360,6 +359,97 @@ def map_one_piece(connection, products: list) -> tuple[list[dict], dict]:
     }
 
 
+GENERIC_COLLECTOR_PATTERN = re.compile(r"\(([A-Z0-9][A-Z0-9-]*-\d{2,4})\)\s*$", re.I)
+
+
+def bracket_product_key(name: str, pattern=GENERIC_COLLECTOR_PATTERN):
+    """Cardmarket often suffixes a product name with its own set/number, e.g.
+    'Roronoa Zoro (OP01-001)'. When present this is a far more precise
+    fingerprint than the name alone; map_generic uses it whenever most of a
+    game's catalogue actually has it, and falls back to name-only otherwise."""
+    matches = list(pattern.finditer(name))
+    if not matches:
+        return None
+    match = matches[-1]
+    return collector_key(match.group(1)), normalized(name[:match.start()].strip())
+
+
+def map_generic(connection, game_id: str, products: list) -> tuple[list[dict], dict]:
+    """Default Cardmarket matcher for any game without a hand-written one above.
+
+    No per-game code required: resolves each internal set to a Cardmarket
+    expansion via the same fingerprint scoring Lorcana/One Piece use, then
+    matches products either by an embedded (SET-NUMBER) suffix in the product
+    name when the catalogue actually has one, or by card name within the
+    resolved expansion otherwise.
+
+    Matches at the *printing* level, not the variant level: Cardmarket's price
+    guide itself is one product per printing, with Normal/Foil split into
+    trend/trend-foil fields (see price_values()) -- so every variant of a
+    printing (Normal, Foil, ...) shares the one product resolved for it, same
+    as Lorcana's model. Games that instead list alternate arts as fully
+    separate Cardmarket products (One Piece's model) need their own entry in
+    CARDMARKET_MATCHERS -- that per-product-per-artwork behavior isn't
+    guessable from the catalogue alone. Anything ambiguous (not exactly one
+    candidate product) is skipped rather than guessed.
+    """
+    rows = [row for row in variant_rows(connection, game_id) if collector_key(row["collector_number"])]
+    if not rows or not products:
+        return [], {"mode": None, "skipped": "keine Varianten oder keine Cardmarket-Produkte für dieses Spiel"}
+
+    bracket_hits = sum(1 for p in products if bracket_product_key(p["name"]))
+    use_bracket = bracket_hits / len(products) >= 0.5
+    key_from_name = bracket_product_key if use_bracket else (lambda name: (normalized(name),))
+
+    printings = defaultdict(list)
+    for row in rows:
+        printings[row["printing_id"]].append(row)
+
+    def fingerprint(printing_rows):
+        representative = printing_rows[0]
+        if use_bracket:
+            return collector_key(representative["collector_number"]), normalized(representative["canonical_name"])
+        return (normalized(representative["canonical_name"]),)
+
+    internal_groups = defaultdict(set)
+    fingerprints = {}
+    for printing_id, printing_rows in printings.items():
+        fp = fingerprint(printing_rows)
+        fingerprints[printing_id] = (printing_rows[0]["set_id"], fp)
+        internal_groups[printing_rows[0]["set_id"]].add(fp)
+    expansion_map, audit = expansion_scores(internal_groups, products, lambda p: key_from_name(p["name"]))
+
+    product_index = defaultdict(list)
+    for product in products:
+        key = key_from_name(product["name"])
+        if key is not None:
+            product_index[(product["idExpansion"], *key)].append(product)
+    for candidates in product_index.values():
+        candidates.sort(key=lambda item: item["idProduct"])
+
+    mappings = []
+    skipped_ambiguous = 0
+    for printing_id, printing_rows in printings.items():
+        set_id, fp = fingerprints[printing_id]
+        expansion_id = expansion_map.get(set_id)
+        candidates = product_index.get((expansion_id, *fp), [])
+        if len(candidates) != 1:
+            skipped_ambiguous += len(printing_rows)
+            continue
+        product = candidates[0]
+        for row in printing_rows:
+            mappings.append({
+                "variant_id": row["variant_id"], "game_id": game_id, "product": product,
+                "price_mode": "normal" if (row["finish"] or "Normal").lower() == "normal" else "foil",
+                "source_url": f"https://www.cardmarket.com/en/Cards/Products/Search?searchString={quote_plus(product['name'])}",
+                "method": f"generic:{'collector-number+name' if use_bracket else 'name'}+expansion-fingerprint",
+            })
+    return mappings, {
+        "mode": "bracket" if use_bracket else "name", "expansions": len(expansion_map), "expansion_audit": audit,
+        "variants_seen": len(rows), "printings_seen": len(printings), "skipped_ambiguous": skipped_ambiguous,
+    }
+
+
 def hololive_set_key(value: str) -> str:
     """Normalize only explicitly verified EN set abbreviations.
 
@@ -639,7 +729,15 @@ def metadata_value(connection, key: str, default=None):
         return default
 
 
-CARDMARKET_MATCHERS = {"lorcana": map_lorcana, "one-piece": map_one_piece}
+# Bespoke matchers keep their own (connection, products) signature; map_generic
+# additionally needs game_id since it isn't hardcoded into it. Wrapped to a
+# uniform (connection, game_id, products) call so the dispatch site below never
+# needs to know which kind of matcher it got -- any game without a bespoke
+# entry here automatically falls through to map_generic, no code change needed.
+CARDMARKET_MATCHERS = {
+    "lorcana": lambda connection, game_id, products: map_lorcana(connection, products),
+    "one-piece": lambda connection, game_id, products: map_one_piece(connection, products),
+}
 
 
 def resolve_price_assignments(connection) -> dict[str, set[str]]:
@@ -672,11 +770,15 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
         hololive_tcgcsv = "hololive" in assignments.get("tcgcsv", set())
         hololive_yuyutei = "hololive" in assignments.get("yuyutei", set())
 
+        cardmarket_numeric_ids = {
+            row["id"]: row["cardmarket_game_id"] for row in connection.execute("SELECT id, cardmarket_game_id FROM games")
+            if row["cardmarket_game_id"] is not None
+        }
         payloads = {}
         for game_id in cardmarket_game_ids:
-            number = CARDMARKET_GAMES.get(game_id)
+            number = cardmarket_numeric_ids.get(game_id)
             if number is None:
-                continue  # assigned to Cardmarket, but no Cardmarket-side numeric id configured for it yet
+                continue  # assigned to Cardmarket, but no Cardmarket-side numeric id configured for it yet (admin UI: games.cardmarket_game_id)
             product_url = f"{CARDMARKET_BASE}/productList/products_singles_{number}.json"
             guide_url = f"{CARDMARKET_BASE}/priceGuide/price_guide_{number}.json"
             payloads[game_id] = (product_url, guide_url, fetch_json(product_url), fetch_json(guide_url))
@@ -700,11 +802,8 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             products = products_data.get("products") or []
             guide_rows = guide_data.get("priceGuides") or []
             guides.update({str(row["idProduct"]): row for row in guide_rows})
-            matcher = CARDMARKET_MATCHERS.get(game_id)
-            if not matcher:
-                audits[game_id] = {"skipped": "kein Cardmarket-Matcher für dieses Spiel hinterlegt"}
-                continue
-            mappings, audit = matcher(connection, products)
+            matcher = CARDMARKET_MATCHERS.get(game_id, map_generic)
+            mappings, audit = matcher(connection, game_id, products)
             for mapping in mappings:
                 mapping["provider_id"] = PROVIDER_ID
                 mapping["external_product_id"] = str(mapping["product"]["idProduct"])
@@ -784,6 +883,19 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
                 raise RuntimeError(f"Sprachgetrenntes One-Piece-Matching unter Sicherheitsgrenze: {dict(counts)}")
         if hololive_tcgcsv and counts["hololive_tcgplayer_mappings"] < 500:
             raise RuntimeError(f"Hololive-Matching unter Sicherheitsgrenze: {dict(counts)}")
+        # Games without a bespoke matcher above have no hand-tuned absolute floor
+        # (their catalogue size is unknown in advance), so use a proportional one
+        # instead: below half of their priceable variants matched is treated as a
+        # broken run (wrong cardmarket_game_id, or a naming convention the generic
+        # matcher can't handle) rather than silently persisting a sparse result.
+        for game_id in cardmarket_game_ids - set(CARDMARKET_MATCHERS):
+            variants_seen = (audits.get(game_id) or {}).get("variants_seen") or 0
+            matched = counts[f"{game_id}_cardmarket_mappings"]
+            if variants_seen and matched < 0.5 * variants_seen:
+                raise RuntimeError(
+                    f"Generisches Cardmarket-Matching für {game_id} unter Sicherheitsgrenze: "
+                    f"{matched}/{variants_seen} Varianten zugeordnet"
+                )
         result = {"counts": dict(counts), "versions": versions, "audits": audits}
         if dry_run:
             return result

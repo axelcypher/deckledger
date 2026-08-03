@@ -732,6 +732,7 @@ async function renderAdmin(){
       <div class="admin-table">${games.map(g=>`<div class="admin-row" data-game-row="${g.id}">
         <div class="admin-row-head"><b>${escapeHtml(g.name)}</b><span class="muted">${g.id} · ${g.languages.join('/')}</span></div>
         <label>Preisquelle<select class="select-control" data-game-field="price_method" data-game="${g.id}">${PRICE_METHOD_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.price_method||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
+        <label>Cardmarket-ID<input type="number" min="1" data-game-field="cardmarket_game_id" data-game="${g.id}" value="${g.cardmarket_game_id||''}" placeholder="z.B. 19" title="Numerische Spiel-ID aus der Cardmarket-URL, z.B. cardmarket.com/.../Games/19 → 19"></label>
         <label>Deck-Ruleset<select class="select-control" data-game-field="deck_ruleset" data-game="${g.id}">${DECK_RULESET_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.deck_ruleset||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
         <label>Card-Back<input type="file" accept="image/jpeg" data-card-back="${g.id}"></label>
       </div>`).join('')}</div>

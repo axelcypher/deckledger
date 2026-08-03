@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS games (
   id TEXT PRIMARY KEY, module_id TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT NOT NULL,
   module_version TEXT NOT NULL, languages TEXT NOT NULL, accent TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
-  rarity_order TEXT NOT NULL DEFAULT '{}', price_method TEXT, deck_ruleset TEXT
+  rarity_order TEXT NOT NULL DEFAULT '{}', price_method TEXT, deck_ruleset TEXT, cardmarket_game_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS sets (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL REFERENCES games(id), code TEXT NOT NULL, name TEXT NOT NULL,
@@ -357,6 +357,10 @@ def seed_builtin_providers(connection):
 DEFAULT_DECK_RULESETS = {"lorcana": "lorcana-standard", "one-piece": "one-piece-standard", "hololive": "hololive-standard"}
 DEFAULT_PRICE_METHODS = {"lorcana": "cardmarket", "one-piece": "cardmarket", "hololive": "tcgcsv"}
 DEFAULT_PRICE_OVERRIDES = [("hololive", "JP", "yuyutei")]
+# Cardmarket's numeric idGame per bootstrapped game -- unauthenticated and stable,
+# but there is no discovery endpoint for it, so a new TCG's id is a one-time
+# manual lookup on cardmarket.com, entered once via the admin UI (games.cardmarket_game_id).
+DEFAULT_CARDMARKET_GAME_IDS = {"lorcana": 19, "one-piece": 18}
 
 
 def seed_default_deck_rulesets(connection):
@@ -374,6 +378,13 @@ def seed_default_price_methods(connection):
         )
 
 
+def seed_default_cardmarket_game_ids(connection):
+    for game_id, cardmarket_id in DEFAULT_CARDMARKET_GAME_IDS.items():
+        connection.execute(
+            "UPDATE games SET cardmarket_game_id=? WHERE id=? AND cardmarket_game_id IS NULL", (cardmarket_id, game_id),
+        )
+
+
 def seed_database(connection):
     if connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
         connection.executemany(
@@ -383,6 +394,7 @@ def seed_database(connection):
         seed_builtin_providers(connection)
         seed_default_deck_rulesets(connection)
         seed_default_price_methods(connection)
+        seed_default_cardmarket_game_ids(connection)
         return
     connection.executemany(
         "INSERT INTO users(username, display_name, password_hash, role, created_at) VALUES(?,?,?,?,?)",
@@ -394,6 +406,8 @@ def seed_database(connection):
     connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA])
     seed_builtin_providers(connection)
     seed_default_deck_rulesets(connection)
+    seed_default_price_methods(connection)
+    seed_default_cardmarket_game_ids(connection)
 
 
 def init_database():
@@ -410,6 +424,8 @@ def init_database():
         connection.execute("ALTER TABLE games ADD COLUMN price_method TEXT")
     if "deck_ruleset" not in game_columns:
         connection.execute("ALTER TABLE games ADD COLUMN deck_ruleset TEXT")
+    if "cardmarket_game_id" not in game_columns:
+        connection.execute("ALTER TABLE games ADD COLUMN cardmarket_game_id INTEGER")
     for table in ("sets", "card_identities", "printings"):
         columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
         if "source_type" not in columns:
@@ -651,6 +667,9 @@ def admin_update_game(game_id):
         if key in p:
             fields.append(f"{key}=?")
             values.append(p[key] or None)
+    if "cardmarket_game_id" in p:
+        fields.append("cardmarket_game_id=?")
+        values.append(int(p["cardmarket_game_id"]) if p["cardmarket_game_id"] not in (None, "") else None)
     if "languages" in p:
         fields.append("languages=?")
         values.append(json.dumps(p["languages"]))
