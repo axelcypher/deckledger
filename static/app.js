@@ -652,8 +652,8 @@ function cardTile(card){
   // A playset (4 copies) gets its own badge per finish -- base and foil count
   // separately, so a 4x foil playset doesn't need 4 base copies too to show.
   const ribbons=isLorcana
-    ?`${v.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">4×</span>`:''}${foil&&foil.quantity>=4?`<span class="playset-badge foil" title="Foil-Playset komplett · 4 Exemplare">4×</span>`:''}`
-    :(card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">4×</span>`:'');
+    ?`${v.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓ 4×</span>`:''}${foil&&foil.quantity>=4?`<span class="playset-badge foil" title="Foil-Playset komplett · 4 Exemplare">✓ 4×</span>`:''}`
+    :(card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓ 4×</span>`:'');
   const playsetHtml=ribbons?`<div class="playset-ribbons">${ribbons}</div>`:'';
   return `<article class="card-tile ${card.quantity?'owned':'missing'} ${card.variant_count>3?'complex':''}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
     <div class="card-image-wrap card-finish-frame ${visual.effect}">${imageHtml}<button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
