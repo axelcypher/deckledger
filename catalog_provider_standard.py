@@ -10,7 +10,15 @@ Config shape (stored as JSON text in catalog_providers.config):
 
 {
   "sources": [{"language": "EN", "type": "static-json"|"http-json"|"csv"|"github-release",
-                "url": "...", "paginate": {...}?, "repo": "...", "tag": "latest", "asset_pattern": "..."}],
+                "url": "...", "paginate": {...}?, "repo": "...", "tag": "latest", "asset_pattern": "...",
+                "headers": {"X-API-Key": "..."}?, "compressed": true?,
+                # Everything below is optional per-source. Omitted -> falls back to the
+                # provider-level value of the same name. Lets one provider combine sources
+                # with incompatible field schemas (e.g. two APIs for the same game) without
+                # touching the common single-schema case, which never needs any of this.
+                "sets_path": "..."?, "cards_path": "..."?, "set_mapping": {...}?,
+                "identity_mapping": {...}?, "printing_mapping": {...}?, "variant_mapping": {...}?,
+                "lookup_tables": {...}?, "default_accent": "#..."?}],
   "preferred_language": "EN",
   "sets_path": "sets", "cards_path": "cards",           # dot-path into the fetched payload; omit for flat lists (CSV)
   "set_mapping": {"code_field": "$key", "name_field": "name", "set_type_field": "type",
@@ -34,11 +42,12 @@ Config shape (stored as JSON text in catalog_providers.config):
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import json
 import re
 
-from catalog_provider_contract import empty_catalog, fetch, merge, put_identity, slug
+from catalog_provider_contract import empty_catalog, fetch, fetch_bytes, merge, put_identity, slug
 
 _PATH_TOKEN = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
 
@@ -88,13 +97,13 @@ def resolve_github_release_asset(repo: str, tag: str, asset_pattern: str) -> str
     raise RuntimeError(f"Kein Release-Asset in {repo}@{tag} passt zu Muster {asset_pattern!r}")
 
 
-def fetch_paginated_json(url: str, paginate: dict) -> list:
+def fetch_paginated_json(url: str, paginate: dict, headers: dict | None = None) -> list:
     items = []
     current_url = url
     page = 1
     max_pages = paginate.get("max_pages", 200)
     while current_url and page <= max_pages:
-        payload = json.loads(fetch(current_url))
+        payload = json.loads(fetch(current_url, headers=headers))
         page_items = resolve_path(payload, paginate["items_path"]) if paginate.get("items_path") else payload
         if not page_items:
             break
@@ -115,6 +124,7 @@ def fetch_paginated_json(url: str, paginate: dict) -> list:
 
 def load_source(source: dict):
     fetch_type = source["type"]
+    headers = source.get("headers") or None
     if fetch_type == "github-release":
         url = resolve_github_release_asset(source["repo"], source.get("tag", "latest"), source["asset_pattern"])
         data_format = source.get("format", "json")
@@ -122,22 +132,36 @@ def load_source(source: dict):
         url = source["url"]
         data_format = "csv" if fetch_type == "csv" else "json"
     if fetch_type == "http-json" and source.get("paginate"):
-        return fetch_paginated_json(url, source["paginate"])
-    text = fetch(url)
+        return fetch_paginated_json(url, source["paginate"], headers)
+    # Some sources (e.g. GitHub-hosted bulk exports) ship the file itself
+    # gzip-compressed rather than relying on HTTP transport compression --
+    # detected by extension, or forced via an explicit "compressed" flag for
+    # sources whose URL doesn't end in .gz (redirects, CDN rewrites, ...).
+    compressed = source.get("compressed", url.lower().endswith(".gz"))
+    if compressed:
+        text = gzip.decompress(fetch_bytes(url, headers=headers)).decode("utf-8", "ignore")
+    else:
+        text = fetch(url, headers=headers)
     if data_format == "csv":
         return list(csv.DictReader(io.StringIO(text)))
     return json.loads(text)
 
 
 def build_partial_catalog(game_id: str, source: dict, config: dict) -> dict:
+    # Most providers share one schema across all their sources, so the common
+    # case (no per-source overrides) stays exactly as simple as before: every
+    # mapping falls straight through to the provider-level config. A source
+    # only needs to name the mappings it wants to differ for (e.g. combining
+    # two APIs with incompatible field names into one provider).
     raw = load_source(source)
     catalog = empty_catalog()
     language = source.get("language", "EN")
-    lookup_tables = config.get("lookup_tables") or {}
-    accent = config.get("default_accent", "#6366f1")
+    lookup_tables = {**(config.get("lookup_tables") or {}), **(source.get("lookup_tables") or {})}
+    accent = source.get("default_accent", config.get("default_accent", "#6366f1"))
 
-    set_mapping = config.get("set_mapping") or {}
-    for key, record in iter_collection(extract_collection(raw, config.get("sets_path"))):
+    set_mapping = source.get("set_mapping") or config.get("set_mapping") or {}
+    sets_path = source.get("sets_path", config.get("sets_path"))
+    for key, record in iter_collection(extract_collection(raw, sets_path)):
         code = resolve_path(record, set_mapping.get("code_field", "$key"), key)
         if code is None:
             continue
@@ -153,12 +177,13 @@ def build_partial_catalog(game_id: str, source: dict, config: dict) -> dict:
             "_source_language": language,
         }
 
-    identity_mapping = config.get("identity_mapping") or {}
-    printing_mapping = config.get("printing_mapping") or {}
-    variant_mapping = config.get("variant_mapping") or {"mode": "expand_array_field", "field": None, "default": ["Normal"]}
+    identity_mapping = source.get("identity_mapping") or config.get("identity_mapping") or {}
+    printing_mapping = source.get("printing_mapping") or config.get("printing_mapping") or {}
+    variant_mapping = source.get("variant_mapping") or config.get("variant_mapping") or {"mode": "expand_array_field", "field": None, "default": ["Normal"]}
     preferred_language = config.get("preferred_language", "EN")
+    cards_path = source.get("cards_path", config.get("cards_path"))
 
-    for key, record in iter_collection(extract_collection(raw, config.get("cards_path"))):
+    for key, record in iter_collection(extract_collection(raw, cards_path)):
         own_id = resolve_path(record, identity_mapping.get("id_field", "id"), key)
         if own_id is None:
             continue

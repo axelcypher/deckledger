@@ -23,11 +23,12 @@ from urllib.request import Request, urlopen
 USER_AGENT = "DeckLedger/1.0 (+local collection manager)"
 
 
-def fetch(url: str, attempts: int = 3) -> str:
+def fetch(url: str, attempts: int = 3, headers: dict | None = None) -> str:
     error = None
+    request_headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/json", **(headers or {})}
     for attempt in range(attempts):
         try:
-            request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json"})
+            request = Request(url, headers=request_headers)
             with urlopen(request, timeout=40) as response:
                 return response.read().decode("utf-8", "ignore")
         except Exception as exc:  # Network failures are retried, then fail the sync.
@@ -36,11 +37,12 @@ def fetch(url: str, attempts: int = 3) -> str:
     raise RuntimeError(f"Quelle nicht erreichbar: {url}: {error}")
 
 
-def fetch_bytes(url: str, attempts: int = 3) -> bytes:
+def fetch_bytes(url: str, attempts: int = 3, headers: dict | None = None) -> bytes:
     error = None
+    request_headers = {"User-Agent": USER_AGENT, "Accept": "application/pdf,image/*,*/*", **(headers or {})}
     for attempt in range(attempts):
         try:
-            request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/pdf,image/*,*/*"})
+            request = Request(url, headers=request_headers)
             with urlopen(request, timeout=90) as response:
                 return response.read()
         except Exception as exc:
