@@ -333,6 +333,7 @@ LORCANA_RARITY_KEYS = {
     "common": 0, "uncommon": 1, "rare": 2, "super-rare": 3, "legendary": 4,
     "epic": 5, "enchanted": 6, "iconic": 7, "special": 8,
 }
+LORCANA_PREMIUM_RANKS = {LORCANA_RARITY_KEYS["epic"], LORCANA_RARITY_KEYS["enchanted"], LORCANA_RARITY_KEYS["iconic"]}
 
 
 def rarity_rank(game_id, rarity):
@@ -1093,6 +1094,31 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
             "watchlisted": any(v["watchlisted"] for v in variants),
             "foil_quantity": foil_variant["quantity"] if foil_variant else 0,
         })
+        # Epic/Enchanted/Iconic reprints are a separate printing under the same gameplay
+        # identity (their own collector number, e.g. #206 for an Enchanted reprint of a card
+        # normally at #21) -- list each as its own card at that number too, instead of only
+        # being reachable by hovering the base printing's tile.
+        if game_id == "lorcana":
+            premium_printing_ids = {v["printing_id"] for v in language_variants if rarity_rank(game_id, v["rarity"]) in LORCANA_PREMIUM_RANKS and v["printing_id"] != representative["printing_id"]}
+            for printing_id in premium_printing_ids:
+                printing_variants = [v for v in variants if v["printing_id"] == printing_id]
+                printing_language_variants = [v for v in printing_variants if v["language"] == preferred_language]
+                if not printing_language_variants:
+                    continue
+                premium_representative = printing_language_variants[0]
+                premium_foil_variant = next((v for v in printing_language_variants if v["finish"] == "Silver"), None)
+                cards.append({
+                    **premium_representative,
+                    "variants": printing_variants,
+                    "languages": sorted({v["language"] for v in printing_variants}),
+                    "language_count": len({v["language"] for v in printing_variants}),
+                    "quantity": sum(v["quantity"] for v in printing_variants),
+                    "owned_variants": sum(1 for v in printing_variants if v["quantity"] > 0),
+                    "variant_count": len(printing_language_variants),
+                    "value": round(sum(v["quantity"] * (v["price"] or 0) for v in printing_variants), 2),
+                    "watchlisted": any(v["watchlisted"] for v in printing_variants),
+                    "foil_quantity": premium_foil_variant["quantity"] if premium_foil_variant else 0,
+                })
     unfiltered_cards = cards
     if mode == "owned": cards = [card for card in cards if card["quantity"] > 0]
     if mode == "missing": cards = [card for card in cards if card["quantity"] == 0]
@@ -1855,7 +1881,7 @@ def global_search():
     if len(q) < 2: return jsonify([])
     like = f"%{q}%"
     rows = db().execute(
-        f"""SELECT DISTINCT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,s.name set_name,
+        f"""SELECT DISTINCT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,p.rarity,s.name set_name,
           g.id game_id,g.short_name game_name,g.accent,v.id variant_id,v.finish,{latest_price_sql('v')} price,
           CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted
           FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id
@@ -1880,7 +1906,7 @@ def parse_import(text, game_id, language="EN", condition="Near Mint"):
         variant_hint = parts[3].lower() if len(parts)>3 else "standard"
         cond = parts[4] if len(parts)>4 else condition
         candidates = db().execute(
-            """SELECT v.id variant_id,v.variant_code,v.finish,p.collector_number,p.language,i.canonical_name,s.name set_name
+            """SELECT v.id variant_id,v.variant_code,v.finish,v.game_id,p.collector_number,p.language,p.rarity,i.canonical_name,s.name set_name
                FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id
                WHERE v.game_id=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=?""", (game_id,number,lang)
         ).fetchall()

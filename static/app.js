@@ -49,7 +49,10 @@ function finishThumb(variant,src,alt='',className=''){
   const visual=finishPresentation(variant);
   return `<span class="card-finish-frame finish-thumb ${visual.effect} ${className}"><img loading="lazy" src="${src}" alt="${escapeHtml(alt)}"></span>`;
 }
-const variantName = variant => variant.edition_label ? `${variant.finish} · ${variant.edition_label}` : variant.finish;
+const variantName = variant => {
+  const label = variant.game_id==='lorcana' ? lorcanaFinishLabel(variant.finish,variant.rarity) : variant.finish;
+  return variant.edition_label ? `${label} · ${variant.edition_label}` : label;
+};
 const api = async (url, options={}) => {
   const response = await fetch(url,{headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
   if (response.status===401) { location.href='/login'; throw new Error('Nicht angemeldet'); }
@@ -497,7 +500,7 @@ async function renderManualCards(gameId){
   const cards=await api(`/api/admin/games/${gameId}/manual-cards`);
   list.innerHTML=cards.length?cards.map(c=>`<div class="admin-row" data-manual-card="${c.id}">
       <div class="admin-row-head"><b>${escapeHtml(c.canonical_name)}</b><span class="muted">${escapeHtml(c.id)}</span></div>
-      <div class="muted">${c.printings.map(p=>`${escapeHtml(p.collector_number)} · ${escapeHtml(p.language)} · ${escapeHtml(p.rarity)} (${p.variants.map(v=>escapeHtml(v.finish)).join(', ')})`).join(' / ')||'keine Printings'}</div>
+      <div class="muted">${c.printings.map(p=>`${escapeHtml(p.collector_number)} · ${escapeHtml(p.language)} · ${escapeHtml(p.rarity)} (${p.variants.map(v=>escapeHtml(gameId==='lorcana'?lorcanaFinishLabel(v.finish,p.rarity):v.finish)).join(', ')})`).join(' / ')||'keine Printings'}</div>
       <button class="icon-button" data-delete-manual-card="${c.id}" title="Löschen">✕</button>
     </div>`).join(''):'<p class="muted">Noch keine manuellen Karten für dieses TCG.</p>';
   $$('[data-delete-manual-card]',list).forEach(button=>button.onclick=async()=>{
@@ -1096,7 +1099,7 @@ function modalTabContent(card,v){
     const secondaryMetric=v.price_avg30!=null
       ? `<div><span>30-Tage-Ø</span><b>${price(v.price_avg30)}</b></div>`
       : `<div><span>Originalpreis</span><b>${original||'Nicht verfügbar'}</b></div>`;
-    return `<div class="price-hero"><span>${escapeHtml(v.price_source)} Marktpreis</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${escapeHtml(v.price_source)}</b></div></div>`}<a class="price-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(v.finish)} · direkte Produktseite</small></div><span>→</span></a><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
+    return `<div class="price-hero"><span>${escapeHtml(v.price_source)} Marktpreis</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${escapeHtml(v.price_source)}</b></div></div>`}<a class="price-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(modalIsLorcana?lorcanaFinishLabel(v.finish,v.rarity):v.finish)} · direkte Produktseite</small></div><span>→</span></a><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
   }
   if(state.modalTab==='card')return `<div class="detail-section"><div class="detail-section-title">KARTENTEXT</div><p class="rules-text">${escapeHtml(card.rules_text)}</p></div><div class="detail-grid"><div class="detail-field"><span>Kartentyp</span><b>${escapeHtml(card.card_type)}</b></div><div class="detail-field"><span>Farbe</span><b>${escapeHtml(card.attributes.color)}</b></div><div class="detail-field"><span>Kosten</span><b>${card.attributes.cost}</b></div><div class="detail-field"><span>Legalität</span><b>${escapeHtml(card.attributes.legality)}</b></div><div class="detail-field"><span>Set</span><b>${escapeHtml(v.set_name)}</b></div><div class="detail-field"><span>Seltenheit</span><b>${escapeHtml(v.rarity)}</b></div></div><a class="price-source-link" href="${escapeHtml(v.image_source_url)}" target="_blank" rel="noopener noreferrer"><span>▧</span><div><b>Bildquelle öffnen</b><small>${escapeHtml(v.image_source)}</small></div><span>→</span></a>`;
   return `<div class="detail-section-title">IDENTITÄT & DRUCKE</div><div class="relationship"><span>◇</span><div><b>Gameplay-Identität</b><small>${escapeHtml(card.canonical_name)} · sprachunabhängig</small></div></div><div class="relationship"><span>文</span><div><b>${new Set(card.variants.map(x=>x.language)).size} Sprachversionen</b><small>${[...new Set(card.variants.map(x=>x.language))].join(' · ')} · separat auswählbar</small></div></div><div class="relationship"><span>▤</span><div><b>${new Set(physicalVariants.map(x=>x.printing_id)).size} Drucke auf ${v.language}</b><small>Set- und Promo-Drucke dieser Sprache</small></div></div><div class="relationship"><span>✦</span><div><b>${physicalVariants.length} Ausführungen auf ${v.language}</b><small>${[...new Set(physicalVariants.map(x=>modalIsLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish))].join(' · ')}</small></div></div><div class="relationship"><span>↗</span><div><b>Physisches Set</b><small>${escapeHtml(v.set_name)} (${escapeHtml(v.set_code)})</small></div></div>`;
@@ -1111,7 +1114,7 @@ async function doSearch(q){
   const wrap=$('#search-results'); if(q.trim().length<2){wrap.innerHTML='<div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Suche nach Name, Set oder Sammlernummer.</span></div>';return}
   const rows=await api(`/api/search?q=${encodeURIComponent(q)}&game_id=${encodeURIComponent(state.activeGameId)}`); if(!rows.length){wrap.innerHTML='<div class="empty-search"><b>Keine Treffer</b><span>Versuche einen anderen Namen oder eine Nummer.</span></div>';return}
   const groups=Object.groupBy?Object.groupBy(rows,x=>x.game_name):rows.reduce((a,x)=>((a[x.game_name]??=[]).push(x),a),{});
-  wrap.innerHTML=Object.entries(groups).map(([game,items])=>`<div class="search-group-title">${escapeHtml(game).toUpperCase()}</div>${items.map(r=>`<button class="search-result" data-id="${r.identity_id}" data-variant="${r.variant_id}">${finishThumb(r,artUrl(r.variant_id),r.canonical_name,'search-thumb')}<div><b>${escapeHtml(r.canonical_name)}</b><small>${escapeHtml(r.set_name)} · ${escapeHtml(r.collector_number)} · ${r.language} · ${escapeHtml(r.finish)}</small></div><span class="search-price">${money(r.price)}</span></button>`).join('')}`).join('');
+  wrap.innerHTML=Object.entries(groups).map(([game,items])=>`<div class="search-group-title">${escapeHtml(game).toUpperCase()}</div>${items.map(r=>`<button class="search-result" data-id="${r.identity_id}" data-variant="${r.variant_id}">${finishThumb(r,artUrl(r.variant_id),r.canonical_name,'search-thumb')}<div><b>${escapeHtml(r.canonical_name)}</b><small>${escapeHtml(r.set_name)} · ${escapeHtml(r.collector_number)} · ${r.language} · ${escapeHtml(r.game_id==='lorcana'?lorcanaFinishLabel(r.finish,r.rarity):r.finish)}</small></div><span class="search-price">${money(r.price)}</span></button>`).join('')}`).join('');
   $$('.search-result',wrap).forEach(el=>el.onclick=()=>{closeOverlay('search-overlay');openCard(el.dataset.id,el.dataset.variant)});
 }
 
@@ -1127,7 +1130,7 @@ async function previewImport(){
     const payload={game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value};
     rows=await post('/api/import/preview',payload);
   }
-  box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.finish):escapeHtml(r.message||'Kein Treffer')}</small></div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
+  box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.game_id==='lorcana'?lorcanaFinishLabel(r.match.finish,r.match.rarity):r.match.finish):escapeHtml(r.message||'Kein Treffer')}</small></div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
   $('#apply-import').disabled=!rows.some(r=>r.status==='matched');return rows;
 }
 
