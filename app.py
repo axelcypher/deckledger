@@ -1050,7 +1050,7 @@ def game_card_rows(game_id, uid):
     ).fetchall()
 
 
-def serialize_card_rows(raw, language, mode, query, sort, game_id):
+def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode=""):
     raw = [dict(row) for row in raw]
     if language != "combined":
         raw = [row for row in raw if row["language"] == language]
@@ -1066,6 +1066,7 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id):
         language_variants = [v for v in variants if v["language"] == preferred_language]
         representative = next((v for v in language_variants if v["variant_code"] in ("standard", "normal")), language_variants[0])
         quantity = sum(v["quantity"] for v in variants)
+        foil_variant = next((v for v in language_variants if v["finish"] == "Silver"), None)
         cards.append({
             **representative,
             "variants": variants,
@@ -1076,10 +1077,14 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id):
             "variant_count": len(language_variants),
             "value": round(sum(v["quantity"] * (v["price"] or 0) for v in variants), 2),
             "watchlisted": any(v["watchlisted"] for v in variants),
+            "foil_quantity": foil_variant["quantity"] if foil_variant else 0,
         })
     unfiltered_cards = cards
     if mode == "owned": cards = [card for card in cards if card["quantity"] > 0]
     if mode == "missing": cards = [card for card in cards if card["quantity"] == 0]
+    if rarity: cards = [card for card in cards if card["rarity"] == rarity]
+    if foil_mode == "owned": cards = [card for card in cards if card["foil_quantity"] > 0]
+    if foil_mode == "missing": cards = [card for card in cards if card["foil_quantity"] == 0]
     sorters = {
         "name": lambda card: card["canonical_name"],
         "rarity": lambda card: (rarity_rank(game_id, card["rarity"]), card["collector_number"]),
@@ -1124,12 +1129,17 @@ def set_cards(set_id):
     mode = request.args.get("mode", "all")
     query = request.args.get("q", "").strip().lower()
     sort = request.args.get("sort", "number")
-    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"])
+    rarity = request.args.get("rarity", "")
+    foil = request.args.get("foil", "")
+    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil)
+    rarity_sql = "SELECT DISTINCT rarity FROM printings WHERE set_id=?" + ("" if language == "combined" else " AND language=?")
+    rarity_params = (set_id,) if language == "combined" else (set_id, language)
+    rarities = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(set_row["game_id"], r))
     meta = dict(set_row)
     meta["classifications"] = jload(meta["classifications"], [])
     meta["languages"] = jload(meta["languages"], [])
     meta["release_dates"] = release_dates_for_set(set_id, meta["release_date"])
-    return jsonify({"set": meta, "cards": cards, "stats": stats})
+    return jsonify({"set": meta, "cards": cards, "stats": stats, "rarities": rarities})
 
 
 @app.get("/api/games/<game_id>/cards")
@@ -1144,6 +1154,8 @@ def game_cards(game_id):
     query = request.args.get("q", "").strip().lower()
     sort = request.args.get("sort", "number")
     set_order = request.args.get("set_order", "desc")
+    rarity = request.args.get("rarity", "")
+    foil = request.args.get("foil", "")
     if set_order not in {"asc", "desc"}:
         set_order = "desc"
     grouped_raw = {}
@@ -1157,8 +1169,11 @@ def game_cards(game_id):
         item["release_dates"] = release_dates_for_set(row["id"], row["release_date"])
         sets.append(item)
     sets.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, set_order)))
+    rarity_sql = "SELECT DISTINCT p.rarity FROM printings p JOIN sets s ON s.id=p.set_id WHERE s.game_id=?" + ("" if language == "combined" else " AND p.language=?")
+    rarity_params = (game_id,) if language == "combined" else (game_id, language)
+    rarities = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(game_id, r))
     for set_row in sets:
-        cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id)
+        cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil)
         meta = dict(set_row)
         meta["classifications"] = jload(meta["classifications"], [])
         meta["visual_version"] = set_visual_version(set_row)
@@ -1175,7 +1190,7 @@ def game_cards(game_id):
         "playset": round(aggregate["playset_owned"] / max(1, aggregate["playset_total"]) * 100),
         "value": round(aggregate["value"], 2),
     })
-    return jsonify({"game": {**dict(game), "languages": jload(game["languages"], [])}, "groups": groups, "stats": aggregate})
+    return jsonify({"game": {**dict(game), "languages": jload(game["languages"], [])}, "groups": groups, "stats": aggregate, "rarities": rarities})
 
 
 @app.get("/api/cards/<identity_id>")

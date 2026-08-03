@@ -1,7 +1,7 @@
 const state = {
   boot: null, route: 'dashboard', game: null, set: null, cards: [],
   edit: false, quick: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
-  filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
+  filter: 'all', rarity: '', foilMode: '', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
   activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135,
   collapsedSetGroups: {},
   collectionFilters: {q:'',set_id:'',language:'all',rarity:'',finish:'',mode:'all',sort:'number'},
@@ -94,7 +94,7 @@ function setActiveGame(gameId, persist=true) {
     // 'combined' keeps every page consistent with what Settings implies is
     // already the default, not just what got explicitly saved.
     const defaultLang=state.boot.settings?.defaultLanguages?.[gameId]||state.game.languages[0];
-    state.language=defaultLang;state.setType='all';state.setSort='type';state.setDirection='desc';
+    state.language=defaultLang;state.setType='all';state.setSort='type';state.setDirection='desc';state.rarity='';state.foilMode='';
     state.collectionFilters={q:'',set_id:'',language:defaultLang,rarity:'',finish:'',mode:'all',sort:'number'};
     state.watchFilters={q:'',set_id:'',language:defaultLang,finish:'',sort:'added'};
     state.deckFilters={q:'',set_id:'',language:defaultLang,type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};
@@ -544,11 +544,12 @@ function setTile(s){
 
 async function renderSet(setId, preserve=false){
   if(!preserve) content.innerHTML='<div class="page-loader"><span></span><p>Kartenkatalog wird geladen …</p></div>';
-  const params=new URLSearchParams({language:state.language,mode:state.filter,sort:state.sort,q:state.query});
+  const params=new URLSearchParams({language:state.language,mode:state.filter,sort:state.sort,q:state.query,rarity:state.rarity,foil:state.foilMode});
   const data=await api(`/api/sets/${setId}/cards?${params}`); state.set=data.set; state.cards=data.cards;
   const s=data.set, st=data.stats; const game=state.boot.games.find(g=>g.id===s.game_id); state.game=game;
   const availableSets=game.sets||await api(`/api/games/${game.id}/sets`);game.sets=availableSets;
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
+  const isLorcana=game.id==='lorcana';
   content.innerHTML=`
     <div class="card-view-navigation"><button class="secondary-button" id="cards-back">← Zurück zur Setübersicht</button><label><span>Ansicht wechseln</span><select id="card-set-switch" class="select-control"><option value="__all__">Alle Karten</option>${setOptions.map(item=>`<option value="${item.id}" ${item.id===s.id?'selected':''}>${escapeHtml(item.code)} · ${escapeHtml(item.name)}</option>`).join('')}</select></label></div>
     <section class="set-compact-head">
@@ -560,6 +561,8 @@ async function renderSet(setId, preserve=false){
       <div class="filter-search"><span>⌕</span><input id="set-search" value="${escapeHtml(state.query)}" placeholder="In diesem Set suchen"></div>
       <div class="segmented" id="owned-filter"><button data-mode="all" class="${state.filter==='all'?'active':''}">Alle</button><button data-mode="owned" class="${state.filter==='owned'?'active':''}">Im Besitz</button><button data-mode="missing" class="${state.filter==='missing'?'active':''}">Fehlend</button></div>
       <select id="language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${s.languages.map(l=>`<option value="${l}" ${state.language===l?'selected':''}>${l}</option>`).join('')}</select>
+      <select id="rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${state.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>
+      ${isLorcana?`<div class="segmented" id="foil-filter"><button data-mode="" class="${state.foilMode===''?'active':''}">Foil: Alle</button><button data-mode="owned" class="${state.foilMode==='owned'?'active':''}">Vorhanden</button><button data-mode="missing" class="${state.foilMode==='missing'?'active':''}">Fehlend</button></div>`:''}
       <select id="sort-filter" class="select-control"><option value="number">Nr. · Modulsortierung</option><option value="name">Name A–Z</option><option value="rarity">Seltenheit</option><option value="value">Marktwert</option><option value="quantity">Menge</option><option value="missing">Fehlend zuerst</option></select>
       <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
     </div>
@@ -570,7 +573,9 @@ async function renderSet(setId, preserve=false){
   $('#card-set-switch').onchange=event=>event.target.value==='__all__'?routeTo('game-cards',game.id):routeTo('set',event.target.value);
   bindCardEvents();
   $$('#owned-filter button').forEach(b=>b.onclick=()=>{state.filter=b.dataset.mode;renderSet(setId,true)});
-  $('#language-filter').onchange=e=>{state.language=e.target.value;renderSet(setId,true)};
+  $('#language-filter').onchange=e=>{state.language=e.target.value;state.rarity='';renderSet(setId,true)};
+  $('#rarity-filter').onchange=e=>{state.rarity=e.target.value;renderSet(setId,true)};
+  $$('#foil-filter button').forEach(b=>b.onclick=()=>{state.foilMode=b.dataset.mode;renderSet(setId,true)});
   $('#sort-filter').onchange=e=>{state.sort=e.target.value;renderSet(setId,true);post('/api/settings',{[`sort_${game.id}`]:state.sort})};
   let timer; $('#set-search').oninput=e=>{clearTimeout(timer);state.query=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#set-search',()=>renderSet(setId,true)),280)};
   $('#card-zoom').oninput=e=>{state.zoom=e.target.value;$('.card-grid').style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
@@ -579,10 +584,11 @@ async function renderSet(setId, preserve=false){
 async function renderAllCards(gameId,preserve=false){
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Alle Karten werden zusammengestellt …</p></div>';
   setActiveGame(gameId,false);
-  const game=state.boot.games.find(item=>item.id===gameId),params=new URLSearchParams({language:state.language,mode:state.filter,sort:state.sort,set_order:state.setDirection,q:state.query});
+  const game=state.boot.games.find(item=>item.id===gameId),params=new URLSearchParams({language:state.language,mode:state.filter,sort:state.sort,set_order:state.setDirection,q:state.query,rarity:state.rarity,foil:state.foilMode});
   const [data,availableSets]=await Promise.all([api(`/api/games/${gameId}/cards?${params}`),game.sets?Promise.resolve(game.sets):api(`/api/games/${gameId}/sets`)]);game.sets=availableSets;state.game=game;state.cards=data.groups.flatMap(group=>group.cards);
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
   const stats=data.stats;
+  const isLorcana=game.id==='lorcana';
   content.innerHTML=`
     <div class="card-view-navigation"><button class="secondary-button" id="cards-back">← Zurück zur Setübersicht</button><label><span>Ansicht wechseln</span><select id="card-set-switch" class="select-control"><option value="__all__" selected>Alle Karten</option>${setOptions.map(item=>`<option value="${item.id}">${escapeHtml(item.code)} · ${escapeHtml(item.name)}</option>`).join('')}</select></label></div>
     <section class="set-compact-head all-cards-head">
@@ -593,6 +599,8 @@ async function renderAllCards(gameId,preserve=false){
       <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
       <div class="segmented" id="all-owned-filter"><button data-mode="all" class="${state.filter==='all'?'active':''}">Alle</button><button data-mode="owned" class="${state.filter==='owned'?'active':''}">Im Besitz</button><button data-mode="missing" class="${state.filter==='missing'?'active':''}">Fehlend</button></div>
       <select id="all-language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${game.languages.map(language=>`<option value="${language}" ${state.language===language?'selected':''}>${language}</option>`).join('')}</select>
+      <select id="all-rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${state.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>
+      ${isLorcana?`<div class="segmented" id="all-foil-filter"><button data-mode="" class="${state.foilMode===''?'active':''}">Foil: Alle</button><button data-mode="owned" class="${state.foilMode==='owned'?'active':''}">Vorhanden</button><button data-mode="missing" class="${state.foilMode==='missing'?'active':''}">Fehlend</button></div>`:''}
       <select id="all-sort-filter" class="select-control"><option value="number">Nr. · Modulsortierung</option><option value="name">Name A–Z</option><option value="rarity">Seltenheit</option><option value="value">Marktwert</option><option value="quantity">Menge</option><option value="missing">Fehlend zuerst</option></select>
       <select id="all-set-order" class="select-control" aria-label="Setreihenfolge"><option value="desc">Sets: Neu → Alt · Nr. ↓</option><option value="asc">Sets: Alt → Neu · Nr. ↑</option></select>
       <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
@@ -602,7 +610,9 @@ async function renderAllCards(gameId,preserve=false){
   $('[data-dashboard]').onclick=()=>routeTo('dashboard');$('[data-game-back]').onclick=()=>routeTo('game',gameId);$('#cards-back').onclick=()=>routeTo('game',gameId);
   $('#card-set-switch').onchange=event=>event.target.value==='__all__'?renderAllCards(gameId,true):routeTo('set',event.target.value);
   $$('#all-owned-filter button').forEach(button=>button.onclick=()=>{state.filter=button.dataset.mode;renderAllCards(gameId,true)});
-  $('#all-language-filter').onchange=event=>{state.language=event.target.value;renderAllCards(gameId,true)};
+  $('#all-language-filter').onchange=event=>{state.language=event.target.value;state.rarity='';renderAllCards(gameId,true)};
+  $('#all-rarity-filter').onchange=event=>{state.rarity=event.target.value;renderAllCards(gameId,true)};
+  $$('#all-foil-filter button').forEach(button=>button.onclick=()=>{state.foilMode=button.dataset.mode;renderAllCards(gameId,true)});
   $('#all-sort-filter').onchange=event=>{state.sort=event.target.value;renderAllCards(gameId,true);post('/api/settings',{[`sort_${game.id}`]:state.sort})};
   $('#all-set-order').onchange=event=>{state.setDirection=event.target.value;renderAllCards(gameId,true)};
   let timer;$('#all-card-search').oninput=event=>{clearTimeout(timer);state.query=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#all-card-search',()=>renderAllCards(gameId,true)),280)};
