@@ -297,6 +297,7 @@ async function renderAdmin(){
         <label>Cardmarket-ID<input type="number" min="1" data-game-field="cardmarket_game_id" data-game="${g.id}" value="${g.cardmarket_game_id||''}" placeholder="z.B. 19" title="Numerische Spiel-ID aus der Cardmarket-URL, z.B. cardmarket.com/.../Games/19 → 19"></label>
         <label>Deck-Ruleset<select class="select-control" data-game-field="deck_ruleset" data-game="${g.id}">${DECK_RULESET_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.deck_ruleset||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
         <label>Card-Back<input type="file" accept="image/jpeg" data-card-back="${g.id}"></label>
+        <button class="icon-button" data-delete-game="${g.id}" data-game-name="${escapeHtml(g.name)}" title="TCG löschen">✕</button>
       </div>`).join('')}</div>
       <details class="admin-add"><summary>+ Neues TCG anlegen</summary>
         <div class="admin-form">
@@ -382,6 +383,12 @@ def fetch_catalog() -&gt; dict:
     const form=new FormData(); form.append('file',file);
     const response=await fetch(`/api/admin/games/${input.dataset.cardBack}/card-back`,{method:'POST',body:form});
     if(response.ok)toast('Card-Back hochgeladen'); else toast('Upload fehlgeschlagen');
+  });
+  $$('[data-delete-game]',content).forEach(button=>button.onclick=async()=>{
+    const name=button.dataset.gameName;
+    if(!confirm(`"${name}" wirklich vollständig löschen?\n\nDas entfernt unwiderruflich: alle Sets, Karten, Sammlungen, Decks, Watchlists, Preisdaten und Katalog-Provider dieses TCGs für ALLE Nutzer.\n\nZum Bestätigen OK klicken.`))return;
+    try{await api(`/api/admin/games/${button.dataset.deleteGame}`,{method:'DELETE'});toast('TCG gelöscht');renderAdmin()}
+    catch(error){toast(error.message)}
   });
   $('#admin-create-game').onclick=async()=>{
     const name=$('#admin-new-game-name').value.trim();

@@ -1,11 +1,13 @@
 """Tier-2 custom-code provider: One Piece, sourced from Bandai's official card
-list site (EN + JP) plus OPTCG API and Bandai's official DON!! PDF for DON!!
-artwork the official card-list feed omits.
+list site (EN + JP) plus TCGJSON for EN DON!! artwork and Bandai's official
+DON!! PDF for JP DON!! artwork -- the official card-list feed omits DON!!
+entirely, and TCGJSON (TCGPlayer-sourced) has no JP-specific data.
 
 Self-contained on purpose (Tier-2 code runs in an isolated subprocess with no
 access to the rest of the app): only stdlib, pypdf, and catalog_provider_contract.
 """
 
+import gzip
 import io
 import json
 import os
@@ -17,8 +19,6 @@ from urllib.parse import urljoin
 from catalog_provider_contract import clean, empty_catalog, fetch, fetch_bytes, merge, put_identity, slug
 
 
-ONE_PIECE_DON_API = "https://www.optcgapi.com/api/allDonCards/"
-ONE_PIECE_DON_DOCS = "https://www.optcgapi.com/documentation"
 ONE_PIECE_DON_JP_PDF = "https://asia-en.onepiece-cardgame.com/pdf/don-cardlist.pdf"
 ONE_PIECE_EN_PRODUCTS = "https://en.onepiece-cardgame.com/products/"
 # DATABASE_PATH is the same env var app.py/price_sync.py resolve independently
@@ -306,16 +306,6 @@ def one_piece_don_set_id(code: str | None, language: str, available_sets: dict) 
     return candidate if candidate in available_sets else fallback
 
 
-def one_piece_don_source_code(name: str) -> str | None:
-    match = re.search(r"\(((?:OP|ST|EB|PRB)-?\d{1,2}|OP-PR|OPDD)\)\s*$", name, re.I)
-    if match:
-        return match.group(1).upper()
-    # The provider currently omits the code from this otherwise explicit title.
-    if re.search(r"-\s*The Time of Battle\s*$", name, re.I):
-        return "OP-16"
-    return None
-
-
 def decode_one_piece_don_pdf_code(encoded: str) -> str | None:
     """Decode product codes from Bandai's embedded subset font."""
     prefixes = (("13#", "PRB"), ("01", "OP"), ("45", "ST"), ("&#", "EB"))
@@ -366,16 +356,28 @@ def one_piece_don_pdf_set_codes(page) -> dict[int, list[str]]:
     return result
 
 
-def import_one_piece_don(available_sets: dict) -> dict:
-    """Import collectible DON!! artwork omitted by Bandai's card-list feed.
+def resolve_github_release_asset(repo: str, tag: str, asset_pattern: str) -> str:
+    api_url = f"https://api.github.com/repos/{repo}/releases/{'latest' if tag in (None, 'latest') else 'tags/' + tag}"
+    payload = json.loads(fetch(api_url))
+    pattern = re.compile(asset_pattern)
+    for asset in payload.get("assets", []):
+        if pattern.search(asset["name"]):
+            return asset["browser_download_url"]
+    raise RuntimeError(f"Kein Release-Asset in {repo}@{tag} passt zu Muster {asset_pattern!r}")
 
-    Bandai documents DON!! cards and product contents, but its public card-list
-    endpoint does not enumerate the collectible artwork. OPTCG API provides a
-    dedicated, stable DON endpoint with names and actual card images.
+
+def import_one_piece_don_en(available_sets: dict) -> dict:
+    """Import EN DON!! artwork omitted by Bandai's card-list feed, from TCGJSON.
+
+    TCGJSON (TCGPlayer-sourced) links every DON!! product directly to a real
+    set id, unlike the previous OPTCG API import which had to regex-guess a
+    product code out of the card's display name. Only replaces the EN half of
+    DON!! import -- TCGJSON has no JP-specific data, so JP DON!! artwork still
+    comes from Bandai's own PDF via import_one_piece_don_jp below.
     """
-    rows = json.loads(fetch(ONE_PIECE_DON_API))
-    if not isinstance(rows, list):
-        raise RuntimeError("OPTCG API: DON-Antwort ist keine Liste")
+    url = resolve_github_release_asset("HanClinto/tcgjson", "latest", r"^one-piece\.full\.json\.gz$")
+    raw = json.loads(gzip.decompress(fetch_bytes(url)))
+    tcg_sets = {s["setId"]: s for s in raw.get("sets") or []}
     catalog = empty_catalog()
     fallback_set_id = "one-piece-don"
     catalog["sets"][fallback_set_id] = {
@@ -390,34 +392,36 @@ def import_one_piece_don(available_sets: dict) -> dict:
         "accent": "#dc2626",
         "_source_language": "EN",
     }
-    for row in rows:
-        image_url = row.get("card_image")
-        image_id = str(row.get("card_image_id") or "").strip().lower()
-        if not image_url or not re.fullmatch(r"don_\d+", image_id):
+    for product in raw.get("products") or []:
+        if product.get("rarity") != "DON!!":
+            continue
+        image_urls = product.get("imageUrls") or []
+        if not image_urls:
             # Do not fabricate artwork when the provider has not published it.
             continue
-        sequence = int(image_id.split("_", 1)[1])
-        display_name = clean(row.get("optcg_don_name") or row.get("card_name") or "DON!! Card")
-        product_code = one_piece_don_source_code(display_name)
+        product_id = product["productId"]
+        display_name = clean(product.get("name") or "DON!! Card")
+        rules_text = clean((product.get("metadata") or {}).get("rulesText") or "Your Turn +1000")
+        tcg_set = tcg_sets.get(product.get("setId"))
+        product_code = normalize_one_piece_product_code(tcg_set["abbreviation"]) if tcg_set and tcg_set.get("abbreviation") else None
         set_id = one_piece_don_set_id(product_code, "EN", available_sets)
-        identity_id = f"one-piece-card-{image_id.replace('_', '-')}"
-        source_attrs = {
-            "color": None,
-            "source": "OPTCG API DON catalogue",
-            "sourceLanguage": "EN",
-            "providerId": image_id,
-            "providerName": display_name,
-            "providerUrl": ONE_PIECE_DON_API,
-        }
+        identity_id = f"one-piece-card-don-{product_id}"
         put_identity(catalog, {
             "id": identity_id,
             "game_id": "one-piece",
             "canonical_name": display_name,
-            "rules_text": clean(row.get("card_text") or "Your Turn +1000"),
+            "rules_text": rules_text,
             "card_type": "DON!!",
-            "attributes": source_attrs,
+            "attributes": {
+                "color": None,
+                "source": "TCGJSON / TCGplayer",
+                "sourceLanguage": "EN",
+                "providerId": str(product_id),
+                "providerName": display_name,
+                "providerUrl": url,
+            },
         }, prefer=True)
-        printing_id = f"one-piece-print-don-{sequence:03d}-en"
+        printing_id = f"one-piece-print-don-{product_id}-en"
         catalog["printings"][printing_id] = {
             "id": printing_id,
             "identity_id": identity_id,
@@ -428,45 +432,55 @@ def import_one_piece_don(available_sets: dict) -> dict:
             "rarity": "DON!!",
             "attributes": {
                 "localizedName": display_name,
-                "localizedRulesText": clean(row.get("card_text") or "Your Turn +1000"),
-                "sourceUrl": ONE_PIECE_DON_API,
+                "localizedRulesText": rules_text,
+                "sourceUrl": url,
                 "productCode": product_code,
                 "releaseProductCode": (
-                    f"{normalize_one_piece_product_code(product_code).replace('-', '')}-EB04"
-                    if product_code and normalize_one_piece_product_code(product_code) in {"OP-14", "OP-15"}
-                    else None
+                    f"{product_code.replace('-', '')}-EB04"
+                    if product_code in {"OP-14", "OP-15"} else None
                 ),
-                "catalogueKey": f"DON-{sequence:03d}",
+                "catalogueKey": f"DON-{product_id}",
                 "unprintedCollectorNumber": True,
             },
         }
-        finish = "Gold" if re.search(r"\bgold\b", display_name, re.I) else "Normal"
-        variant_id = f"{printing_id}-standard"
-        catalog["variants"][variant_id] = {
-            "id": variant_id,
-            "printing_id": printing_id,
-            "game_id": "one-piece",
-            "variant_code": "standard",
-            "finish": finish,
-            "artwork_id": image_id,
-            "is_parallel": int(finish != "Normal"),
-            "source_type": "optcgapi-don",
-            "attributes": {
-                "imageUrl": image_url,
-                "imageSource": "OPTCG API DON catalogue",
-                "imageSourceUrl": ONE_PIECE_DON_DOCS,
-                "catalogSourceUrl": ONE_PIECE_DON_API,
-                "providerId": image_id,
-            },
-        }
-    import_one_piece_don_jp(catalog, available_sets)
+        for finish in product.get("foilings") or ["Normal"]:
+            code = "normal" if finish == "Normal" else slug(finish)
+            variant_id = f"{printing_id}-{code}"
+            catalog["variants"][variant_id] = {
+                "id": variant_id,
+                "printing_id": printing_id,
+                "game_id": "one-piece",
+                "variant_code": code,
+                "finish": finish,
+                "artwork_id": str(product_id),
+                "is_parallel": 0 if finish == "Normal" else 1,
+                "source_type": "tcgjson-don",
+                "attributes": {
+                    "imageUrl": image_urls[0],
+                    "imageSource": "TCGJSON / TCGplayer",
+                    "imageSourceUrl": url,
+                    "catalogSourceUrl": url,
+                    "providerId": str(product_id),
+                },
+            }
     catalog["sets"][fallback_set_id]["printed_card_count"] = sum(
         1 for printing in catalog["printings"].values() if printing["set_id"] == fallback_set_id
     )
-    catalog["sources"]["one_piece_don"] = ONE_PIECE_DON_API
+    catalog["sources"]["one_piece_don_en"] = url
+    return catalog
+
+
+def import_one_piece_don(available_sets: dict) -> dict:
+    """Combine EN DON!! (TCGJSON) and JP DON!! (Bandai's official PDF) into one
+    partial catalog, same merged shape the previous single-source import returned."""
+    catalog = import_one_piece_don_en(available_sets)
+    import_one_piece_don_jp(catalog, available_sets)
+    catalog["sets"]["one-piece-don"]["printed_card_count"] = sum(
+        1 for printing in catalog["printings"].values() if printing["set_id"] == "one-piece-don"
+    )
     catalog["sources"]["one_piece_don_jp"] = ONE_PIECE_DON_JP_PDF
-    if len(catalog["variants"]) < 400:
-        raise RuntimeError(f"OPTCG API: DON-Katalog unvollständig ({len(catalog['variants'])} Varianten)")
+    if len(catalog["variants"]) < 350:
+        raise RuntimeError(f"DON!!-Katalog unvollständig ({len(catalog['variants'])} Varianten)")
     return catalog
 
 

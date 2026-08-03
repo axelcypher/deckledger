@@ -705,6 +705,31 @@ def admin_update_game(game_id):
     return jsonify({"saved": True})
 
 
+@app.delete("/api/admin/games/<game_id>")
+@admin_required
+def admin_delete_game(game_id):
+    if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+        return jsonify({"error": "game not found"}), 404
+    variant_filter = "variant_id IN (SELECT id FROM variants WHERE game_id=?)"
+    for table in ("collection_entries", "watchlist_entries", "marketplace_products", "price_observations"):
+        db().execute(f"DELETE FROM {table} WHERE {variant_filter}", (game_id,))
+    db().execute("DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE game_id=?)", (game_id,))
+    db().execute("DELETE FROM named_watchlist_entries WHERE list_id IN (SELECT id FROM named_watchlists WHERE game_id=?)", (game_id,))
+    db().execute("DELETE FROM decks WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM named_watchlists WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM variants WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM printings WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM card_identities WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM sets WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM catalog_providers WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM game_price_overrides WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM import_operations WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM games WHERE id=?", (game_id,))
+    db().commit()
+    (CARD_BACK_UPLOAD_DIR / f"{game_id}.jpg").unlink(missing_ok=True)
+    return jsonify({"deleted": True})
+
+
 CARD_BACK_UPLOAD_DIR = Path(os.path.dirname(DB_PATH)) / "card-backs"
 
 
