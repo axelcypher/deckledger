@@ -1,6 +1,6 @@
 const state = {
   boot: null, route: 'dashboard', game: null, set: null, cards: [],
-  edit: false, quick: false, zoom: 155, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
+  edit: false, quick: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
   filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
   activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135,
   collapsedSetGroups: {},
@@ -561,7 +561,7 @@ async function renderSet(setId, preserve=false){
       <div class="segmented" id="owned-filter"><button data-mode="all" class="${state.filter==='all'?'active':''}">Alle</button><button data-mode="owned" class="${state.filter==='owned'?'active':''}">Im Besitz</button><button data-mode="missing" class="${state.filter==='missing'?'active':''}">Fehlend</button></div>
       <select id="language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${s.languages.map(l=>`<option value="${l}" ${state.language===l?'selected':''}>${l}</option>`).join('')}</select>
       <select id="sort-filter" class="select-control"><option value="number">Nr. · Modulsortierung</option><option value="name">Name A–Z</option><option value="rarity">Seltenheit</option><option value="value">Marktwert</option><option value="quantity">Menge</option><option value="missing">Fehlend zuerst</option></select>
-      <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="card-zoom" type="range" min="110" max="220" value="${state.zoom}"><span>＋</span></div>
+      <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
     </div>
     <section class="card-grid ${state.quick?'quick-mode':''}" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
   $('#sort-filter').value=state.sort;
@@ -595,7 +595,7 @@ async function renderAllCards(gameId,preserve=false){
       <select id="all-language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${game.languages.map(language=>`<option value="${language}" ${state.language===language?'selected':''}>${language}</option>`).join('')}</select>
       <select id="all-sort-filter" class="select-control"><option value="number">Nr. · Modulsortierung</option><option value="name">Name A–Z</option><option value="rarity">Seltenheit</option><option value="value">Marktwert</option><option value="quantity">Menge</option><option value="missing">Fehlend zuerst</option></select>
       <select id="all-set-order" class="select-control" aria-label="Setreihenfolge"><option value="desc">Sets: Neu → Alt · Nr. ↓</option><option value="asc">Sets: Alt → Neu · Nr. ↑</option></select>
-      <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="all-card-zoom" type="range" min="110" max="220" value="${state.zoom}"><span>＋</span></div>
+      <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
     </div>
     <div class="all-card-groups">${data.groups.length?data.groups.map(group=>`<section class="all-card-set"><header class="set-card-divider"><img loading="lazy" src="/set-logo/${encodeURIComponent(group.set.id)}?v=${encodeURIComponent(group.set.visual_version||'provider-v1')}" alt=""><div><span>${escapeHtml(group.set.code)}</span><h2>${escapeHtml(group.set.name)}</h2></div><small>${releaseDate(group.set)} · ${group.cards.length} Karten</small></header><div class="card-grid" style="--card-size:${state.zoom}px">${group.cards.map(cardTile).join('')}</div></section>`).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</div>`;
   $('#all-sort-filter').value=state.sort;$('#all-set-order').value=state.setDirection;bindCardEvents();
