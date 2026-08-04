@@ -1154,12 +1154,19 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
                     "foil_quantity": premium_foil_variant["quantity"] if premium_foil_variant else 0,
                 })
     unfiltered_cards = cards
+    # Foil-ownership only means something for the Normal/Silver ladder -- premium
+    # (Epic/Enchanted/Iconic) cards have no Silver-finish printing to be "owned" or
+    # "missing" in, so foil_variant is always None for them and foil_quantity is
+    # always 0. Filtering them by foil_mode would either hide every premium card a
+    # user actually owns (foil_mode=owned) or always show them regardless of
+    # ownership (foil_mode=missing) -- so foil_mode only applies before premium
+    # cards are merged in, and premium cards pass through untouched.
+    if foil_mode == "owned": cards = [card for card in cards if card["foil_quantity"] > 0]
+    if foil_mode == "missing": cards = [card for card in cards if card["foil_quantity"] == 0]
     cards = cards + premium_cards
     if mode == "owned": cards = [card for card in cards if card["quantity"] > 0]
     if mode == "missing": cards = [card for card in cards if card["quantity"] == 0]
     if rarity: cards = [card for card in cards if card["rarity"] == rarity]
-    if foil_mode == "owned": cards = [card for card in cards if card["foil_quantity"] > 0]
-    if foil_mode == "missing": cards = [card for card in cards if card["foil_quantity"] == 0]
     if rarities:
         selected_ranks = {LORCANA_RARITY_KEYS[key] for key in rarities if key in LORCANA_RARITY_KEYS}
         cards = [card for card in cards if rarity_rank(game_id, card["rarity"]) in selected_ranks]
