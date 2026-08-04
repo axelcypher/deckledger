@@ -36,12 +36,16 @@ function finishPresentation(variant={}){
   if(premiumNamed||premiumCode){
     return {effect:'finish-aurora'};
   }
-  if(/parallel|alternate|alt art/.test(descriptor)||Number(variant.is_parallel)===1){
-    return {effect:'finish-prismatic'};
-  }
+  // Foil/silver check runs before the parallel/is_parallel check on purpose: Lorcana's
+  // Silver finish sets is_parallel=1 in the data (it IS technically a parallel print in
+  // that game's model), so checking is_parallel first would misclassify every Silver
+  // card as "prismatic" instead of "foil" -- which is exactly what was happening.
   const hololiveBaseFoil=gameId==='hololive'&&/^(s|sr)$/i.test(finish);
   if(hololiveBaseFoil||/foil|silver|satin|holo|rainbow|etched|textured|gold/.test(descriptor)){
     return {effect:'finish-foil'};
+  }
+  if(/parallel|alternate|alt art/.test(descriptor)||Number(variant.is_parallel)===1){
+    return {effect:'finish-prismatic'};
   }
   return {effect:'finish-normal'};
 }
