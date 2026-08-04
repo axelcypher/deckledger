@@ -13,7 +13,7 @@ import xml.sax.saxutils as xml_escape
 from datetime import datetime, timezone
 from functools import cmp_to_key, wraps
 from pathlib import Path
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -2112,6 +2112,14 @@ def remote_image_url(row):
     return None
 
 
+def sniff_image_type(payload):
+    if payload[:3] == b"\xff\xd8\xff": return "image/jpeg"
+    if payload[:8] == b"\x89PNG\r\n\x1a\n": return "image/png"
+    if payload[:4] == b"RIFF" and payload[8:12] == b"WEBP": return "image/webp"
+    if payload[:6] in (b"GIF87a", b"GIF89a"): return "image/gif"
+    return None
+
+
 def cached_real_image(row, variant_id):
     """Return a local image path, deduplicated by provider URL when possible."""
     for directory in (IMAGE_CACHE, IMAGE_SOURCE_CACHE, IMAGE_LOCK_CACHE):
@@ -2149,11 +2157,21 @@ def cached_real_image(row, variant_id):
             mime_path.write_text(legacy_mime.read_text().strip())
             return data_path, mime_path.read_text().strip(), source_key
         response = urlopen(
-            Request(url, headers={"User-Agent": "DeckLedger/0.1", "Accept": "image/avif,image/webp,image/*"}),
+            Request(url, headers={
+                "User-Agent": "DeckLedger/0.1",
+                "Accept": "image/avif,image/webp,image/*",
+                # Some CDNs (e.g. Cardmarket's product-image bucket) 403 hotlink-style
+                # requests without a same-site Referer.
+                "Referer": f"https://{urlparse(url).netloc}/",
+            }),
             timeout=15,
         )
         payload = response.read(5_000_000)
         content_type = response.headers.get_content_type()
+        if not content_type.startswith("image/"):
+            # A handful of CDNs (again, Cardmarket) serve a bogus/missing Content-Type
+            # instead of the real one -- fall back to sniffing the file's magic bytes.
+            content_type = sniff_image_type(payload) or content_type
         if not content_type.startswith("image/") or len(payload) < 1000:
             return None
         data_path.write_bytes(payload)
