@@ -117,7 +117,8 @@ CREATE TABLE IF NOT EXISTS marketplace_products (
 CREATE TABLE IF NOT EXISTS collection_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
   variant_id TEXT NOT NULL REFERENCES variants(id), condition TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0,
-  notes TEXT, UNIQUE(user_id, variant_id, condition)
+  notes TEXT, is_graded INTEGER NOT NULL DEFAULT 0, grade_label TEXT NOT NULL DEFAULT '', price_override REAL,
+  UNIQUE(user_id, variant_id, condition, is_graded, grade_label)
 );
 CREATE TABLE IF NOT EXISTS watchlist_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
@@ -464,6 +465,35 @@ def init_database():
         columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
         if "source_type" not in columns:
             connection.execute(f"ALTER TABLE {table} ADD COLUMN source_type TEXT NOT NULL DEFAULT 'imported'")
+    collection_columns = {row[1] for row in connection.execute("PRAGMA table_info(collection_entries)")}
+    if "is_graded" not in collection_columns:
+        connection.execute("ALTER TABLE collection_entries ADD COLUMN is_graded INTEGER NOT NULL DEFAULT 0")
+        connection.execute("ALTER TABLE collection_entries ADD COLUMN grade_label TEXT NOT NULL DEFAULT ''")
+        connection.execute("ALTER TABLE collection_entries ADD COLUMN price_override REAL")
+        # Widen the uniqueness key so a graded copy (its own condition+grade) can coexist with
+        # an ungraded row of the same condition, and multiple different grades of the same
+        # variant can each get their own row. SQLite can't ALTER a UNIQUE constraint, so this
+        # rebuilds the table -- wrapped in one transaction with a row-count check, since real
+        # collection data lives here.
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("""CREATE TABLE collection_entries_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
+          variant_id TEXT NOT NULL REFERENCES variants(id), condition TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0,
+          notes TEXT, is_graded INTEGER NOT NULL DEFAULT 0, grade_label TEXT NOT NULL DEFAULT '', price_override REAL,
+          UNIQUE(user_id, variant_id, condition, is_graded, grade_label)
+        )""")
+        connection.execute("""INSERT INTO collection_entries_new
+          (id,user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override)
+          SELECT id,user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override FROM collection_entries""")
+        before_count = connection.execute("SELECT COUNT(*) FROM collection_entries").fetchone()[0]
+        after_count = connection.execute("SELECT COUNT(*) FROM collection_entries_new").fetchone()[0]
+        if before_count != after_count:
+            connection.execute("ROLLBACK")
+            raise RuntimeError(f"collection_entries migration row count mismatch: {before_count} -> {after_count}, aborted")
+        connection.execute("DROP TABLE collection_entries")
+        connection.execute("ALTER TABLE collection_entries_new RENAME TO collection_entries")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_collection_user ON collection_entries(user_id)")
+        connection.commit()
     # Gunicorn workers can import the app concurrently on a fresh volume.
     # Serialize the one-time seed so both workers never insert the demo user.
     connection.execute("BEGIN IMMEDIATE")
@@ -1270,15 +1300,24 @@ def card_detail(identity_id):
     uid = user_id()
     identity = db().execute("SELECT * FROM card_identities WHERE id=?", (identity_id,)).fetchone()
     if not identity: return jsonify({"error":"card not found"}), 404
+    # A variant can now have several collection_entries rows (one per condition, plus any
+    # graded copies) instead of at most one -- aggregate them per variant_id first so the
+    # main join stays 1:1 (a flat, unaggregated join here would return the same variant once
+    # per row and silently corrupt everything downstream that assumes one row per variant).
+    # The per-condition/grading breakdown itself is fetched separately for the Erweitert panel.
     variants = db().execute(
         f"""SELECT v.*,p.collector_number,p.language,p.rarity,p.set_id,s.name set_name,s.code set_code,
-            COALESCE(c.quantity,0) quantity,COALESCE(c.condition,'Near Mint') condition,c.notes,
+            COALESCE(agg.quantity,0) quantity,agg.notes,
+            COALESCE(agg.override_value,0) override_value,COALESCE(agg.unpriced_quantity,0) unpriced_quantity,
             CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted,
             {latest_price_sql('v')} price,{latest_price_sql('v','low')} price_low,
             {latest_price_sql('v','avg30')} price_avg30,{latest_price_meta_sql('v','provider_id')} price_provider,
             {latest_price_meta_sql('v','currency')} price_currency,{latest_price_meta_sql('v','observed_at')} price_observed_at
             FROM variants v JOIN printings p ON p.id=v.printing_id JOIN sets s ON s.id=p.set_id
-            LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
+            LEFT JOIN (SELECT variant_id,SUM(quantity) quantity,MAX(notes) notes,
+              SUM(quantity*COALESCE(price_override,0)) override_value,
+              SUM(CASE WHEN price_override IS NULL THEN quantity ELSE 0 END) unpriced_quantity
+              FROM collection_entries WHERE user_id=? GROUP BY variant_id) agg ON agg.variant_id=v.id
             WHERE p.identity_id=? ORDER BY p.language,s.release_date,s.code,p.collector_number,v.is_parallel,v.variant_code""", (uid,uid,identity_id)
     ).fetchall()
     variant_rows = []
@@ -1351,17 +1390,46 @@ def update_collection():
     payload = request.get_json(force=True)
     variant_id = payload.get("variant_id")
     condition = payload.get("condition", "Near Mint")
-    existing = db().execute("SELECT * FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=?", (user_id(), variant_id, condition)).fetchone()
+    is_graded = 1 if payload.get("is_graded") else 0
+    grade_label = (payload.get("grade_label") or "").strip() if is_graded else ""
+    existing = db().execute(
+        "SELECT * FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?",
+        (user_id(), variant_id, condition, is_graded, grade_label),
+    ).fetchone()
     before = existing["quantity"] if existing else 0
     quantity = max(0, int(payload.get("quantity", before + int(payload.get("delta", 0)))))
-    if quantity == 0:
-        db().execute("DELETE FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=?", (user_id(), variant_id, condition))
-    elif existing:
-        db().execute("UPDATE collection_entries SET quantity=?,notes=COALESCE(?,notes) WHERE id=?", (quantity,payload.get("notes"),existing["id"]))
+    if "price_override" in payload:
+        raw_override = payload["price_override"]
+        price_override = float(raw_override) if raw_override not in (None, "") else None
     else:
-        db().execute("INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes) VALUES(?,?,?,?,?)", (user_id(),variant_id,condition,quantity,payload.get("notes")))
+        price_override = existing["price_override"] if existing else None
+    if quantity == 0:
+        db().execute(
+            "DELETE FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?",
+            (user_id(), variant_id, condition, is_graded, grade_label),
+        )
+    elif existing:
+        db().execute(
+            "UPDATE collection_entries SET quantity=?,notes=COALESCE(?,notes),price_override=? WHERE id=?",
+            (quantity, payload.get("notes"), price_override, existing["id"]),
+        )
+    else:
+        db().execute(
+            "INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override) VALUES(?,?,?,?,?,?,?,?)",
+            (user_id(), variant_id, condition, quantity, payload.get("notes"), is_graded, grade_label, price_override),
+        )
     db().commit()
     return jsonify({"variant_id": variant_id, "before": before, "quantity": quantity})
+
+
+@app.get("/api/collection/entries/<variant_id>")
+@login_required
+def collection_entries_for_variant(variant_id):
+    rows = db().execute(
+        "SELECT condition,quantity,notes,is_graded,grade_label,price_override FROM collection_entries WHERE user_id=? AND variant_id=? ORDER BY is_graded,condition",
+        (user_id(), variant_id),
+    ).fetchall()
+    return jsonify([dict(row) for row in rows])
 
 
 @app.post("/api/watchlist")
@@ -1426,7 +1494,7 @@ def watchlist_cards(list_id):
     rows = db().execute(
         f"""SELECT v.id variant_id,v.finish,i.id identity_id,i.canonical_name,p.collector_number,p.language,
             p.rarity,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
-            COALESCE(c.quantity,0) quantity,nwe.created_at
+            COALESCE(SUM(c.quantity),0) quantity,nwe.created_at
             FROM named_watchlist_entries nwe JOIN variants v ON v.id=nwe.variant_id JOIN printings p ON p.id=v.printing_id
             JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
             LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? WHERE nwe.list_id=? GROUP BY v.id""", (user_id(),list_id)

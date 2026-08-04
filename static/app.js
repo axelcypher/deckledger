@@ -757,6 +757,65 @@ async function changeQuantity(variantId,delta,quick=false){
   if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
 }
 
+// Lives outside `state` on purpose -- it's transient UI state for the currently open modal,
+// not something that should survive navigation or be considered part of the app's data model.
+let advancedPanelExpanded=false;
+
+async function changeCollectionEntry(variantId,{condition='Near Mint',delta=0,quantity,isGraded=false,gradeLabel='',priceOverride}={}){
+  const payload={variant_id:variantId,condition,is_graded:isGraded,grade_label:gradeLabel};
+  if(quantity!==undefined)payload.quantity=quantity;else payload.delta=delta;
+  if(priceOverride!==undefined)payload.price_override=priceOverride;
+  await post('/api/collection',payload);
+  await refreshCurrentView();
+  if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
+}
+
+function advancedCollectionPanelHtml(entries){
+  const byCondition={}; entries.filter(e=>!e.is_graded).forEach(e=>byCondition[e.condition]=e);
+  const graded=entries.filter(e=>e.is_graded);
+  return `<div class="detail-section-title">MENGE NACH ZUSTAND</div>
+    <div class="condition-rows">${COLLECTION_CONDITIONS.map(c=>{const e=byCondition[c],qty=e?e.quantity:0;return `<div class="condition-row"><span>${escapeHtml(c)}</span><div class="controls"><button type="button" class="condition-qty-btn" data-condition="${escapeHtml(c)}" data-delta="-1" ${qty<=0?'disabled':''}>−</button><b>${qty}</b><button type="button" class="condition-qty-btn" data-condition="${escapeHtml(c)}" data-delta="1">＋</button></div></div>`}).join('')}</div>
+    <div class="detail-section-title">GEGRADETE EXEMPLARE</div>
+    <div class="graded-rows">${graded.length?graded.map(e=>`<div class="graded-row"><div class="graded-row-label"><b>${escapeHtml(e.grade_label)}</b><small>${escapeHtml(e.condition)}</small></div><div class="controls"><button type="button" class="graded-qty-btn" data-condition="${escapeHtml(e.condition)}" data-grade="${escapeHtml(e.grade_label)}" data-delta="-1">−</button><b>${e.quantity}</b><button type="button" class="graded-qty-btn" data-condition="${escapeHtml(e.condition)}" data-grade="${escapeHtml(e.grade_label)}" data-delta="1">＋</button></div><input type="number" step="0.01" class="graded-price-input select-control" data-condition="${escapeHtml(e.condition)}" data-grade="${escapeHtml(e.grade_label)}" value="${e.price_override??''}" placeholder="Preis-Override €"></div>`).join(''):'<p class="muted">Noch keine gegradeten Exemplare.</p>'}</div>
+    <button type="button" class="secondary-button" id="add-graded-toggle">+ Gegradetes Exemplar</button>
+    <div class="graded-add-form hidden" id="graded-add-form">
+      <input type="text" id="new-grade-label" placeholder="Grading, z.B. PSA 10">
+      <select id="new-grade-condition" class="select-control">${COLLECTION_CONDITIONS.map(c=>`<option value="${escapeHtml(c)}" ${c==='Near Mint'?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select>
+      <input type="number" id="new-grade-price" step="0.01" placeholder="Preis-Override €">
+      <button type="button" class="primary-button" id="add-graded-submit">Hinzufügen</button>
+    </div>`;
+}
+
+function wireAdvancedPanel(variantId){
+  $$('.condition-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta)}));
+  $$('.graded-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),isGraded:true,gradeLabel:b.dataset.grade}));
+  $$('.graded-price-input').forEach(input=>input.onchange=()=>changeCollectionEntry(variantId,{condition:input.dataset.condition,delta:0,isGraded:true,gradeLabel:input.dataset.grade,priceOverride:input.value===''?null:Number(input.value)}));
+  $('#add-graded-toggle').onclick=()=>$('#graded-add-form').classList.toggle('hidden');
+  $('#add-graded-submit').onclick=()=>{
+    const label=$('#new-grade-label').value.trim();
+    if(!label){toast('Bitte eine Grading-Bezeichnung eingeben');return}
+    const condition=$('#new-grade-condition').value, priceRaw=$('#new-grade-price').value;
+    changeCollectionEntry(variantId,{condition,delta:1,isGraded:true,gradeLabel:label,priceOverride:priceRaw===''?undefined:Number(priceRaw)});
+  };
+}
+
+async function loadAdvancedPanel(){
+  const panel=$('#advanced-panel'); if(!panel)return;
+  const variantId=state.modalVariant.id;
+  const entries=await api(`/api/collection/entries/${variantId}`);
+  panel.innerHTML=advancedCollectionPanelHtml(entries);
+  wireAdvancedPanel(variantId);
+}
+
+function toggleAdvancedPanel(){
+  advancedPanelExpanded=!advancedPanelExpanded;
+  const btn=$('#advanced-toggle');
+  btn.setAttribute('aria-expanded',String(advancedPanelExpanded));
+  btn.textContent=`Erweitert ${advancedPanelExpanded?'▴':'▾'}`;
+  $('#advanced-panel').classList.toggle('hidden',!advancedPanelExpanded);
+  if(advancedPanelExpanded)loadAdvancedPanel();
+}
+
 async function renderWatchlist(preserve=false){
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Watchlists werden geladen …</p></div>';
   const game=state.boot.games.find(g=>g.id===state.activeGameId), lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);state.activeWatchlists=lists;
@@ -887,6 +946,7 @@ const LORCANA_RARITY_FILTERS=[
 // codenames, not something a player recognizes -- show the card's own rarity instead. Silver is
 // Lorcana's standard foil finish and always reads as "Foil".
 const LORCANA_PLAIN_FINISHES=new Set(['Normal','Satin']);
+const COLLECTION_CONDITIONS=['Mint','Near Mint','Excellent','Good','Light Played','Played','Poor'];
 function lorcanaFinishLabel(finish,rarity){
   if(finish==='Silver')return 'Foil';
   if(LORCANA_PLAIN_FINISHES.has(finish))return finish;
@@ -1075,7 +1135,8 @@ async function createDeck(profile){const r=await post('/api/decks',{game_id:stat
 async function saveDeckMeta(name,format_id,notes){await api(`/api/decks/${state.deckId}`,{method:'PATCH',body:JSON.stringify({name,format_id,notes})});toast('Deck gespeichert');renderDeckbuilder(true)}
 
 async function openCard(identityId,variantId,refresh=false){
-  if(!refresh)openOverlay('card-modal'); $('#card-dialog').innerHTML='<div class="page-loader"><span></span><p>Kartendetails werden geladen …</p></div>';
+  if(!refresh){openOverlay('card-modal');advancedPanelExpanded=false}
+  $('#card-dialog').innerHTML='<div class="page-loader"><span></span><p>Kartendetails werden geladen …</p></div>';
   const card=await api(`/api/cards/${identityId}`); state.modalCard=card; state.modalVariant=card.variants.find(v=>v.id===variantId)||card.variants[0];state.activeWatchlists=await api(`/api/watchlists?game_id=${state.modalVariant.game_id}`); renderCardModal();
 }
 
@@ -1103,12 +1164,14 @@ function renderCardModal(){
   const qtyControls=$$('.modal-qty-btn',$('#card-dialog')); qtyControls.forEach(b=>b.onclick=()=>changeQuantity(v.id,Number(b.dataset.delta)));
   const watch=$('.modal-watch',$('#card-dialog')); if(watch)watch.onclick=async()=>{const listId=Number($('#modal-watchlist')?.value||state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur gewählten Watchlist hinzugefügt':'Von der gewählten Watchlist entfernt')};
   const refresh=$('#price-refresh',$('#card-dialog')); if(refresh)refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent='Preise werden geladen …';try{await post('/api/prices/sync',{});toast('Marktpreise aktualisiert');await openCard(card.id,v.id,true)}catch(error){toast(error.message||'Preisimport fehlgeschlagen');refresh.disabled=false;refresh.textContent='Preise aktualisieren'}};
+  const advancedToggle=$('#advanced-toggle',$('#card-dialog'));
+  if(advancedToggle){advancedToggle.onclick=toggleAdvancedPanel; if(advancedPanelExpanded)loadAdvancedPanel()}
 }
 
 function modalTabContent(card,v){
   const physicalVariants=card.variants.filter(x=>x.language===v.language);
   const modalIsLorcana=v.game_id==='lorcana';
-  if(state.modalTab==='collection')return `<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div><div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div></div><div class="detail-section"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b><small class="muted">${escapeHtml(v.condition||'Near Mint')}</small></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div></div><div class="detail-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Zustand</span><b>${escapeHtml(v.condition||'–')}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${v.price==null?'Kein Preis verfügbar':money(v.quantity*v.price)}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
+  if(state.modalTab==='collection')return `<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div><div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div></div><div class="detail-section"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
   if(state.modalTab==='market'){
     const original=nativePrice(v);
     const conversion=original?` · ${escapeHtml(original)} in ${escapeHtml(v.price_native_currency)} · EZB ${date(v.price_exchange_date)}`:'';
