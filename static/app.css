@@ -165,6 +165,7 @@ body.editing .edit-indicator { display:block; }
 .activity-card { display:flex;align-items:center;gap:13px;padding:15px 17px;border:1px solid var(--line);border-radius:14px;background:var(--surface); }
 .activity-icon { display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:#f0eeff;color:var(--brand);font-size:17px; }.activity-card b,.activity-card small{display:block}.activity-card b{font-size:12px}.activity-card small{margin-top:3px;color:var(--muted);font-size:10px;}
 .breadcrumbs { display:flex;align-items:center;gap:8px;margin-bottom:15px;color:var(--muted);font-size:11px; }.breadcrumbs button{padding:0;border:0;background:none;color:inherit;cursor:pointer}.breadcrumbs b{color:var(--ink)}
+.breadcrumb-back{display:grid;place-items:center;width:20px;height:20px;margin-right:2px;border-radius:6px;font-size:13px;color:var(--ink)!important}.breadcrumb-back:hover{background:var(--surface-2)}
 .game-banner { display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:16px 20px;border-radius:14px;color:#fff;background:linear-gradient(110deg,var(--accent),#141c31 75%); }
 .game-banner-symbol { display:grid;place-items:center;width:43px;height:43px;border:1px solid rgba(255,255,255,.2);border-radius:12px;background:rgba(255,255,255,.1);font:800 20px "Manrope"; }
 .game-banner h1 { margin:0 0 2px;font-size:21px; }.game-banner p{margin:0;color:rgba(255,255,255,.6);font-size:10px}.game-banner .banner-value{margin-left:auto;text-align:right}.banner-value b,.banner-value span{display:block}.banner-value b{font:800 18px "Manrope"}.banner-value span{font-size:8px;color:rgba(255,255,255,.55)}
@@ -199,6 +200,8 @@ body.editing .edit-indicator { display:block; }
 .card-filter-end{margin-left:auto}
 .set-switch-trigger{white-space:nowrap}
 .set-switch-popup{width:260px;max-height:60vh;overflow-y:auto}
+.toolbar-filter-popup.align-left{left:0;right:auto}
+.rarity-popup{flex-direction:row!important;flex-wrap:nowrap;width:max-content;gap:6px}
 .set-switch-option{padding:8px 10px;border:0;border-radius:7px;background:transparent;color:var(--ink);font-size:10px;text-align:left;cursor:pointer;white-space:nowrap}
 .set-switch-option:hover{background:var(--surface-2)}
 .set-switch-option.active{background:var(--brand);color:#fff}
@@ -241,12 +244,10 @@ body.editing .edit-indicator { display:block; }
 .card-info { padding:10px 2px 0; }.card-info b{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px}.card-subline{display:flex;margin-top:3px;color:var(--muted);font-size:9px}.card-subline span:last-child{margin-left:auto}.variant-chips{display:flex;gap:3px;margin-top:6px;overflow:hidden}.variant-chip{padding:3px 5px;border-radius:4px;background:#edeaff;color:#6055d9;font-size:8px;font-weight:800;text-transform:uppercase}
 .quick-add,.quantity-control { position:absolute;left:50%;bottom:9px;transform:translateX(-50%);z-index:3;display:none;align-items:center;border-radius:8px;background:rgba(10,16,29,.91);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.25);overflow:hidden; }
 .quantity-control button{width:31px;height:30px;border:0;background:transparent;color:#fff;cursor:pointer;font-size:17px}.quantity-control b{display:grid;place-items:center;min-width:30px;height:30px;border-inline:1px solid rgba(255,255,255,.14);font-size:11px}
-body.editing .card-tile:not(.complex) .quantity-control{display:flex}.quick-mode .quick-add{display:flex;padding:8px 13px;border:0;cursor:pointer;font-size:10px;font-weight:800}.quick-mode .quantity-control{display:none!important}.quick-mode .card-image-wrap{outline:2px solid #f7b947;outline-offset:2px}
+body.editing .card-tile:not(.complex) .quantity-control{display:flex}
 .quantity-stack,.quick-add-stack { position:absolute;left:50%;bottom:9px;transform:translateX(-50%);z-index:3;display:none;flex-direction:column;align-items:center;gap:3px; }
 body.editing .card-tile:not(.complex) .quantity-stack{display:flex}
 .quantity-stack .quantity-control,.quick-add-stack .quick-add { position:static;left:auto;bottom:auto;transform:none;display:flex; }
-.quick-mode .quick-add-stack{display:flex}
-.quick-mode .quantity-stack{display:none!important}
 .quantity-control.foil,.quick-add.foil { background:linear-gradient(120deg,#7a4e0e,#f7d67a 42%,#a8721c 58%,#ffe9ab);color:#3a2604;box-shadow:0 0 0 1px rgba(255,224,140,.6) inset,0 4px 12px rgba(168,114,28,.35); }
 .quantity-control.foil button,.quantity-control.foil b { color:#3a2604; }
 .quantity-control.foil b { border-inline-color:rgba(58,38,4,.22); }

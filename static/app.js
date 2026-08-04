@@ -1,6 +1,6 @@
 const state = {
   boot: null, route: 'dashboard', game: null, set: null, cards: [],
-  edit: false, quick: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
+  edit: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
   filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
   activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135,
   collapsedSetGroups: {},
@@ -557,21 +557,19 @@ async function renderSet(setId, preserve=false){
   const isLorcana=game.id==='lorcana';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
   content.innerHTML=`
-    <div class="card-view-navigation"><button class="secondary-button" id="cards-back">← Zurück zur Setübersicht</button></div>
     <section class="set-compact-head">
-      <div class="set-compact-title"><div class="breadcrumbs"><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1><span>${escapeHtml(s.code)}</span>${escapeHtml(s.name)} <small>${releaseDate(s)} · ${s.printed_card_count} Karten</small></h1></div>
+      <div class="set-compact-title"><div class="breadcrumbs"><button class="breadcrumb-back" id="cards-back" title="Zurück zur Setübersicht" aria-label="Zurück zur Setübersicht">←</button><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1><span>${escapeHtml(s.code)}</span>${escapeHtml(s.name)} <small>${releaseDate(s)} · ${s.printed_card_count} Karten</small></h1></div>
       <div class="compact-badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div>
       <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${st.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${st.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${st.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${st.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${st.owned} / ${st.missing}</b></div><div class="compact-stat value"><span>Setwert</span><b>${money(st.value)}</b></div></div>
     </section>
     <div class="card-toolbar-sticky">
       <div class="card-toolbar">
-        <div class="segmented" id="owned-filter"><button data-mode="all" class="${state.filter==='all'?'active':''}">Alle</button><button data-mode="owned" class="${state.filter==='owned'?'active':''}">Im Besitz</button><button data-mode="missing" class="${state.filter==='missing'?'active':''}">Fehlend</button></div>
         ${isLorcana?'':`<select id="rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
         <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
       <div class="op-catalog-filterbar">
         ${setSwitcherPopup('set',setOptions,s.id,`${s.code} ${setAbbreviation(s.name)}`)}
-        ${isLorcana?lorcanaCardFilterBar(f):''}
+        ${isLorcana?lorcanaCardFilterBar(f,'set'):''}
         <div class="toolbar-filter-anchor card-filter-end">
           <button type="button" class="secondary-button" data-filter-toggle="set-view-popup" aria-expanded="false">Ansicht ▾</button>
           <div class="toolbar-filter-popup hidden" id="set-view-popup">
@@ -582,13 +580,12 @@ async function renderSet(setId, preserve=false){
         </div>
       </div>
     </div>
-    <section class="card-grid ${state.quick?'quick-mode':''}" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(card=>cardTile(card,foilDisplayActive)).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
+    <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(card=>cardTile(card,foilDisplayActive)).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
   $('#sort-filter').value=state.sort;
   $('[data-dashboard]').onclick=()=>routeTo('dashboard'); $('[data-game-back]').onclick=()=>routeTo('game',game.id);
   $('#cards-back').onclick=()=>routeTo('game',game.id);
   $$('[data-set-switch]').forEach(b=>b.onclick=()=>{const val=b.dataset.setSwitch;val==='__all__'?routeTo('game-cards',game.id):routeTo('set',val)});
   bindCardEvents();
-  $$('#owned-filter button').forEach(b=>b.onclick=()=>{state.filter=b.dataset.mode;renderSet(setId,true)});
   $('#language-filter').onchange=e=>{state.language=e.target.value;f.rarity='';renderSet(setId,true)};
   $('#rarity-filter')?.addEventListener('change',e=>{f.rarity=e.target.value;renderSet(setId,true)});
   $('#sort-filter').onchange=e=>{state.sort=e.target.value;renderSet(setId,true);post('/api/settings',{[`sort_${game.id}`]:state.sort})};
@@ -609,21 +606,19 @@ async function renderAllCards(gameId,preserve=false){
   const isLorcana=game.id==='lorcana';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
   content.innerHTML=`
-    <div class="card-view-navigation"><button class="secondary-button" id="cards-back">← Zurück zur Setübersicht</button></div>
     <section class="set-compact-head all-cards-head">
-      <div class="set-compact-title"><div class="breadcrumbs"><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1>Alle Karten <small>${stats.total} Karten in ${data.groups.length} Sets</small></h1></div>
+      <div class="set-compact-title"><div class="breadcrumbs"><button class="breadcrumb-back" id="cards-back" title="Zurück zur Setübersicht" aria-label="Zurück zur Setübersicht">←</button><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1>Alle Karten <small>${stats.total} Karten in ${data.groups.length} Sets</small></h1></div>
       <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${stats.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${stats.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${stats.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${stats.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${stats.owned} / ${stats.missing}</b></div><div class="compact-stat value"><span>Gesamtwert</span><b>${money(stats.value)}</b></div></div>
     </section>
     <div class="card-toolbar-sticky">
       <div class="card-toolbar browser-toolbar">
         <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
-        <div class="segmented" id="all-owned-filter"><button data-mode="all" class="${state.filter==='all'?'active':''}">Alle</button><button data-mode="owned" class="${state.filter==='owned'?'active':''}">Im Besitz</button><button data-mode="missing" class="${state.filter==='missing'?'active':''}">Fehlend</button></div>
         ${isLorcana?'':`<select id="all-rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
         <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
       <div class="op-catalog-filterbar">
         ${setSwitcherPopup('all',setOptions,'__all__','Alle Karten')}
-        ${isLorcana?lorcanaCardFilterBar(f):''}
+        ${isLorcana?lorcanaCardFilterBar(f,'all'):''}
         <div class="toolbar-filter-anchor card-filter-end">
           <button type="button" class="secondary-button" data-filter-toggle="all-view-popup" aria-expanded="false">Ansicht ▾</button>
           <div class="toolbar-filter-popup hidden" id="all-view-popup">
@@ -639,7 +634,6 @@ async function renderAllCards(gameId,preserve=false){
   $('#all-sort-filter').value=state.sort;$('#all-set-order').value=state.setDirection;bindCardEvents();
   $('[data-dashboard]').onclick=()=>routeTo('dashboard');$('[data-game-back]').onclick=()=>routeTo('game',gameId);$('#cards-back').onclick=()=>routeTo('game',gameId);
   $$('[data-set-switch]').forEach(b=>b.onclick=()=>{const val=b.dataset.setSwitch;val==='__all__'?renderAllCards(gameId,true):routeTo('set',val)});
-  $$('#all-owned-filter button').forEach(button=>button.onclick=()=>{state.filter=button.dataset.mode;renderAllCards(gameId,true)});
   $('#all-language-filter').onchange=event=>{state.language=event.target.value;f.rarity='';renderAllCards(gameId,true)};
   $('#all-rarity-filter')?.addEventListener('change',event=>{f.rarity=event.target.value;renderAllCards(gameId,true)});
   $('#all-sort-filter').onchange=event=>{state.sort=event.target.value;renderAllCards(gameId,true);post('/api/settings',{[`sort_${game.id}`]:state.sort})};
@@ -954,11 +948,21 @@ function lorcanaFinishLabel(finish,rarity){
   if(LORCANA_PLAIN_FINISHES.has(finish))return finish;
   return rarity||finish;
 }
-function lorcanaCardFilterBar(filters){
+function lorcanaRarityPopup(filters,prefix){
+  const active=(key,value)=>(filters[key]||[]).includes(String(value));
+  const popupId=`${prefix}-rarity-popup`;
+  return `<div class="toolbar-filter-anchor">
+    <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
+    <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
+      ${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" data-card-filter="rarities" data-value="${key}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}
+    </div>
+  </div>`;
+}
+function lorcanaCardFilterBar(filters,prefix){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
-    <div class="op-filter-group op-rarities"><span>Seltenheit</span><div>${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" data-card-filter="rarities" data-value="${key}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}</div></div>
-    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:13},(_,cost)=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost}</span></button>`).join('')}</div></div>
+    ${lorcanaRarityPopup(filters,prefix)}
+    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:12},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost}</span></button>`).join('')}</div></div>
     <div class="op-filter-group lorcana-inks"><span>Tintenfarbe</span><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-card-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
     <div class="op-filter-group lorcana-inkability"><span>Tintbarkeit</span><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-card-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-card-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
 }
@@ -973,7 +977,7 @@ function setSwitcherPopup(prefix,setOptions,currentSetId,currentLabel){
   const popupId=`${prefix}-set-popup`;
   return `<div class="toolbar-filter-anchor">
     <button type="button" class="secondary-button set-switch-trigger" data-filter-toggle="${popupId}" aria-expanded="false">${escapeHtml(currentLabel)} ▾</button>
-    <div class="toolbar-filter-popup set-switch-popup hidden" id="${popupId}">
+    <div class="toolbar-filter-popup align-left set-switch-popup hidden" id="${popupId}">
       <button type="button" class="set-switch-option ${currentSetId==='__all__'?'active':''}" data-set-switch="__all__">Alle Karten</button>
       ${setOptions.map(item=>`<button type="button" class="set-switch-option ${item.id===currentSetId?'active':''}" data-set-switch="${item.id}">${escapeHtml(item.code)} · ${escapeHtml(item.name)}</button>`).join('')}
     </div>
@@ -988,7 +992,7 @@ function deckFilterPills(items,key,filters){
 function lorcanaFilterPanel(filters){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${deckFilterPills(LORCANA_TYPE_FILTERS,'types',filters)}</div></div>
-    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:13},(_,cost)=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-deck-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost}</span></button>`).join('')}</div></div>
+    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:12},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-deck-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost}</span></button>`).join('')}</div></div>
     <div class="op-filter-group lorcana-inks"><span>Tintenfarbe</span><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-deck-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
     <div class="op-filter-group lorcana-inkability"><span>Tintbarkeit</span><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
 }
@@ -1278,7 +1282,6 @@ function wireGlobalEvents(){
   $('#back-to-top').onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
   $('#global-game-filter').onchange=e=>{setActiveGame(e.target.value);refreshWatchCount();if(['collection','watchlist','decks'].includes(state.route))routeTo(state.route);else routeTo('game',e.target.value)};
   $('#edit-toggle').onclick=()=>{state.edit=!state.edit;document.body.classList.toggle('editing',state.edit);$('#edit-panel').classList.toggle('on',state.edit);$('#edit-toggle').setAttribute('aria-checked',String(state.edit));toast(state.edit?'Edit Mode aktiviert':'Edit Mode beendet')};
-  $('#quick-toggle').onclick=()=>{state.quick=!state.quick;if(state.quick&&!state.edit){state.edit=true;document.body.classList.add('editing');$('#edit-panel').classList.add('on');$('#edit-toggle').setAttribute('aria-checked','true')}$('#quick-toggle').classList.toggle('active',state.quick);if(state.route==='set')renderSet(state.set.id,true);toast(state.quick?'Quick Entry aktiv: Klick fügt eine Karte hinzu.':'Quick Entry beendet')};
   const searchOpen=()=>{openOverlay('search-overlay');setTimeout(()=>$('#global-search-input').focus(),50)}; $('#global-search-open').onclick=searchOpen;
   document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen()}if(e.key==='Escape')$$('.overlay:not(.hidden)').forEach(x=>closeOverlay(x.id));if(state.modalCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){const btn=e.key==='ArrowLeft'?'[data-card-nav="-1"]':e.key==='ArrowRight'?'[data-card-nav="1"]':e.key==='ArrowUp'?'[data-variant-nav="-1"]':'[data-variant-nav="1"]';$(btn,$('#card-dialog'))?.click()}});
   let searchTimer;$('#global-search-input').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>doSearch(e.target.value),220)};
