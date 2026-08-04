@@ -322,7 +322,7 @@ body.dark { background:radial-gradient(circle at 78% -8%,rgba(76,99,132,.075),tr
 .dark a { color:var(--brand-2); }
 
 /* New brand mark */
-.brand { min-height:44px;gap:10px;padding:0 43px 25px 7px; }
+.brand { min-height:44px;gap:10px;padding:0 10px 25px 7px; }
 .brand-symbol { flex:0 0 38px;width:38px;height:38px;overflow:visible; }
 .brand-symbol :is(.brand-card-back,.brand-card-front,.brand-card-line) { fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round; }
 .brand-card-back { opacity:.34;stroke-width:1.35; }
@@ -332,9 +332,10 @@ body.dark { background:radial-gradient(circle at 78% -8%,rgba(76,99,132,.075),tr
 .brand-word { display:flex;align-items:baseline;gap:3px;font:700 14px/1 "Manrope",sans-serif;letter-spacing:.13em; }
 .brand-word b { color:#f2f5fa;font-weight:800; }
 .brand-word span { color:var(--brand);font-weight:600; }
-.sidebar-collapse { right:8px;top:30px;width:23px;height:23px;border:0;border-radius:7px;background:#1b2027;color:#b5bfcd;box-shadow:none; }
+.sidebar-collapse { right:-13px;top:50%;width:23px;height:23px;border:0;border-radius:50%;background:#1b2027;color:#b5bfcd;box-shadow:0 2px 8px rgba(0,0,0,.35);transform:translateY(-50%); }
 .sidebar-collapse:hover { background:#242b34;color:#fff; }
-body.sidebar-collapsed .brand { padding:0 29px 25px 0; }
+body.sidebar-collapsed .sidebar-collapse { transform:translateY(-50%) rotate(180deg); }
+body.sidebar-collapsed .brand { padding:0 0 25px 0; }
 body.sidebar-collapsed .brand-symbol { width:36px;height:36px;flex-basis:36px; }
 body.sidebar-collapsed .brand>.brand-word { display:none; }
 
@@ -677,7 +678,7 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 
 @media(max-width:760px) {
   .sidebar,body.sidebar-collapsed .sidebar { box-shadow:18px 0 50px rgba(0,0,0,.55); }
-  body.sidebar-collapsed .brand { padding:0 43px 25px 7px; }
+  body.sidebar-collapsed .brand { padding:0 10px 25px 7px; }
   body.sidebar-collapsed .brand>.brand-word { display:flex; }
   .game-logo { width:min(230px,72%); }
   .set-brand-logo { width:100%; }
