@@ -1164,7 +1164,17 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
         selected_ranks = {LORCANA_RARITY_KEYS[key] for key in rarities if key in LORCANA_RARITY_KEYS}
         cards = [card for card in cards if rarity_rank(game_id, card["rarity"]) in selected_ranks]
     if costs:
-        cards = [card for card in cards if str(card["identity_attrs"].get("cost")) in costs]
+        def cost_matches(card_cost):
+            if card_cost is None:
+                return False
+            for value in costs:
+                if value == "7":
+                    if card_cost >= 7:
+                        return True
+                elif str(card_cost) == value:
+                    return True
+            return False
+        cards = [card for card in cards if cost_matches(card["identity_attrs"].get("cost"))]
     if colors:
         cards = [card for card in cards if any(part in (card["identity_attrs"].get("color") or "").split("-") for part in colors)]
     if inkwell in ("true", "false"):
@@ -1625,8 +1635,15 @@ def deck_catalog():
         )+")")
         values.extend(selected_colors)
     if selected_costs:
-        filters.append(f"CAST(json_extract(i.attributes,'$.cost') AS INTEGER) IN ({','.join('?' for _ in selected_costs)})")
-        values.extend(selected_costs)
+        cost_expr = "CAST(json_extract(i.attributes,'$.cost') AS INTEGER)"
+        cost_clauses = []
+        for value in selected_costs:
+            if value == "7":
+                cost_clauses.append(f"{cost_expr}>=7")
+            else:
+                cost_clauses.append(f"{cost_expr}=?")
+                values.append(value)
+        filters.append("(" + " OR ".join(cost_clauses) + ")")
     if selected_attributes:
         filters.append("("+" OR ".join(
             "instr('/'||COALESCE(json_extract(i.attributes,'$.attribute'),'')||'/', '/'||?||'/')>0"
