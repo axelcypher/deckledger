@@ -554,7 +554,7 @@ async function renderSet(setId, preserve=false){
   const s=data.set, st=data.stats; const game=state.boot.games.find(g=>g.id===s.game_id); state.game=game;
   const availableSets=game.sets||await api(`/api/games/${game.id}/sets`);game.sets=availableSets;
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
-  const isLorcana=game.id==='lorcana';
+  const isLorcana=game.id==='lorcana',isOnePiece=game.id==='one-piece',isHololive=game.id==='hololive';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
   content.innerHTML=`
     <section class="set-compact-head">
@@ -564,12 +564,12 @@ async function renderSet(setId, preserve=false){
     </section>
     <div class="card-toolbar-sticky">
       <div class="card-toolbar">
-        ${isLorcana?'':`<select id="rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
+        ${isLorcana||isOnePiece||isHololive?'':`<select id="rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
         <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
       <div class="op-catalog-filterbar">
         ${setSwitcherPopup('set',setOptions,s.id,`${s.code} ${setAbbreviation(s.name)}`)}
-        ${isLorcana?lorcanaCardFilterBar(f,'set'):''}
+        ${isLorcana?lorcanaCardFilterBar(f,'set'):isOnePiece?opCardFilterBar(f,'set',data.rarities):isHololive?hololiveCardFilterBar(f,'set',data.rarities):''}
         <div class="toolbar-filter-anchor card-filter-end">
           <button type="button" class="secondary-button" data-filter-toggle="set-view-popup" aria-expanded="false">Ansicht ▾</button>
           <div class="toolbar-filter-popup hidden" id="set-view-popup">
@@ -603,7 +603,7 @@ async function renderAllCards(gameId,preserve=false){
   const [data,availableSets]=await Promise.all([api(`/api/games/${gameId}/cards?${params}`),game.sets?Promise.resolve(game.sets):api(`/api/games/${gameId}/sets`)]);game.sets=availableSets;state.game=game;state.cards=data.groups.flatMap(group=>group.cards);
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
   const stats=data.stats;
-  const isLorcana=game.id==='lorcana';
+  const isLorcana=game.id==='lorcana',isOnePiece=game.id==='one-piece',isHololive=game.id==='hololive';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
   content.innerHTML=`
     <section class="set-compact-head all-cards-head">
@@ -613,12 +613,12 @@ async function renderAllCards(gameId,preserve=false){
     <div class="card-toolbar-sticky">
       <div class="card-toolbar browser-toolbar">
         <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
-        ${isLorcana?'':`<select id="all-rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
+        ${isLorcana||isOnePiece||isHololive?'':`<select id="all-rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
         <div class="toolbar-spacer"></div><div class="zoom-control"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
       <div class="op-catalog-filterbar">
         ${setSwitcherPopup('all',setOptions,'__all__','Alle Karten')}
-        ${isLorcana?lorcanaCardFilterBar(f,'all'):''}
+        ${isLorcana?lorcanaCardFilterBar(f,'all'):isOnePiece?opCardFilterBar(f,'all',data.rarities):isHololive?hololiveCardFilterBar(f,'all',data.rarities):''}
         <div class="toolbar-filter-anchor card-filter-end">
           <button type="button" class="secondary-button" data-filter-toggle="all-view-popup" aria-expanded="false">Ansicht ▾</button>
           <div class="toolbar-filter-popup hidden" id="all-view-popup">
@@ -969,6 +969,29 @@ function lorcanaCardFilterBar(filters,prefix){
 function lorcanaAnsichtExtras(filters){
   return `<label>Ausführung<div class="segmented"><button type="button" data-card-mode="finish" data-value="normal" class="${filters.finish==='normal'?'active':''}">Normal</button><button type="button" data-card-mode="finish" data-value="foil" class="${filters.finish==='foil'?'active':''}">Foil</button></div></label>
     <label>Foil-Besitz<div class="segmented"><button type="button" data-card-mode="foilMode" data-value="" class="${filters.foilMode===''?'active':''}">Alle</button><button type="button" data-card-mode="foilMode" data-value="owned" class="${filters.foilMode==='owned'?'active':''}">Im Besitz</button><button type="button" data-card-mode="foilMode" data-value="missing" class="${filters.foilMode==='missing'?'active':''}">Fehlend</button></div></label>`;
+}
+function gameRarityPopup(rarityOptions,filters,prefix){
+  const popupId=`${prefix}-rarity-popup`;
+  return `<div class="toolbar-filter-anchor">
+    <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
+    <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
+      ${rarityOptions.map(r=>`<button type="button" class="op-filter-chip ${filters.rarity===r?'active':''}" data-card-single-filter="rarity" data-value="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')}
+    </div>
+  </div>`;
+}
+function opCardFilterBar(filters,prefix,rarityOptions){
+  const active=(key,value)=>(filters[key]||[]).includes(String(value));
+  return `
+    ${gameRarityPopup(rarityOptions,filters,prefix)}
+    <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-image-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=2" alt="${cost}"></button>`).join('')}</div></div>
+    <div class="op-filter-group op-colors"><span>Farbe</span><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+}
+const HOLOLIVE_COLOR_FILTERS=[['White','#c9ccd1'],['Green','#168b64'],['Red','#c42536'],['Blue','#297eb5'],['Purple','#9749a3'],['Yellow','#e6d93b']];
+function hololiveCardFilterBar(filters,prefix,rarityOptions){
+  const active=(key,value)=>(filters[key]||[]).includes(String(value));
+  return `
+    ${gameRarityPopup(rarityOptions,filters,prefix)}
+    <div class="op-filter-group op-colors"><span>Farbe</span><div>${HOLOLIVE_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
 }
 function setAbbreviation(name){
   return name.replace(/[^\p{L}\s]/gu,'').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').toUpperCase();

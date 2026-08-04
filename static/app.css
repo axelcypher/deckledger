@@ -228,7 +228,7 @@ body.editing .edit-indicator { display:block; }
 @keyframes auroraFacet{to{transform:rotate(360deg)}}
 .owned-pill,.watch-button{z-index:4}
 .card-tile.missing .card-image-wrap img:not(.cycle-img) { filter:grayscale(.78);opacity:.46; }.card-tile.missing:hover .card-image-wrap img:not(.cycle-img){filter:grayscale(.25);opacity:.75}
-.card-tile.missing .cycle-img{filter:grayscale(.78);}.card-tile.missing:hover .cycle-img{filter:grayscale(.25);}
+.card-tile.missing .cycle-img.front{filter:grayscale(.78);opacity:.46;}.card-tile.missing .cycle-img.back{filter:grayscale(.78);}.card-tile.missing:hover .cycle-img.front{filter:grayscale(.25);opacity:.75;}.card-tile.missing:hover .cycle-img.back{filter:grayscale(.25);}
 .owned-pill { position:absolute;right:.7em;top:.7em;display:grid;place-items:center;min-width:2.4em;height:2.4em;padding:0 .6em;border-radius:2em;background:rgba(10,16,29,.87);color:#fff;font-size:1em;font-weight:800;backdrop-filter:blur(5px); }
 .variant-badges { position:absolute;right:.7em;top:.7em;z-index:4;display:flex;flex-direction:column;align-items:flex-end;gap:.3em; }
 .variant-badges:empty { display:none; }
@@ -244,9 +244,9 @@ body.editing .edit-indicator { display:block; }
 .card-info { padding:10px 2px 0; }.card-info b{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px}.card-subline{display:flex;margin-top:3px;color:var(--muted);font-size:9px}.card-subline span:last-child{margin-left:auto}.variant-chips{display:flex;gap:3px;margin-top:6px;overflow:hidden}.variant-chip{padding:3px 5px;border-radius:4px;background:#edeaff;color:#6055d9;font-size:8px;font-weight:800;text-transform:uppercase}
 .quick-add,.quantity-control { position:absolute;left:50%;bottom:9px;transform:translateX(-50%);z-index:3;display:none;align-items:center;border-radius:8px;background:rgba(10,16,29,.91);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.25);overflow:hidden; }
 .quantity-control button{width:31px;height:30px;border:0;background:transparent;color:#fff;cursor:pointer;font-size:17px}.quantity-control b{display:grid;place-items:center;min-width:30px;height:30px;border-inline:1px solid rgba(255,255,255,.14);font-size:11px}
-body.editing .card-tile:not(.complex) .quantity-control{display:flex}
+body.editing .card-tile .quantity-control{display:flex}
 .quantity-stack,.quick-add-stack { position:absolute;left:50%;bottom:9px;transform:translateX(-50%);z-index:3;display:none;flex-direction:column;align-items:center;gap:3px; }
-body.editing .card-tile:not(.complex) .quantity-stack{display:flex}
+body.editing .card-tile .quantity-stack{display:flex}
 .quantity-stack .quantity-control,.quick-add-stack .quick-add { position:static;left:auto;bottom:auto;transform:none;display:flex; }
 .quantity-control.foil,.quick-add.foil { background:linear-gradient(120deg,#7a4e0e,#f7d67a 42%,#a8721c 58%,#ffe9ab);color:#3a2604;box-shadow:0 0 0 1px rgba(255,224,140,.6) inset,0 4px 12px rgba(168,114,28,.35); }
 .quantity-control.foil button,.quantity-control.foil b { color:#3a2604; }
