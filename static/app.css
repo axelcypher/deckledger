@@ -214,7 +214,8 @@ body.editing .edit-indicator { display:block; }
 .card-finish-frame{position:relative;isolation:isolate;overflow:hidden}
 .card-finish-frame>img{position:relative;z-index:0}
 .card-finish-frame.finish-foil:after,.card-finish-frame.finish-prismatic:after,.card-finish-frame.finish-prismatic:before,.card-finish-frame.finish-aurora:after,.card-finish-frame.finish-aurora:before{content:"";position:absolute;pointer-events:none;z-index:1}
-.card-finish-frame.finish-foil:after{inset:0;background:linear-gradient(112deg,transparent 0%,rgba(84,205,255,.3) 20%,rgba(141,113,255,.34) 35%,rgba(255,255,255,.4) 50%,rgba(255,225,111,.3) 65%,rgba(86,244,205,.32) 80%,transparent 100%);background-size:260% 260%;mix-blend-mode:screen;opacity:.75;animation:foilSweep 5.5s ease-in-out infinite alternate}
+.card-finish-frame.finish-foil:after{inset:0;background:linear-gradient(112deg,transparent 0%,rgba(84,205,255,.48) 20%,rgba(141,113,255,.54) 35%,rgba(255,255,255,.62) 50%,rgba(255,225,111,.48) 65%,rgba(86,244,205,.5) 80%,transparent 100%);background-size:260% 260%;mix-blend-mode:screen;opacity:.9;animation:foilSweep 5.5s ease-in-out infinite alternate}
+.card-finish-frame.finish-foil:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;background:linear-gradient(112deg,rgba(20,10,40,.16) 0%,transparent 25%,transparent 75%,rgba(20,10,40,.16) 100%);background-size:260% 260%;mix-blend-mode:multiply;opacity:.7;animation:foilSweep 5.5s ease-in-out infinite alternate}
 .card-finish-frame.finish-prismatic:after{inset:0;background:conic-gradient(from 30deg at 50% 50%,rgba(86,210,255,.1) 0%,rgba(136,104,255,.12) 25%,rgba(255,97,190,.11) 50%,rgba(255,218,105,.1) 75%,rgba(86,210,255,.1) 100%);background-size:180% 180%;mix-blend-mode:screen;opacity:.45;animation:prismDrift 10s ease-in-out infinite alternate}
 .card-finish-frame.finish-prismatic:before{inset:0;background:repeating-linear-gradient(128deg,transparent 0 27px,rgba(255,255,255,.06) 29px,transparent 32px 55px);mix-blend-mode:soft-light;opacity:.3;animation:prismLines 6s linear infinite}
 .card-finish-frame.finish-aurora:after{inset:0;background:radial-gradient(ellipse at 18% 22%,rgba(91,225,255,.22),transparent 32%),radial-gradient(ellipse at 78% 30%,rgba(255,91,209,.2),transparent 34%),radial-gradient(ellipse at 58% 82%,rgba(121,255,174,.18),transparent 38%),radial-gradient(ellipse at 22% 77%,rgba(255,218,103,.14),transparent 33%);background-size:170% 170%;mix-blend-mode:screen;opacity:.55;animation:auroraBloom 8s ease-in-out infinite alternate}
@@ -697,6 +698,6 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 }
 
 @media(prefers-reduced-motion:reduce) {
-  .card-finish-frame.finish-foil:after,.card-finish-frame.finish-prismatic:after,.card-finish-frame.finish-prismatic:before,.card-finish-frame.finish-aurora:after,.card-finish-frame.finish-aurora:before { animation:none; }
+  .card-finish-frame.finish-foil:after,.card-finish-frame.finish-foil:before,.card-finish-frame.finish-prismatic:after,.card-finish-frame.finish-prismatic:before,.card-finish-frame.finish-aurora:after,.card-finish-frame.finish-aurora:before { animation:none; }
   .deck-image-preview { transition:none; }
 }
