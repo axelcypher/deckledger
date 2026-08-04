@@ -195,8 +195,13 @@ body.editing .edit-indicator { display:block; }
 .card-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card-size,155px),1fr));gap:var(--card-gap,17px);align-items:start; }
 .all-card-groups{display:flex;flex-direction:column;gap:42px}.all-card-set{scroll-margin-top:92px}.set-card-divider{display:flex;align-items:center;gap:13px;margin:0 0 18px;padding:9px 2px 11px;border-bottom:1px solid var(--line)}.set-card-divider img{width:66px;height:34px;object-fit:contain;object-position:center}.set-card-divider div{min-width:0}.set-card-divider span,.set-card-divider h2{display:inline}.set-card-divider span{margin-right:8px;color:var(--brand-2);font-size:9px;font-weight:800;letter-spacing:.08em}.set-card-divider h2{margin:0;font-size:15px}.set-card-divider small{margin-left:auto;color:var(--muted);font-size:9px;white-space:nowrap}
 .card-toolbar-sticky{position:sticky;top:82px;z-index:12;box-shadow:0 10px 26px rgba(0,0,0,.12);background:var(--surface)}
-.set-switch-inline{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}.set-switch-inline span{color:var(--muted);font-size:7px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}.set-switch-inline .select-control{min-width:170px}
+.card-toolbar-sticky .op-catalog-filterbar{overflow:visible;flex-wrap:wrap}
 .card-filter-end{margin-left:auto}
+.set-switch-trigger{white-space:nowrap}
+.set-switch-popup{width:260px;max-height:60vh;overflow-y:auto}
+.set-switch-option{padding:8px 10px;border:0;border-radius:7px;background:transparent;color:var(--ink);font-size:10px;text-align:left;cursor:pointer;white-space:nowrap}
+.set-switch-option:hover{background:var(--surface-2)}
+.set-switch-option.active{background:var(--brand);color:#fff}
 .back-to-top{position:fixed;right:28px;bottom:28px;width:46px;height:46px;border:0;border-radius:50%;background:var(--brand);color:#fff;font-size:18px;box-shadow:0 10px 24px rgba(0,0,0,.35);cursor:pointer;z-index:40;opacity:1;transition:opacity .2s,transform .2s}
 .back-to-top.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
 .card-tile { position:relative;min-width:0;cursor:pointer;font-size:calc(var(--card-size,155px) / 15.5); }

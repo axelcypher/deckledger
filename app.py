@@ -2408,6 +2408,14 @@ def set_wordmark(set_row):
 
 def public_set_visual(set_row) -> Path | None:
     """Return a server-provided set visual before consulting any fallback."""
+    # Lorcana's numbered-set logos live alongside its other icon assets now
+    # (set{code}-logo.png), not the shared per-game PUBLIC_SET_DIR -- checked first, falling
+    # through to the generic lookup below for anything not covered there (promo sets, or any
+    # numbered set that hasn't been added to that folder).
+    if set_row["game_id"] == "lorcana" and set_row["code"].isdigit():
+        candidate = PUBLIC_DIR / "icons" / "lorcana" / f"set{int(set_row['code']):02d}-logo.png"
+        if candidate.is_file():
+            return candidate
     stems = []
     for value in (set_row["id"], set_row["code"]):
         safe = re.sub(r"[^A-Za-z0-9_.-]", "-", value).strip("-.")
@@ -2478,14 +2486,21 @@ def op_filter_icon(name):
     return send_file(path, mimetype=mimetype, conditional=True, etag=True, max_age=0)
 
 
+# Explicit filenames rather than a pattern -- icon assets are hand-supplied (some svg, some
+# png, no consistent rule between them), so there's nothing regular to match against.
+LORCANA_FILTER_ICON_FILES = {
+    "amber.svg", "amethyst.svg", "emerald.svg", "ruby.svg", "sapphire.svg", "steel.svg",
+    "cost.png", "inkable.png", "uninkable.png",
+    "common.svg", "uncommon.svg", "rare.svg", "super_rare.svg", "legendary.svg",
+    "enchanted.png", "epic.png", "iconic.png", "promo.png",
+}
+
+
 @app.get("/lorcana-filter-icon/<name>")
 def lorcana_filter_icon(name):
-    if re.fullmatch(r"(?:amber|amethyst|emerald|ruby|sapphire|steel|cost|inkable)\.png", name):
-        mimetype = "image/png"
-    elif re.fullmatch(r"rarity-(?:common|uncommon|rare|super-rare|legendary|epic|enchanted|iconic|special)\.svg", name):
-        mimetype = "image/svg+xml"
-    else:
+    if name not in LORCANA_FILTER_ICON_FILES:
         return Response(status=404)
+    mimetype = "image/svg+xml" if name.endswith(".svg") else "image/png"
     path = PUBLIC_DIR / "icons" / "lorcana" / name
     if not path.is_file():
         return Response(status=404)
