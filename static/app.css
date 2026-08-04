@@ -196,7 +196,7 @@ body.editing .edit-indicator { display:block; }
 .card-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card-size,155px),1fr));gap:var(--card-gap,17px);align-items:start; }
 .all-card-groups{display:flex;flex-direction:column;gap:42px}.all-card-set{scroll-margin-top:92px}.set-card-divider{display:flex;align-items:center;gap:13px;margin:0 0 18px;padding:9px 2px 11px;border-bottom:1px solid var(--line)}.set-card-divider img{width:66px;height:34px;object-fit:contain;object-position:center}.set-card-divider div{min-width:0}.set-card-divider span,.set-card-divider h2{display:inline}.set-card-divider span{margin-right:8px;color:var(--brand-2);font-size:9px;font-weight:800;letter-spacing:.08em}.set-card-divider h2{margin:0;font-size:15px}.set-card-divider small{margin-left:auto;color:var(--muted);font-size:9px;white-space:nowrap}
 .card-toolbar-sticky{position:sticky;top:82px;z-index:12;box-shadow:0 10px 26px rgba(0,0,0,.12);background:var(--surface)}
-.card-toolbar-sticky .op-catalog-filterbar{overflow:visible;flex-wrap:wrap}
+.card-toolbar-sticky .op-catalog-filterbar{overflow:visible;flex-wrap:wrap;align-items:center}
 .card-filter-end{margin-left:auto}
 .set-switch-trigger{white-space:nowrap}
 .set-switch-popup{width:260px;max-height:60vh;overflow-y:auto}

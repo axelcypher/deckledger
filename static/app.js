@@ -958,9 +958,9 @@ function lorcanaCardFilterBar(filters,prefix){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
     ${lorcanaRarityPopup(filters,prefix)}
-    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost===7?'7+':cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inks"><span>Tintenfarbe</span><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-card-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inkability"><span>Tintbarkeit</span><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-card-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-card-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
+    <div class="op-filter-group game-costs"><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost===7?'7+':cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inks"><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-card-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inkability"><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-card-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-card-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
 }
 function lorcanaAnsichtExtras(filters){
   return `<label>Ausführung<div class="segmented"><button type="button" data-card-mode="finish" data-value="normal" class="${filters.finish==='normal'?'active':''}">Normal</button><button type="button" data-card-mode="finish" data-value="foil" class="${filters.finish==='foil'?'active':''}">Foil</button></div></label>
@@ -979,15 +979,15 @@ function opCardFilterBar(filters,prefix,rarityOptions){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
     ${gameRarityPopup(rarityOptions,filters,prefix)}
-    <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-image-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=2" alt="${cost}"></button>`).join('')}</div></div>
-    <div class="op-filter-group op-colors"><span>Farbe</span><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+    <div class="op-filter-group op-costs"><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-image-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=2" alt="${cost}"></button>`).join('')}</div></div>
+    <div class="op-filter-group op-colors"><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
 }
 const HOLOLIVE_COLOR_FILTERS=[['White','#c9ccd1'],['Green','#168b64'],['Red','#c42536'],['Blue','#297eb5'],['Purple','#9749a3'],['Yellow','#e6d93b']];
 function hololiveCardFilterBar(filters,prefix,rarityOptions){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
     ${gameRarityPopup(rarityOptions,filters,prefix)}
-    <div class="op-filter-group op-colors"><span>Farbe</span><div>${HOLOLIVE_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+    <div class="op-filter-group op-colors"><div>${HOLOLIVE_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
 }
 function setAbbreviation(name){
   return name.replace(/[^\p{L}\s]/gu,'').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').toUpperCase();
