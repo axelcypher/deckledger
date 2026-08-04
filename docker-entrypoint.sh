@@ -2,7 +2,7 @@
 set -eu
 
 python -c "import app"
-python catalog_sync.py --if-needed
+python catalog_sync.py --if-needed || echo "Katalogimport fehlgeschlagen; zuletzt gespeicherter Katalog bleibt aktiv." >&2
 python price_sync.py --if-needed || echo "Preisimport nicht erreichbar; letzte gültige Preise bleiben aktiv." >&2
 
 (while sleep 21600; do

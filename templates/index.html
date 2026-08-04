@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=62">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=77">
 </head>
 <body class="dark">
   <div id="app" class="app-shell">
@@ -29,11 +29,6 @@
         <button class="nav-item" data-route="watchlist"><span class="nav-icon">♡</span><span>Watchlists</span><span id="watch-count" class="count-badge">0</span></button>
         <button class="nav-item" data-route="decks"><span class="nav-icon">▱</span><span>Deckbuilder</span></button>
       </nav>
-      <div class="sidebar-label">WERKZEUGE</div>
-      <nav class="main-nav">
-        <button class="nav-item" id="import-open"><span class="nav-icon">⇩</span><span>Importieren</span></button>
-        <button class="nav-item" id="export-open"><span class="nav-icon">⇧</span><span>Exportieren</span></button>
-      </nav>
       <div class="sidebar-spacer"></div>
       <div id="edit-panel" class="edit-panel">
         <div><span class="status-dot"></span><strong>Edit Mode</strong></div>
@@ -41,9 +36,13 @@
         <button id="edit-toggle" class="switch" role="switch" aria-checked="false"><span></span></button>
       </div>
       <div class="user-menu">
-        <div id="user-avatar" class="avatar">AM</div>
-        <div><strong id="user-name">Alex Morgan</strong><small id="user-role">Sammler</small></div>
-        <button class="icon-button settings-gear" data-route="settings" title="Einstellungen">⚙</button>
+        <div id="user-popup" class="user-popup hidden" role="menu">
+          <button class="nav-item" data-route="settings" role="menuitem"><span class="nav-icon">⚙</span><span>Einstellungen</span></button>
+          <button class="nav-item" id="importexport-open" role="menuitem"><span class="nav-icon">⇅</span><span>Import / Export</span></button>
+          <button class="nav-item admin-only" data-route="admin" role="menuitem"><span class="nav-icon">⚙</span><span>Admin</span></button>
+        </div>
+        <button id="user-avatar" class="avatar" title="Menü öffnen" aria-haspopup="true" aria-expanded="false">AM</button>
+        <div class="user-menu-info"><strong id="user-name">Alex Morgan</strong><small id="user-role">Sammler</small></div>
         <form action="/logout" method="post"><button title="Abmelden">↗</button></form>
       </div>
     </aside>
@@ -72,23 +71,30 @@
 
   <div id="import-modal" class="overlay hidden">
     <div class="utility-dialog import-dialog">
-      <div class="dialog-head"><div><span class="eyebrow">SAMMLUNG ERWEITERN</span><h2>Listenimport</h2></div><button class="close-button" data-close="import-modal">×</button></div>
-      <div class="segmented import-mode-toggle"><button type="button" data-import-mode="text" class="active">Textliste</button><button type="button" data-import-mode="json">JSON-Backup</button></div>
-      <div id="import-text-fields">
-        <div class="import-form-grid">
-          <label>Spiel<select id="import-game"></select></label>
-          <label>Standardsprache<select id="import-language"><option>DE</option><option selected>EN</option><option>JP</option></select></label>
-          <label>Zustand<select id="import-condition"><option>Mint</option><option selected>Near Mint</option><option>Excellent</option><option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option></select></label>
+      <div class="dialog-head"><div><span class="eyebrow" id="importexport-eyebrow">SAMMLUNG ERWEITERN</span><h2 id="importexport-title">Listenimport</h2></div><button class="close-button" data-close="import-modal">×</button></div>
+      <div class="segmented importexport-toggle"><button type="button" data-ie-mode="import" class="active">Import</button><button type="button" data-ie-mode="export">Export</button></div>
+      <div id="importexport-import-section">
+        <div class="segmented import-mode-toggle"><button type="button" data-import-mode="text" class="active">Textliste</button><button type="button" data-import-mode="json">JSON-Backup</button></div>
+        <div id="import-text-fields">
+          <div class="import-form-grid">
+            <label>Spiel<select id="import-game"></select></label>
+            <label>Standardsprache<select id="import-language"><option>DE</option><option selected>EN</option><option>JP</option></select></label>
+            <label>Zustand<select id="import-condition"><option>Mint</option><option selected>Near Mint</option><option>Excellent</option><option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option></select></label>
+          </div>
+          <label class="import-text-label">Liste einfügen<textarea id="import-text" rows="7" placeholder="4 OP01016 EN&#10;2x OP01017 EN&#10;OP01018;1;EN;Parallel;Near Mint"></textarea></label>
+          <div class="format-help">Unterstützt: <code>4 OP01016 EN</code> oder <code>OP01016;4;EN;Parallel;NM</code></div>
         </div>
-        <label class="import-text-label">Liste einfügen<textarea id="import-text" rows="7" placeholder="4 OP01016 EN&#10;2x OP01017 EN&#10;OP01018;1;EN;Parallel;Near Mint"></textarea></label>
-        <div class="format-help">Unterstützt: <code>4 OP01016 EN</code> oder <code>OP01016;4;EN;Parallel;NM</code></div>
+        <div id="import-json-fields" class="hidden">
+          <label class="import-text-label">JSON-Datei wählen<input type="file" id="import-json-file" accept="application/json,.json"></label>
+          <div class="format-help">Stellt eine Sammlung aus einer zuvor mit <code>JSON Export</code> erzeugten Backup-Datei wieder her.<span id="import-json-filename" class="json-filename"></span></div>
+        </div>
+        <div id="import-preview" class="import-preview"></div>
+        <div class="dialog-actions"><label class="radio-label"><input type="radio" name="strategy" value="add" checked> Mengen addieren</label><label class="radio-label"><input type="radio" name="strategy" value="replace"> Ersetzen</label><span class="spacer"></span><button class="secondary-button" id="preview-import">Vorschau</button><button class="primary-button" id="apply-import" disabled>Import anwenden</button></div>
       </div>
-      <div id="import-json-fields" class="hidden">
-        <label class="import-text-label">JSON-Datei wählen<input type="file" id="import-json-file" accept="application/json,.json"></label>
-        <div class="format-help">Stellt eine Sammlung aus einer zuvor mit <code>JSON Export</code> erzeugten Backup-Datei wieder her.<span id="import-json-filename" class="json-filename"></span></div>
+      <div id="importexport-export-section" class="hidden">
+        <p class="muted">Lade deine vollständige Sammlung jederzeit in einem portablen Format herunter.</p>
+        <div class="export-options"><a href="/api/export.json" class="export-card"><span class="file-icon">{ }</span><div><b>JSON Export</b><small>Volle Datentreue für Backups</small></div><span>↓</span></a><a href="/api/export.csv" class="export-card"><span class="file-icon">CSV</span><div><b>CSV Export</b><small>Für Tabellen und andere Tracker</small></div><span>↓</span></a></div>
       </div>
-      <div id="import-preview" class="import-preview"></div>
-      <div class="dialog-actions"><label class="radio-label"><input type="radio" name="strategy" value="add" checked> Mengen addieren</label><label class="radio-label"><input type="radio" name="strategy" value="replace"> Ersetzen</label><span class="spacer"></span><button class="secondary-button" id="preview-import">Vorschau</button><button class="primary-button" id="apply-import" disabled>Import anwenden</button></div>
     </div>
   </div>
 
@@ -102,15 +108,7 @@
     </div>
   </div>
 
-  <div id="export-modal" class="overlay hidden">
-    <div class="utility-dialog export-dialog">
-      <div class="dialog-head"><div><span class="eyebrow">DATENHOHEIT</span><h2>Sammlung exportieren</h2></div><button class="close-button" data-close="export-modal">×</button></div>
-      <p class="muted">Lade deine vollständige Sammlung jederzeit in einem portablen Format herunter.</p>
-      <div class="export-options"><a href="/api/export.json" class="export-card"><span class="file-icon">{ }</span><div><b>JSON Export</b><small>Volle Datentreue für Backups</small></div><span>↓</span></a><a href="/api/export.csv" class="export-card"><span class="file-icon">CSV</span><div><b>CSV Export</b><small>Für Tabellen und andere Tracker</small></div><span>↓</span></a></div>
-    </div>
-  </div>
-
   <div id="toast-stack" class="toast-stack"></div>
-  <script src="{{ url_for('static', filename='app.js') }}?v=62"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=83"></script>
 </body>
 </html>
