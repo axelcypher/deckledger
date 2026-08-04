@@ -1060,7 +1060,7 @@ def game_card_rows(game_id, uid):
     ).fetchall()
 
 
-def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell=""):
+def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell="", finish="normal"):
     raw = [dict(row) for row in raw]
     if language != "combined":
         raw = [row for row in raw if row["language"] == language]
@@ -1070,9 +1070,10 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     for row in raw:
         row["identity_attrs"] = jload(row["identity_attrs"], {})
         identities.setdefault(row["identity_id"], []).append(row)
-    # When the foil filter is engaged, cards should be represented by their foil (Silver)
-    # printing -- both the shown art/price and the "owned" count -- instead of the normal one.
-    foil_display = bool(foil_mode)
+    # "finish" picks which printing (Normal or Silver) represents each card -- the shown
+    # art/price and the "owned" count -- independent of "foil_mode", which filters by whether
+    # that foil copy specifically is owned/missing (Alle leaves ownership unfiltered).
+    foil_display = finish == "foil"
     cards = []
     premium_cards = []
     for variants in identities.values():
@@ -1191,11 +1192,12 @@ def set_cards(set_id):
     sort = request.args.get("sort", "number")
     rarity = request.args.get("rarity", "")
     foil = request.args.get("foil", "")
+    finish = request.args.get("finish", "normal")
     selected_rarities = [value for value in request.args.get("rarities", "").split(",") if value]
     selected_costs = [value for value in request.args.get("costs", "").split(",") if value]
     selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
     inkwell = request.args.get("inkwell", "")
-    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell)
+    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
     rarity_sql = "SELECT DISTINCT rarity FROM printings WHERE set_id=?" + ("" if language == "combined" else " AND language=?")
     rarity_params = (set_id,) if language == "combined" else (set_id, language)
     rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(set_row["game_id"], r))
@@ -1220,6 +1222,7 @@ def game_cards(game_id):
     set_order = request.args.get("set_order", "desc")
     rarity = request.args.get("rarity", "")
     foil = request.args.get("foil", "")
+    finish = request.args.get("finish", "normal")
     selected_rarities = [value for value in request.args.get("rarities", "").split(",") if value]
     selected_costs = [value for value in request.args.get("costs", "").split(",") if value]
     selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
@@ -1241,7 +1244,7 @@ def game_cards(game_id):
     rarity_params = (game_id,) if language == "combined" else (game_id, language)
     rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(game_id, r))
     for set_row in sets:
-        cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell)
+        cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
         meta = dict(set_row)
         meta["classifications"] = jload(meta["classifications"], [])
         meta["visual_version"] = set_visual_version(set_row)

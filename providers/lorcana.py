@@ -33,9 +33,9 @@ LORCANA_DE_TFC_MISPRINTS = {
     "21": {  # Stitch - Carefree Surfer, #21/204
         "artwork_suffix": "misprint-1-lore",
         "edition_label": "Fehldruck · 1 Legendenpunkt",
-        "image_url": "https://patagiumgames.com/cdn/shop/files/IMG_2869.jpg?v=1700057930",
-        "image_source": "Patagium Games – Foto der physischen Fehldruckkarte",
-        "image_source_url": "https://patagiumgames.com/products/lorcana-2023-stitch-carefree-surfer-sorgloser-surfer-german-language-misprint",
+        "image_url": "https://product-images.s3.cardmarket.com/1629/1TFC/832576/832576.jpg",
+        "image_source": "Cardmarket – Foto der physischen Fehldruckkarte",
+        "image_source_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Stitch-Carefree-Surfer-V3?language=3",
         "price_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Stitch-Carefree-Surfer-V3?language=3",
         "errata": "Der erste deutsche Druck zeigt 1 statt 2 Legendenpunkte.",
         "extra_attributes": {"printedLore": 1, "correctedLore": 2},
