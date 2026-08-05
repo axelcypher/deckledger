@@ -576,6 +576,17 @@ def index():
     return render_template("index.html")
 
 
+@app.get("/service-worker.js")
+def service_worker():
+    # Served at root (not /static/service-worker.js) so its default scope
+    # covers the whole app, not just /static/. Not behind @login_required --
+    # the browser fetches/updates service workers independent of app auth,
+    # and gating this would make it 302 to /login instead of registering.
+    response = send_file(Path(app.static_folder) / "service-worker.js", mimetype="application/javascript", conditional=True, etag=True, max_age=0)
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
+
+
 def latest_price_sql(alias="v", metric="trend"):
     return f"""(SELECT po.amount FROM price_observations po
       JOIN marketplace_products mp ON mp.variant_id=po.variant_id AND mp.provider_id=po.provider_id
