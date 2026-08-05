@@ -864,6 +864,21 @@ function patchLocalQuantity(variantId,delta,sourceButton){
   }
 }
 
+// Every quantity click used to force a full refetch+re-render of the current view (and the
+// modal, if open) -- for a set with thousands of tiles that's a lot of work for "+1", and
+// clicking repeatedly in quick succession piled up overlapping refreshes on top of each other,
+// which is what actually caused the lag (not the network request itself). Debouncing means a
+// burst of rapid clicks triggers exactly one real refresh shortly after the burst ends, while
+// patchLocalQuantity gives instant feedback on every individual click in the meantime.
+let refreshDebounceTimer=null;
+function scheduleRefresh(delayMs=500){
+  clearTimeout(refreshDebounceTimer);
+  refreshDebounceTimer=setTimeout(async()=>{
+    await refreshCurrentView();
+    if(state.modalCard) await openCard(state.modalCard.id,state.modalVariant?.id,true);
+  },delayMs);
+}
+
 async function changeQuantity(variantId,delta,quick=false){
   if(!navigator.onLine){
     await queueOfflineMutation({variant_id:variantId,delta,condition:'Near Mint'});
@@ -883,9 +898,9 @@ async function changeQuantity(variantId,delta,quick=false){
     toast('Offline gespeichert · wird bei Verbindung synchronisiert');
     return;
   }
-  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:'Near Mint'});await refreshCurrentView()});
-  await refreshCurrentView();
-  if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
+  patchLocalQuantity(variantId,delta);
+  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:'Near Mint'});await refreshCurrentView();if(state.modalCard)await openCard(state.modalCard.id,variantId,true)});
+  scheduleRefresh();
 }
 
 // Lives outside `state` on purpose -- it's transient UI state for the currently open modal,
@@ -915,6 +930,15 @@ async function changeCollectionEntry(variantId,{condition='Near Mint',delta=0,qu
     toast('Offline gespeichert · wird bei Verbindung synchronisiert');
     return;
   }
+  if(isPureDelta){
+    // Same rapid-click case as changeQuantity -- the condition/graded steppers in the
+    // Erweitert panel are just as prone to being clicked repeatedly in quick succession.
+    patchLocalQuantity(variantId,delta,sourceButton);
+    scheduleRefresh();
+    return;
+  }
+  // Absolute-value writes (price override, initial quantity on a new graded copy) are
+  // deliberate, infrequent edits, not rapid-fire -- refresh immediately for correctness.
   await refreshCurrentView();
   if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
 }
