@@ -29,8 +29,9 @@
     --mt-shadow: 0 14px 32px rgba(0,0,0,.45);
     --mt-radius-lg: 24px; --mt-radius-md: 16px; --mt-radius-full: 999px;
     --mt-font-display: "Fraunces", Georgia, serif;
-    --mt-podium: radial-gradient(ellipse 62% 46% at 50% 60%, rgba(111,163,132,.55), transparent 72%),
-                 radial-gradient(ellipse 70% 30% at 50% 92%, rgba(212,176,106,.35), transparent 70%);
+    --mt-podium: radial-gradient(ellipse 60% 44% at 50% 54%, rgba(111,163,132,.62), transparent 68%),
+                 radial-gradient(ellipse 66% 24% at 50% 88%, rgba(212,176,106,.42), transparent 68%);
+    --mt-tab-track: #0c0f09;
     background: var(--bg);
   }
   /* Light sub-variant: same shapes/type/structure, cream+white palette instead
@@ -41,7 +42,9 @@
     --mt-accent-soft: rgba(31,58,46,.09);
     --mt-gold: #c9a961;
     --mt-shadow: 0 12px 28px rgba(40,30,15,.08);
-    --mt-podium: radial-gradient(ellipse 62% 46% at 50% 62%, rgba(255,255,255,.95), transparent 74%);
+    --mt-podium: radial-gradient(ellipse 56% 40% at 50% 54%, rgba(255,255,255,.95), transparent 60%),
+                 radial-gradient(ellipse 58% 14% at 50% 90%, rgba(60,45,20,.16), transparent 75%);
+    --mt-tab-track: #e5ddc9;
   }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
@@ -112,11 +115,13 @@
   /* ---- Card detail modal ---- */
   body.dark.mobile-modern .card-dialog { background: var(--bg); }
   body.dark.mobile-modern .card-stage {
-    position: relative; background: var(--bg); padding: 64px 40px 36px; overflow: visible;
+    position: relative; padding: 64px 40px 36px; overflow: visible;
+    background: linear-gradient(180deg, rgba(0,0,0,.3), transparent 60%), var(--bg);
   }
   body.dark.mobile-modern .card-stage::before {
-    content: ""; position: absolute; left: 50%; top: 60%; width: 82%; height: 40%;
-    transform: translate(-50%, -50%); border-radius: 50%; background: var(--mt-podium); z-index: 0;
+    content: ""; position: absolute; left: 50%; top: 58%; width: 84%; height: 42%;
+    transform: translate(-50%, -50%); border-radius: 50%; z-index: 0;
+    background: var(--mt-podium); background-repeat: no-repeat;
   }
   body.dark.mobile-modern .modal-card-frame {
     position: relative; z-index: 1; border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,.45);
@@ -124,38 +129,66 @@
   body.dark.mobile-modern .card-nav-button { z-index: 1; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
   body.dark.mobile-modern .variant-hint { z-index: 1; color: var(--muted); opacity: 1; }
   body.dark.mobile-modern .variant-hint button { color: var(--brand); font-weight: 600; }
-  body.dark.mobile-modern .modal-head .close-button,
+
+  /* Close + quick-menu buttons float over the very top of the whole modal (over the card
+     stage), not inside .modal-head -- fixed to the viewport since .card-dialog is full-screen
+     on mobile anyway. Feedback: these were previously anchored to .modal-head, which sits
+     *below* the card art, not at the true top of the screen. */
+  body.dark.mobile-modern .card-modal-layout > .close-button,
   body.dark.mobile-modern .modal-menu-button {
-    position: absolute; top: 14px; width: 34px; height: 34px; display: grid; place-items: center;
-    border-radius: 50%; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
-    font-size: 16px; z-index: 2;
+    position: fixed; top: calc(14px + env(safe-area-inset-top)); width: 34px; height: 34px;
+    display: grid; place-items: center; border-radius: 50%; background: var(--surface);
+    border: 1px solid var(--line); color: var(--ink); font-size: 16px; z-index: 30; box-shadow: var(--mt-shadow);
   }
-  body.dark.mobile-modern .modal-head .close-button { left: 14px; right: auto; font-size: 20px; }
-  body.dark.mobile-modern .modal-menu-button { right: 14px; }
+  body.dark.mobile-modern .card-modal-layout > .close-button { left: 14px; right: auto; font-size: 20px; }
+  body.dark.mobile-modern .modal-quick-menu-wrap { display: block; position: fixed; top: calc(14px + env(safe-area-inset-top)); right: 14px; z-index: 30; }
+  body.dark.mobile-modern .modal-quick-menu-wrap .modal-menu-button { position: static; }
+  body.dark.mobile-modern .modal-quick-menu {
+    position: absolute; top: 42px; right: 0; min-width: 120px; padding: 8px; border-radius: var(--mt-radius-md);
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--mt-shadow);
+  }
+  body.dark.mobile-modern .modal-quick-menu.hidden { display: none; }
+  body.dark.mobile-modern .modal-quick-menu .language-switcher { display: flex; gap: 4px; }
+  body.dark.mobile-modern .modal-head .language-switcher { display: none; } /* lives in the ⋯ menu instead, see above */
+
   body.dark.mobile-modern .modal-side { background: var(--bg); color: var(--ink); }
   body.dark.mobile-modern .modal-head {
-    display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 3px;
-    padding: 56px 20px 16px; border: 0;
+    display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 2px;
+    padding: 18px 20px 16px; border: 0;
   }
-  body.dark.mobile-modern .modal-head .eyebrow { grid-column: 1 / -1; color: var(--mt-gold); font-weight: 700; font-size: 10px; }
+  body.dark.mobile-modern .modal-head .eyebrow, body.dark.mobile-modern .modal-head > p { display: none; } /* replaced by the two-line meta grid below */
   body.dark.mobile-modern .modal-head h2 {
-    grid-column: 1; margin: 0; font-family: "DM Sans", sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2; color: var(--ink);
+    grid-column: 1; margin: 0; font-family: "DM Sans", sans-serif; font-weight: 700; font-size: 21px; line-height: 1.22; color: var(--ink);
   }
   body.dark.mobile-modern .modal-price {
     grid-column: 2; display: block; align-self: start; font-size: 19px; font-weight: 800; color: var(--ink); white-space: nowrap;
   }
-  body.dark.mobile-modern .modal-head p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
-  body.dark.mobile-modern .language-switcher { grid-column: 1 / -1; margin-top: 4px; }
-  body.dark.mobile-modern .language-switcher button { background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
-  body.dark.mobile-modern .language-switcher button.active { background: var(--mt-accent-soft); border-color: var(--brand); color: var(--brand); }
+  body.dark.mobile-modern .modal-set-line {
+    grid-column: 1; display: block; color: var(--muted); font-size: 11px; margin-top: 2px;
+  }
+  body.dark.mobile-modern .modal-rarity-line {
+    grid-column: 2; display: block; color: var(--muted); font-size: 11px; text-align: right; margin-top: 2px; white-space: nowrap;
+  }
   body.dark.mobile-modern .modal-tabs {
-    margin: 0 20px 14px; padding: 4px; gap: 2px; border: 0; border-radius: var(--mt-radius-full); background: var(--surface-2);
+    margin: 14px 20px; padding: 4px; gap: 2px; border: 0; border-radius: var(--mt-radius-full); background: var(--mt-tab-track);
   }
   body.dark.mobile-modern .modal-tabs button {
     border-radius: var(--mt-radius-full); border-bottom: 0; padding: 9px 4px; font-size: 9.5px; color: var(--muted);
   }
   body.dark.mobile-modern .modal-tabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,.15); }
-  body.dark.mobile-modern .modal-content { background: var(--bg); }
+  body.dark.mobile-modern .modal-content { background: var(--bg); padding-bottom: 84px; } /* clears the fixed action bar */
+
+  /* Bottom action bar -- feedback: the watchlist heart belongs down here, not floating
+     top-right (that spot is now the ⋯ menu). */
+  body.dark.mobile-modern .modal-action-bar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; justify-content: flex-end;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    background: var(--surface); border-top: 1px solid var(--line);
+  }
+  body.dark.mobile-modern .modal-watch-bottom {
+    width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%;
+    background: var(--bg); border: 1px solid var(--line); color: var(--brand); font-size: 18px; cursor: pointer;
+  }
   body.dark.mobile-modern .detail-section-title { color: var(--muted); }
   body.dark.mobile-modern .variant-option { background: var(--surface); border-color: var(--line); }
   body.dark.mobile-modern .variant-option.active { background: var(--mt-accent-soft); border-color: var(--brand); }
