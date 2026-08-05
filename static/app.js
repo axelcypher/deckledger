@@ -58,9 +58,27 @@ const variantName = variant => {
   return variant.edition_label ? `${label} · ${variant.edition_label}` : label;
 };
 const api = async (url, options={}) => {
-  const response = await fetch(url,{headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+  let response;
+  try{
+    response = await fetch(url,{headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+  }catch(networkError){
+    // fetch() itself throwing (before any Response exists) means the request never reached the
+    // server -- offline, DNS hiccup, connection refused. Tagged so callers (the offline outbox)
+    // can queue-and-retry ONLY this case, not genuine server-side errors below.
+    const error=new Error('Keine Verbindung zum Server');
+    error.isNetworkError=true;
+    throw error;
+  }
   if (response.status===401) { location.href='/login'; throw new Error('Nicht angemeldet'); }
-  const data = await response.json();
+  let data;
+  try{
+    data = await response.json();
+  }catch(parseError){
+    // A non-JSON body (an HTML error page from an unhandled server exception, a proxy's error
+    // page, ...) means something broke server-side -- surface the HTTP status, not the raw
+    // "Unexpected token '<'" parse error, which is meaningless to a user.
+    throw new Error(`Serverfehler (${response.status})`);
+  }
   if (!response.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen');
   return data;
 };
@@ -746,8 +764,125 @@ async function refreshCurrentView(){
   else if(state.route==='decks') await renderDeckbuilder(true);
 }
 
+// ---- Offline outbox -------------------------------------------------------
+// Only delta-based collection mutations are safe to queue offline: two
+// devices independently collecting +1/-1 while disconnected can always be
+// replayed in any order without clobbering each other. Absolute-value writes
+// (price overrides, "set to X") don't have that property, so those are
+// blocked outright while offline instead of silently risking a stomped value
+// once reconnected -- see changeCollectionEntry below.
+const OFFLINE_DB_NAME='deckledger-offline', OFFLINE_DB_VERSION=1, OFFLINE_STORE='outbox';
+function openOfflineDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(OFFLINE_DB_NAME,OFFLINE_DB_VERSION);
+    req.onupgradeneeded=()=>{req.result.createObjectStore(OFFLINE_STORE,{keyPath:'id',autoIncrement:true})};
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function queueOfflineMutation(payload){
+  const db=await openOfflineDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(OFFLINE_STORE,'readwrite');
+    tx.objectStore(OFFLINE_STORE).add({payload,createdAt:Date.now()});
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
+  });
+}
+async function listOfflineMutations(){
+  const db=await openOfflineDb();
+  return new Promise((resolve,reject)=>{
+    const req=db.transaction(OFFLINE_STORE,'readonly').objectStore(OFFLINE_STORE).getAll();
+    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
+  });
+}
+async function removeOfflineMutation(id){
+  const db=await openOfflineDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(OFFLINE_STORE,'readwrite');
+    tx.objectStore(OFFLINE_STORE).delete(id);
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
+  });
+}
+async function updateOfflineIndicator(){
+  const el=$('#offline-indicator'); if(!el)return;
+  let count=0; try{count=(await listOfflineMutations()).length}catch{}
+  if(!navigator.onLine){
+    el.classList.remove('hidden');
+    el.textContent=count>0?`Offline · ${count} ausstehende Änderung${count===1?'':'en'}`:'Offline';
+  }else if(count>0){
+    el.classList.remove('hidden');
+    el.textContent=`Wird synchronisiert … (${count})`;
+  }else{
+    el.classList.add('hidden');
+  }
+}
+let offlineSyncInProgress=false;
+async function syncOfflineQueue(){
+  if(offlineSyncInProgress||!navigator.onLine)return;
+  offlineSyncInProgress=true;
+  try{
+    const items=await listOfflineMutations();
+    for(const item of items){
+      try{
+        await post('/api/collection',item.payload);
+        await removeOfflineMutation(item.id);
+      }catch(error){
+        if(error.isNetworkError)break; // still unreachable -- stop, keep this and the rest queued, retry later
+        // a real server error (e.g. the variant no longer exists) -- this one can never succeed as-is,
+        // so drop it and tell the user rather than blocking every queued change behind it forever
+        await removeOfflineMutation(item.id);
+        toast(`Offline-Änderung verworfen: ${error.message||'unbekannter Fehler'}`);
+      }
+    }
+  }finally{
+    offlineSyncInProgress=false;
+    await updateOfflineIndicator();
+    if((await listOfflineMutations()).length===0)toast('Offline-Änderungen synchronisiert');
+    await refreshCurrentView();
+    if(state.modalCard)await openCard(state.modalCard.id,state.modalVariant?.id,true);
+  }
+}
+window.addEventListener('online',()=>{updateOfflineIndicator();syncOfflineQueue()});
+window.addEventListener('offline',updateOfflineIndicator);
+
+// Patches just the number the user is currently looking at (the control they
+// clicked, and the modal if it's open for this variant) instead of a full
+// re-render, which would need a network round-trip we don't have offline.
+// Everywhere else showing this variant's quantity (badges, dashboard stats,
+// the collection page) stays stale until the next real sync -- acceptable
+// since the offline indicator already tells the user a sync is pending.
+function patchLocalQuantity(variantId,delta,sourceButton){
+  $$(`.quantity-control[data-variant="${variantId}"] b`).forEach(el=>{el.textContent=String(Math.max(0,(parseInt(el.textContent,10)||0)+delta))});
+  if(sourceButton){
+    const b=sourceButton.parentElement?.querySelector('b');
+    if(b)b.textContent=String(Math.max(0,(parseInt(b.textContent,10)||0)+delta));
+  }
+  if(state.modalVariant?.id===variantId){
+    const modalB=$('.modal-quantity .controls b',$('#card-dialog'));
+    if(modalB)modalB.textContent=String(Math.max(0,(parseInt(modalB.textContent,10)||0)+delta));
+    state.modalVariant.quantity=Math.max(0,(state.modalVariant.quantity||0)+delta);
+  }
+}
+
 async function changeQuantity(variantId,delta,quick=false){
-  const r=await post('/api/collection',{variant_id:variantId,delta,condition:'Near Mint'});
+  if(!navigator.onLine){
+    await queueOfflineMutation({variant_id:variantId,delta,condition:'Near Mint'});
+    patchLocalQuantity(variantId,delta);
+    await updateOfflineIndicator();
+    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
+    return;
+  }
+  let r;
+  try{
+    r=await post('/api/collection',{variant_id:variantId,delta,condition:'Near Mint'});
+  }catch(error){
+    if(!error.isNetworkError)throw error; // a real server error, not connectivity -- don't mask it as "syncing"
+    await queueOfflineMutation({variant_id:variantId,delta,condition:'Near Mint'});
+    patchLocalQuantity(variantId,delta);
+    await updateOfflineIndicator();
+    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
+    return;
+  }
   toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:'Near Mint'});await refreshCurrentView()});
   await refreshCurrentView();
   if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
@@ -757,11 +892,29 @@ async function changeQuantity(variantId,delta,quick=false){
 // not something that should survive navigation or be considered part of the app's data model.
 let advancedPanelExpanded=false;
 
-async function changeCollectionEntry(variantId,{condition='Near Mint',delta=0,quantity,isGraded=false,gradeLabel='',priceOverride}={}){
+async function changeCollectionEntry(variantId,{condition='Near Mint',delta=0,quantity,isGraded=false,gradeLabel='',priceOverride,sourceButton}={}){
   const payload={variant_id:variantId,condition,is_graded:isGraded,grade_label:gradeLabel};
   if(quantity!==undefined)payload.quantity=quantity;else payload.delta=delta;
   if(priceOverride!==undefined)payload.price_override=priceOverride;
-  await post('/api/collection',payload);
+  const isPureDelta=quantity===undefined&&priceOverride===undefined;
+  if(!navigator.onLine){
+    if(!isPureDelta){toast('Preis-Override braucht eine Verbindung -- offline nicht verfügbar');return}
+    await queueOfflineMutation(payload);
+    patchLocalQuantity(variantId,delta,sourceButton);
+    await updateOfflineIndicator();
+    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
+    return;
+  }
+  try{
+    await post('/api/collection',payload);
+  }catch(error){
+    if(!isPureDelta||!error.isNetworkError){toast(error.message||'Änderung fehlgeschlagen');return}
+    await queueOfflineMutation(payload);
+    patchLocalQuantity(variantId,delta,sourceButton);
+    await updateOfflineIndicator();
+    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
+    return;
+  }
   await refreshCurrentView();
   if(state.modalCard) await openCard(state.modalCard.id,variantId,true);
 }
@@ -783,8 +936,8 @@ function advancedCollectionPanelHtml(entries){
 }
 
 function wireAdvancedPanel(variantId){
-  $$('.condition-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta)}));
-  $$('.graded-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),isGraded:true,gradeLabel:b.dataset.grade}));
+  $$('.condition-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),sourceButton:b}));
+  $$('.graded-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),isGraded:true,gradeLabel:b.dataset.grade,sourceButton:b}));
   $$('.graded-price-input').forEach(input=>input.onchange=()=>changeCollectionEntry(variantId,{condition:input.dataset.condition,delta:0,isGraded:true,gradeLabel:input.dataset.grade,priceOverride:input.value===''?null:Number(input.value)}));
   $('#add-graded-toggle').onclick=()=>$('#graded-add-form').classList.toggle('hidden');
   $('#add-graded-submit').onclick=()=>{
@@ -1337,6 +1490,8 @@ async function init(){
   try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
+updateOfflineIndicator();
+if(navigator.onLine)syncOfflineQueue(); // in case the app was reopened after being offline and is already back online
 
 // Registered independent of init() -- offline shell caching shouldn't block
 // or be blocked by the initial data load. Service workers require a secure

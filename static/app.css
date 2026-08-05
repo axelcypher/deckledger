@@ -207,6 +207,9 @@ body.editing .edit-indicator { display:block; }
 .set-switch-option.active{background:var(--brand);color:#fff}
 .back-to-top{position:fixed;right:28px;bottom:28px;width:46px;height:46px;border:0;border-radius:50%;background:var(--brand);color:#fff;font-size:18px;box-shadow:0 10px 24px rgba(0,0,0,.35);cursor:pointer;z-index:40;opacity:1;transition:opacity .2s,transform .2s}
 .back-to-top.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
+.offline-indicator{position:fixed;left:28px;bottom:28px;z-index:40;padding:9px 16px;border-radius:20px;background:#4a3410;color:#f7c873;font-size:11px;font-weight:700;box-shadow:0 10px 24px rgba(0,0,0,.35);opacity:1;transition:opacity .2s,transform .2s;pointer-events:none}
+.offline-indicator.hidden{opacity:0;transform:translateY(8px)}
+@media(max-width:760px){.offline-indicator{left:14px;bottom:14px;right:14px;text-align:center}}
 .card-tile { position:relative;min-width:0;cursor:pointer;font-size:calc(var(--card-size,155px) / 15.5); }
 .card-image-wrap { position:relative;overflow:hidden;aspect-ratio:5/7;border-radius:calc(var(--card-size,155px) * .065);background:#dfe3ea;box-shadow:0 5px 14px rgba(23,30,50,.16);transition:.2s; }
 .card-tile:hover .card-image-wrap{transform:translateY(-4px);box-shadow:0 13px 22px rgba(23,30,50,.22)}
