@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=77">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=92">
 </head>
 <body class="dark">
   <div id="app" class="app-shell">
@@ -53,7 +53,6 @@
       <button id="global-search-open" class="global-search"><span>⌕</span><span>Karten, Sets oder Nummern suchen …</span><kbd>⌘ K</kbd></button>
       <div class="top-actions">
         <div id="edit-indicator" class="edit-indicator">EDIT MODE</div>
-        <button id="quick-toggle" class="small-button">⚡ Quick Entry</button>
       </div>
     </header>
 
@@ -109,6 +108,7 @@
   </div>
 
   <div id="toast-stack" class="toast-stack"></div>
-  <script src="{{ url_for('static', filename='app.js') }}?v=83"></script>
+  <button type="button" id="back-to-top" class="back-to-top hidden" aria-label="Nach oben springen">↑</button>
+  <script src="{{ url_for('static', filename='app.js') }}?v=95"></script>
 </body>
 </html>

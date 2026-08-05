@@ -25,10 +25,31 @@ LORCANA_PROMO_GROUPS = {
     "DIS": ("Discover Promo", "Promo Set"),
 }
 
-LORCANA_TFC_21_MISPRINT = {
-    "image_url": "https://patagiumgames.com/cdn/shop/files/IMG_2869.jpg?v=1700057930",
-    "source_url": "https://patagiumgames.com/products/lorcana-2023-stitch-carefree-surfer-sorgloser-surfer-german-language-misprint",
-    "price_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Stitch-Carefree-Surfer-V3?language=3",
+# Known physical misprints in the German TFC print run: Ravensburger corrected these in later
+# print runs, but the original error cards are real, physically distinct, collectible printings
+# that Cardmarket lists as their own product. Keyed by LorcanaJSON's card id, which for TFC's
+# base numbering matches the printed collector number (verified per entry against the DB).
+LORCANA_DE_TFC_MISPRINTS = {
+    "21": {  # Stitch - Carefree Surfer, #21/204
+        "artwork_suffix": "misprint-1-lore",
+        "edition_label": "Fehldruck · 1 Legendenpunkt",
+        "image_url": "https://product-images.s3.cardmarket.com/1629/1TFC/832576/832576.jpg",
+        "image_source": "Cardmarket – Foto der physischen Fehldruckkarte",
+        "image_source_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Stitch-Carefree-Surfer-V3?language=3",
+        "price_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Stitch-Carefree-Surfer-V3?language=3",
+        "errata": "Der erste deutsche Druck zeigt 1 statt 2 Legendenpunkte.",
+        "extra_attributes": {"printedLore": 1, "correctedLore": 2},
+    },
+    "2": {  # Ariel/Arielle - Spectacular Singer / Spektakuläre Sängerin, #2/204
+        "artwork_suffix": "misprint-artist-credit",
+        "edition_label": "Fehldruck · falscher Artist-Credit",
+        "image_url": "https://product-images.s3.cardmarket.com/1629/1TFC/832568/832568.jpg",
+        "image_source": "Cardmarket – Foto der physischen Fehldruckkarte",
+        "image_source_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Ariel-Spectacular-Singer-V2",
+        "price_url": "https://www.cardmarket.com/de/Lorcana/Products/Singles/The-First-Chapter/Ariel-Spectacular-Singer-V2",
+        "errata": "Der erste deutsche Druck nennt fälschlich Michael \"Cookie\" Niewiadomy statt Alice Pisoni als Artist.",
+        "extra_attributes": {"printedArtist": "Michael \"Cookie\" Niewiadomy", "correctedArtist": "Alice Pisoni"},
+    },
 }
 
 
@@ -160,14 +181,14 @@ def fetch_catalog() -> dict:
                         "priceSource": "Cardmarket" if links.get("cardmarketUrl") else "TCGplayer" if links.get("tcgPlayerUrl") else None,
                     },
                 }
-            # The first German printing of TFC 21 physically exists with one
-            # lore instead of two. Ravensburger corrected later print runs,
-            # while Cardmarket keeps the error card as its own V3 product.
-            # Both non-foil and foil error cards are collectible variants.
-            if language == "DE" and card_key == "21" and physical_set_code == "1" and not promo_group:
+            # A handful of TFC cards physically exist in a pre-errata German printing that
+            # Ravensburger later corrected; Cardmarket lists each as its own product, and
+            # they're real, distinct, collectible printings in their own right.
+            misprint = LORCANA_DE_TFC_MISPRINTS.get(card_key)
+            if language == "DE" and physical_set_code == "1" and not promo_group and misprint:
                 for code, finish, parallel in (
-                    ("normal-misprint-1-lore", "Normal", 0),
-                    ("silver-misprint-1-lore", "Silver", 1),
+                    (f"normal-{misprint['artwork_suffix']}", "Normal", 0),
+                    (f"silver-{misprint['artwork_suffix']}", "Silver", 1),
                 ):
                     variant_id = f"{printing_id}-{code}"
                     catalog["variants"][variant_id] = {
@@ -176,21 +197,20 @@ def fetch_catalog() -> dict:
                         "game_id": "lorcana",
                         "variant_code": code,
                         "finish": finish,
-                        "artwork_id": f"{card_key}-misprint-1-lore",
+                        "artwork_id": f"{card_key}-{misprint['artwork_suffix']}",
                         "is_parallel": parallel,
                         "source_type": "physical-errata-printing",
                         "attributes": {
-                            "imageUrl": LORCANA_TFC_21_MISPRINT["image_url"],
-                            "imageSource": "Patagium Games – Foto der physischen Fehldruckkarte",
-                            "imageSourceUrl": LORCANA_TFC_21_MISPRINT["source_url"],
+                            "imageUrl": misprint["image_url"],
+                            "imageSource": misprint["image_source"],
+                            "imageSourceUrl": misprint["image_source_url"],
                             "catalogSourceUrl": catalog["sources"]["lorcana_de"],
-                            "priceUrl": LORCANA_TFC_21_MISPRINT["price_url"],
+                            "priceUrl": misprint["price_url"],
                             "priceSource": "Cardmarket",
-                            "editionLabel": "Fehldruck · 1 Legendenpunkt",
+                            "editionLabel": misprint["edition_label"],
                             "isMisprint": True,
-                            "printedLore": 1,
-                            "correctedLore": 2,
-                            "errata": "Der erste deutsche Druck zeigt 1 statt 2 Legendenpunkte.",
+                            "errata": misprint["errata"],
+                            **misprint.get("extra_attributes", {}),
                         },
                     }
     # Count physical EN printings per set. This prevents the two imported
