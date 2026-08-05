@@ -22,11 +22,11 @@
 
 @media (max-width: 760px) {
   body.dark.mobile-modern {
-    --bg: #f5f0e6; --surface: #ffffff; --surface-2: #faf6ee; --ink: #24291f; --muted: #8d8879;
-    --line: #e9e2d2; --brand: #1f3a2e; --brand-2: #2c4a3b;
-    --mt-accent-soft: rgba(31,58,46,.09);
-    --mt-gold: #c9a961;
-    --mt-shadow: 0 12px 28px rgba(40,30,15,.08);
+    --bg: #12160f; --surface: #1c2317; --surface-2: #232b1c; --ink: #f2efe4; --muted: #9b9686;
+    --line: #2c3324; --brand: #6fa384; --brand-2: #4a7c62;
+    --mt-accent-soft: rgba(111,163,132,.16);
+    --mt-gold: #d4b06a;
+    --mt-shadow: 0 14px 32px rgba(0,0,0,.45);
     --mt-radius-lg: 24px; --mt-radius-md: 16px; --mt-radius-full: 999px;
     --mt-font-display: "Fraunces", Georgia, serif;
     background: var(--bg);
@@ -38,6 +38,13 @@
   body.dark.mobile-modern .topbar { height: 58px; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
   body.dark.mobile-modern .mobile-only { display: none; } /* the old hamburger -- tab bar replaces it */
   body.dark.mobile-modern .content { padding: 16px 16px 100px; background: var(--bg); color: var(--ink); }
+  body.dark.mobile-modern .topbar .global-search {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--mt-radius-full); color: var(--muted);
+  }
+  body.dark.mobile-modern .topbar .global-game-filter {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--mt-radius-full); color: var(--ink);
+    appearance: none; -webkit-appearance: none;
+  }
 
   /* ---- Bottom tab bar ---- */
   body.dark.mobile-modern .mobile-tabbar {
@@ -85,8 +92,55 @@
   body.dark.mobile-modern .progress-track span { background: var(--brand); }
 
   /* ---- Buttons / inputs, broadly ---- */
-  body.dark.mobile-modern .primary-button { background: var(--brand); border-radius: var(--mt-radius-full); font-weight: 600; }
+  body.dark.mobile-modern .primary-button { background: var(--brand); color: #0e130d; border-radius: var(--mt-radius-full); font-weight: 700; }
   body.dark.mobile-modern .secondary-button { background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--mt-radius-full); }
   body.dark.mobile-modern .card-tile { border-radius: var(--mt-radius-md); }
   body.dark.mobile-modern .card-tile .card-info { color: var(--ink); }
+
+  /* ---- Card detail modal ---- */
+  body.dark.mobile-modern .card-dialog { background: var(--bg); }
+  body.dark.mobile-modern .card-stage {
+    background: radial-gradient(ellipse 60% 40% at 50% 42%, rgba(111,163,132,.4), transparent 72%),
+                radial-gradient(ellipse 70% 30% at 50% 88%, rgba(212,176,106,.32), transparent 70%),
+                var(--bg);
+    padding: 64px 40px 44px;
+  }
+  body.dark.mobile-modern .modal-card-frame { border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,.55); }
+  body.dark.mobile-modern .card-nav-button { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+  body.dark.mobile-modern .variant-hint { color: var(--muted); opacity: 1; }
+  body.dark.mobile-modern .variant-hint button { color: var(--brand); font-weight: 600; }
+  body.dark.mobile-modern .modal-head .close-button {
+    top: 14px; right: auto; left: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+  }
+  body.dark.mobile-modern .modal-side { background: var(--bg); color: var(--ink); }
+  body.dark.mobile-modern .modal-head { border-color: var(--line); padding-top: 18px; }
+  body.dark.mobile-modern .modal-head .eyebrow { color: var(--mt-gold); font-weight: 700; }
+  body.dark.mobile-modern .modal-head h2 { font-family: "DM Sans", sans-serif; font-weight: 700; color: var(--ink); }
+  body.dark.mobile-modern .modal-head p { color: var(--muted); }
+  body.dark.mobile-modern .language-switcher button { background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+  body.dark.mobile-modern .language-switcher button.active { background: var(--mt-accent-soft); border-color: var(--brand); color: var(--brand); }
+  body.dark.mobile-modern .modal-tabs { border-color: var(--line); }
+  body.dark.mobile-modern .modal-tabs button { color: var(--muted); }
+  body.dark.mobile-modern .modal-tabs button.active { color: var(--brand); border-color: var(--brand); }
+  body.dark.mobile-modern .modal-content { background: var(--bg); }
+  body.dark.mobile-modern .detail-section-title { color: var(--muted); }
+  body.dark.mobile-modern .variant-option { background: var(--surface); border-color: var(--line); }
+  body.dark.mobile-modern .variant-option.active { background: var(--mt-accent-soft); border-color: var(--brand); }
+  body.dark.mobile-modern .variant-option b { color: var(--ink); }
+  body.dark.mobile-modern .variant-option small { color: var(--muted); }
+  body.dark.mobile-modern .modal-quantity {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--mt-radius-full); padding: 8px 8px 8px 20px;
+  }
+  body.dark.mobile-modern .modal-quantity span b { color: var(--ink); }
+  body.dark.mobile-modern .modal-quantity .controls { background: var(--bg); border-radius: var(--mt-radius-full); border: 0; }
+  body.dark.mobile-modern .modal-quantity .controls button { background: none; color: var(--ink); }
+  body.dark.mobile-modern .modal-quantity .controls b { color: var(--ink); }
+  body.dark.mobile-modern .modal-watch { border-radius: var(--mt-radius-full); }
+  body.dark.mobile-modern .advanced-toggle { border-radius: var(--mt-radius-full); }
+  body.dark.mobile-modern .detail-field { background: var(--surface); border: 1px solid var(--line); border-radius: var(--mt-radius-md); }
+  body.dark.mobile-modern .detail-field span { color: var(--muted); }
+  body.dark.mobile-modern .detail-field b { color: var(--ink); }
+  body.dark.mobile-modern .rules-text { color: var(--muted); }
+  body.dark.mobile-modern .price-hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--mt-radius-lg); color: var(--ink); }
+  body.dark.mobile-modern .price-hero span { color: var(--muted); }
 }
