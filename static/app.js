@@ -104,6 +104,7 @@ function toast(message, actionLabel, action) {
 
 function setNav(route) {
   $$('.nav-item[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
+  $$('.mt-tab[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
 }
 
 function setActiveGame(gameId, persist=true) {
@@ -281,8 +282,13 @@ async function loadHomeBanner(){
 }
 
 function renderSettings(){
-  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[];
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
+    <section class="settings-section">
+      <h2>Mobile Ansicht</h2>
+      <p class="muted">Gilt nur auf schmalen Bildschirmen (Handy) -- am Desktop ändert sich nichts.</p>
+      <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Neu (Beta)</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
+    </section>
     <section class="settings-section">
       <h2>Standardsprache je Spiel</h2>
       <p class="muted">Wird als Vorauswahl in Sammlung, Deckbuilder und Import verwendet.</p>
@@ -299,6 +305,14 @@ function renderSettings(){
       <div class="settings-checklist">${games.map(g=>`<label class="checkbox-row"><input type="checkbox" data-banner-exclude="${g.id}" ${excludedGames.includes(g.id)?'checked':''}> ${escapeHtml(g.name)}</label>`).join('')}</div>
       <p class="muted settings-hint">Standardmäßig rotiert das Banner endlos zwischen allen nicht ausgeschlossenen TCGs. Sind mehrere Kartenlisten aktiv, wechselt es zusätzlich zwischen ihnen.</p>
     </section>`;
+  $$('[data-mobile-theme]',content).forEach(b=>b.onclick=async()=>{
+    const value=b.dataset.mobileTheme;
+    await post('/api/settings',{mobileTheme:value});
+    state.boot.settings.mobileTheme=value;
+    document.body.classList.toggle('mobile-modern',value!=='classic');
+    renderSettings();
+    toast('Mobile Ansicht gespeichert');
+  });
   $$('[data-lang-game]',content).forEach(select=>select.onchange=async e=>{
     const updated={...(state.boot.settings.defaultLanguages||{}),[select.dataset.langGame]:e.target.value};
     await post('/api/settings',{defaultLanguages:updated});
@@ -1402,7 +1416,14 @@ function modalTabContent(card,v){
 function openOverlay(id){$(`#${id}`).classList.remove('hidden');document.body.style.overflow='hidden';if(id==='global-search-open')return}
 function closeOverlay(id){$(`#${id}`).classList.add('hidden');document.body.style.overflow='';if(id==='card-modal'){state.modalCard=null}}
 
-async function refreshWatchCount(){if(!state.activeGameId)return;const lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);$('#watch-count').textContent=lists.reduce((a,l)=>a+l.count,0)}
+async function refreshWatchCount(){
+  if(!state.activeGameId)return;
+  const lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);
+  const count=lists.reduce((a,l)=>a+l.count,0);
+  $('#watch-count').textContent=count;
+  const mtBadge=$('#mt-watch-count');
+  if(mtBadge){mtBadge.textContent=count;mtBadge.classList.toggle('hidden',count===0)}
+}
 
 async function doSearch(q){
   const wrap=$('#search-results'); if(q.trim().length<2){wrap.innerHTML='<div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Suche nach Name, Set oder Sammlernummer.</span></div>';return}
@@ -1483,6 +1504,9 @@ function wireGlobalEvents(){
   $('#global-game-filter').onchange=e=>{setActiveGame(e.target.value);refreshWatchCount();if(['collection','watchlist','decks'].includes(state.route))routeTo(state.route);else routeTo('game',e.target.value)};
   $('#edit-toggle').onclick=()=>{state.edit=!state.edit;document.body.classList.toggle('editing',state.edit);$('#edit-panel').classList.toggle('on',state.edit);$('#edit-toggle').setAttribute('aria-checked',String(state.edit));toast(state.edit?'Edit Mode aktiviert':'Edit Mode beendet')};
   const searchOpen=()=>{openOverlay('search-overlay');setTimeout(()=>$('#global-search-input').focus(),50)}; $('#global-search-open').onclick=searchOpen;
+  // Interim behaviour until a dedicated add flow (e.g. photo capture) exists -- opens the
+  // same global search, which already lets you find a card and adjust its quantity.
+  $('[data-mt-add]')?.addEventListener('click',searchOpen);
   document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen()}if(e.key==='Escape')$$('.overlay:not(.hidden)').forEach(x=>closeOverlay(x.id));if(state.modalCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){const btn=e.key==='ArrowLeft'?'[data-card-nav="-1"]':e.key==='ArrowRight'?'[data-card-nav="1"]':e.key==='ArrowUp'?'[data-variant-nav="-1"]':'[data-variant-nav="1"]';$(btn,$('#card-dialog'))?.click()}});
   let searchTimer;$('#global-search-input').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>doSearch(e.target.value),220)};
   $$('.overlay').forEach(o=>o.addEventListener('mousedown',e=>{if(e.target===o)closeOverlay(o.id)}));$$('[data-close]').forEach(b=>b.onclick=()=>closeOverlay(b.dataset.close));
@@ -1511,7 +1535,7 @@ function wireGlobalEvents(){
 }
 
 async function init(){
-  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
 updateOfflineIndicator();

@@ -1,0 +1,92 @@
+/* Mobile-only alternate theme ("modern"). Everything here is scoped inside
+   @media(max-width:760px) AND requires body.dark.mobile-modern -- it has
+   zero effect on desktop (even though mobile-modern is the default class),
+   and zero effect when the user picks "Klassisch" in Einstellungen.
+
+   Phase 1: design tokens, bottom tab bar, and a visual reskin (color/type/
+   shape) of the existing dashboard + shared components. Per-screen content
+   redesigns (card detail podium, collection highlights/recent list, deck
+   builder groups) are a later phase once this direction is confirmed.
+
+   Token strategy: redefine the SAME shared custom properties the existing
+   dark theme already uses (--bg/--surface/--surface-2/--ink/--muted/--line/
+   --brand/--brand-2), not just new --mt-* ones. app.css has ~130 ".dark X"
+   rules; most of them read these shared tokens, so overriding the tokens
+   themselves reskins those rules for free. Rules that hardcode a hex value
+   instead of a token won't pick this up automatically -- those get a
+   targeted override below as they're found during visual QA. --mt-* extras
+   below are for the new markup this file introduces (tab bar etc.), where a
+   distinct name is clearer than reusing the shared ones. */
+
+.mobile-tabbar { display: none; }
+
+@media (max-width: 760px) {
+  body.dark.mobile-modern {
+    --bg: #f5f0e6; --surface: #ffffff; --surface-2: #faf6ee; --ink: #24291f; --muted: #8d8879;
+    --line: #e9e2d2; --brand: #1f3a2e; --brand-2: #2c4a3b;
+    --mt-accent-soft: rgba(31,58,46,.09);
+    --mt-gold: #c9a961;
+    --mt-shadow: 0 12px 28px rgba(40,30,15,.08);
+    --mt-radius-lg: 24px; --mt-radius-md: 16px; --mt-radius-full: 999px;
+    --mt-font-display: "Fraunces", Georgia, serif;
+    background: var(--bg);
+  }
+
+  /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
+  body.dark.mobile-modern .app-shell { padding-left: 0; }
+  body.dark.mobile-modern .sidebar { display: none; }
+  body.dark.mobile-modern .topbar { height: 58px; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  body.dark.mobile-modern .mobile-only { display: none; } /* the old hamburger -- tab bar replaces it */
+  body.dark.mobile-modern .content { padding: 16px 16px 100px; background: var(--bg); color: var(--ink); }
+
+  /* ---- Bottom tab bar ---- */
+  body.dark.mobile-modern .mobile-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    justify-content: space-around; align-items: center;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    background: var(--surface); border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 24px rgba(40,30,15,.06);
+  }
+  body.dark.mobile-modern .mt-tab {
+    position: relative; display: grid; place-items: center; width: 44px; height: 44px;
+    border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: var(--mt-radius-full);
+  }
+  body.dark.mobile-modern .mt-tab svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  body.dark.mobile-modern .mt-tab.active { color: var(--brand); }
+  body.dark.mobile-modern .mt-tab.active svg { fill: var(--mt-accent-soft); }
+  body.dark.mobile-modern .mt-tab-add { width: 52px; height: 52px; background: var(--brand); color: #fff; box-shadow: 0 8px 18px rgba(31,58,46,.35); }
+  body.dark.mobile-modern .mt-tab-add svg { width: 22px; height: 22px; stroke-width: 2; }
+  body.dark.mobile-modern .mt-badge {
+    position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px;
+    border-radius: var(--mt-radius-full); background: var(--mt-gold); color: #24291f;
+    font-size: 9px; font-weight: 800; line-height: 15px; text-align: center;
+  }
+  body.dark.mobile-modern .mt-badge.hidden { display: none; }
+
+  /* ---- Typography ---- */
+  body.dark.mobile-modern .dashboard-hero h1, body.dark.mobile-modern .page-head h1, body.dark.mobile-modern .set-compact-title h1 {
+    font-family: var(--mt-font-display); font-weight: 500; color: var(--ink); letter-spacing: -.01em;
+  }
+
+  /* ---- Dashboard reskin ---- */
+  body.dark.mobile-modern .dashboard-hero {
+    padding: 22px 20px; border-radius: var(--mt-radius-lg); background: var(--surface);
+    border: 1px solid var(--line); box-shadow: var(--mt-shadow); color: var(--ink); min-height: 0;
+  }
+  body.dark.mobile-modern .dashboard-hero p { color: var(--muted); }
+  body.dark.mobile-modern .hero-summary div b { color: var(--brand); }
+  body.dark.mobile-modern .hero-summary div span { color: var(--muted); }
+  body.dark.mobile-modern .game-tile {
+    min-height: 0; background: var(--surface); border: 0; box-shadow: var(--mt-shadow),inset 0 0 0 1px var(--line);
+    border-radius: var(--mt-radius-lg); color: var(--ink);
+  }
+  body.dark.mobile-modern .game-main-stat b { color: var(--brand); font-family: var(--mt-font-display); }
+  body.dark.mobile-modern .progress-track { background: var(--mt-accent-soft); }
+  body.dark.mobile-modern .progress-track span { background: var(--brand); }
+
+  /* ---- Buttons / inputs, broadly ---- */
+  body.dark.mobile-modern .primary-button { background: var(--brand); border-radius: var(--mt-radius-full); font-weight: 600; }
+  body.dark.mobile-modern .secondary-button { background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--mt-radius-full); }
+  body.dark.mobile-modern .card-tile { border-radius: var(--mt-radius-md); }
+  body.dark.mobile-modern .card-tile .card-info { color: var(--ink); }
+}
