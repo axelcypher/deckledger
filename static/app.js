@@ -282,12 +282,13 @@ async function loadHomeBanner(){
 }
 
 function renderSettings(){
-  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic';
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic',mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
     <section class="settings-section">
       <h2>Mobile Ansicht</h2>
       <p class="muted">Gilt nur auf schmalen Bildschirmen (Handy) -- am Desktop ändert sich nichts.</p>
       <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Neu (Beta)</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
+      ${mobileTheme==='modern'?`<div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>`:''}
     </section>
     <section class="settings-section">
       <h2>Standardsprache je Spiel</h2>
@@ -312,6 +313,14 @@ function renderSettings(){
     document.body.classList.toggle('mobile-modern',value!=='classic');
     renderSettings();
     toast('Mobile Ansicht gespeichert');
+  });
+  $$('[data-mobile-appearance]',content).forEach(b=>b.onclick=async()=>{
+    const value=b.dataset.mobileAppearance;
+    await post('/api/settings',{mobileThemeAppearance:value});
+    state.boot.settings.mobileThemeAppearance=value;
+    document.body.classList.toggle('mobile-light',value==='light');
+    renderSettings();
+    toast('Darstellung gespeichert');
   });
   $$('[data-lang-game]',content).forEach(select=>select.onchange=async e=>{
     const updated={...(state.boot.settings.defaultLanguages||{}),[select.dataset.langGame]:e.target.value};
@@ -1377,8 +1386,9 @@ function renderCardModal(){
   const languages=[...new Set(card.variants.map(x=>x.language))];
   const visual=finishPresentation(v);
   $('#card-dialog').innerHTML=`<div class="card-modal-layout"><section class="card-stage"><div class="variant-hint top">${idx>0?`<button data-variant-nav="-1">↑ ${escapeHtml(variantLabel(physicalVariants[idx-1]))}</button>`:''}</div><button class="card-nav-button prev" ${gridIdx<=0?'disabled':''} data-card-nav="-1">‹</button><div class="modal-card-frame card-finish-frame ${visual.effect}"><img class="modal-card-image" src="${artUrl(v.id,'full')}" alt="${escapeHtml(card.canonical_name)}"></div><button class="card-nav-button next" ${gridIdx<0||gridIdx>=state.cards.length-1?'disabled':''} data-card-nav="1">›</button><div class="variant-hint bottom">${idx<physicalVariants.length-1?`<button data-variant-nav="1">↓ ${escapeHtml(variantLabel(physicalVariants[idx+1]))}</button>`:''}</div></section>
-  <aside class="modal-side"><header class="modal-head"><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${escapeHtml(card.canonical_name)}</h2><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div><button class="close-button" data-close="card-modal">×</button></header><nav class="modal-tabs">${[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']].map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside></div>`;
+  <aside class="modal-side"><header class="modal-head"><button class="close-button" data-close="card-modal">×</button><button class="modal-menu-button" data-modal-quick-watch aria-label="Watchlist umschalten">${v.watchlisted?'♥':'♡'}</button><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${escapeHtml(card.canonical_name)}</h2><b class="modal-price">${price(v.price)}</b><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></header><nav class="modal-tabs">${[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']].map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside></div>`;
   $('[data-close="card-modal"]').onclick=()=>closeOverlay('card-modal');
+  $('[data-modal-quick-watch]').onclick=async()=>{const listId=Number(state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt')};
   $$('[data-tab]',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalTab=b.dataset.tab;renderCardModal()});
   $$('[data-language]',$('#card-dialog')).forEach(b=>b.onclick=()=>{
     const candidates=card.variants.filter(x=>x.language===b.dataset.language);
@@ -1535,7 +1545,7 @@ function wireGlobalEvents(){
 }
 
 async function init(){
-  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');document.body.classList.toggle('mobile-light',settings.mobileThemeAppearance==='light');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
 updateOfflineIndicator();

@@ -29,7 +29,19 @@
     --mt-shadow: 0 14px 32px rgba(0,0,0,.45);
     --mt-radius-lg: 24px; --mt-radius-md: 16px; --mt-radius-full: 999px;
     --mt-font-display: "Fraunces", Georgia, serif;
+    --mt-podium: radial-gradient(ellipse 62% 46% at 50% 60%, rgba(111,163,132,.55), transparent 72%),
+                 radial-gradient(ellipse 70% 30% at 50% 92%, rgba(212,176,106,.35), transparent 70%);
     background: var(--bg);
+  }
+  /* Light sub-variant: same shapes/type/structure, cream+white palette instead
+     of dark green -- one extra class beats the base block above on specificity. */
+  body.dark.mobile-modern.mobile-light {
+    --bg: #f5f0e6; --surface: #ffffff; --surface-2: #faf6ee; --ink: #24291f; --muted: #8d8879;
+    --line: #e9e2d2; --brand: #1f3a2e; --brand-2: #2c4a3b;
+    --mt-accent-soft: rgba(31,58,46,.09);
+    --mt-gold: #c9a961;
+    --mt-shadow: 0 12px 28px rgba(40,30,15,.08);
+    --mt-podium: radial-gradient(ellipse 62% 46% at 50% 62%, rgba(255,255,255,.95), transparent 74%);
   }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
@@ -100,28 +112,49 @@
   /* ---- Card detail modal ---- */
   body.dark.mobile-modern .card-dialog { background: var(--bg); }
   body.dark.mobile-modern .card-stage {
-    background: radial-gradient(ellipse 60% 40% at 50% 42%, rgba(111,163,132,.4), transparent 72%),
-                radial-gradient(ellipse 70% 30% at 50% 88%, rgba(212,176,106,.32), transparent 70%),
-                var(--bg);
-    padding: 64px 40px 44px;
+    position: relative; background: var(--bg); padding: 64px 40px 36px; overflow: visible;
   }
-  body.dark.mobile-modern .modal-card-frame { border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,.55); }
-  body.dark.mobile-modern .card-nav-button { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
-  body.dark.mobile-modern .variant-hint { color: var(--muted); opacity: 1; }
+  body.dark.mobile-modern .card-stage::before {
+    content: ""; position: absolute; left: 50%; top: 60%; width: 82%; height: 40%;
+    transform: translate(-50%, -50%); border-radius: 50%; background: var(--mt-podium); z-index: 0;
+  }
+  body.dark.mobile-modern .modal-card-frame {
+    position: relative; z-index: 1; border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,.45);
+  }
+  body.dark.mobile-modern .card-nav-button { z-index: 1; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+  body.dark.mobile-modern .variant-hint { z-index: 1; color: var(--muted); opacity: 1; }
   body.dark.mobile-modern .variant-hint button { color: var(--brand); font-weight: 600; }
-  body.dark.mobile-modern .modal-head .close-button {
-    top: 14px; right: auto; left: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+  body.dark.mobile-modern .modal-head .close-button,
+  body.dark.mobile-modern .modal-menu-button {
+    position: absolute; top: 14px; width: 34px; height: 34px; display: grid; place-items: center;
+    border-radius: 50%; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+    font-size: 16px; z-index: 2;
   }
+  body.dark.mobile-modern .modal-head .close-button { left: 14px; right: auto; font-size: 20px; }
+  body.dark.mobile-modern .modal-menu-button { right: 14px; }
   body.dark.mobile-modern .modal-side { background: var(--bg); color: var(--ink); }
-  body.dark.mobile-modern .modal-head { border-color: var(--line); padding-top: 18px; }
-  body.dark.mobile-modern .modal-head .eyebrow { color: var(--mt-gold); font-weight: 700; }
-  body.dark.mobile-modern .modal-head h2 { font-family: "DM Sans", sans-serif; font-weight: 700; color: var(--ink); }
-  body.dark.mobile-modern .modal-head p { color: var(--muted); }
+  body.dark.mobile-modern .modal-head {
+    display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 3px;
+    padding: 56px 20px 16px; border: 0;
+  }
+  body.dark.mobile-modern .modal-head .eyebrow { grid-column: 1 / -1; color: var(--mt-gold); font-weight: 700; font-size: 10px; }
+  body.dark.mobile-modern .modal-head h2 {
+    grid-column: 1; margin: 0; font-family: "DM Sans", sans-serif; font-weight: 700; font-size: 21px; line-height: 1.2; color: var(--ink);
+  }
+  body.dark.mobile-modern .modal-price {
+    grid-column: 2; display: block; align-self: start; font-size: 19px; font-weight: 800; color: var(--ink); white-space: nowrap;
+  }
+  body.dark.mobile-modern .modal-head p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+  body.dark.mobile-modern .language-switcher { grid-column: 1 / -1; margin-top: 4px; }
   body.dark.mobile-modern .language-switcher button { background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
   body.dark.mobile-modern .language-switcher button.active { background: var(--mt-accent-soft); border-color: var(--brand); color: var(--brand); }
-  body.dark.mobile-modern .modal-tabs { border-color: var(--line); }
-  body.dark.mobile-modern .modal-tabs button { color: var(--muted); }
-  body.dark.mobile-modern .modal-tabs button.active { color: var(--brand); border-color: var(--brand); }
+  body.dark.mobile-modern .modal-tabs {
+    margin: 0 20px 14px; padding: 4px; gap: 2px; border: 0; border-radius: var(--mt-radius-full); background: var(--surface-2);
+  }
+  body.dark.mobile-modern .modal-tabs button {
+    border-radius: var(--mt-radius-full); border-bottom: 0; padding: 9px 4px; font-size: 9.5px; color: var(--muted);
+  }
+  body.dark.mobile-modern .modal-tabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,.15); }
   body.dark.mobile-modern .modal-content { background: var(--bg); }
   body.dark.mobile-modern .detail-section-title { color: var(--muted); }
   body.dark.mobile-modern .variant-option { background: var(--surface); border-color: var(--line); }
