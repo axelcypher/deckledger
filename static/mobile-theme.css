@@ -36,9 +36,11 @@
     --mt-tab-track: #0c0f09;
     --mt-glass-top: rgba(255,255,255,.3); --mt-glass-bottom: rgba(255,255,255,.06);
     --mt-glass-border: rgba(255,255,255,.35); --mt-glass-shine: rgba(255,255,255,.45);
-    /* explicit two-color-stop stage gradient -- a black-alpha overlay on top of an already
-       near-black --bg barely shows, so top/bottom need their own real colors, not a tint */
-    --mt-stage-top: #030401; --mt-stage-bottom: var(--bg);
+    /* Stage background is two zones (see the long comment on .stage-backdrop below):
+       --mt-stage-plate/--mt-stage-top are the vertical gradient's dark(at the platform)-to-
+       light(going up) stops; --mt-stage-outer is the flat single color of the region the
+       elliptical hard edge reveals below/behind the platform. */
+    --mt-stage-plate: #05070a; --mt-stage-top: #232b1c; --mt-stage-outer: #05070a;
     background: var(--bg);
   }
   /* Light sub-variant: same shapes/type/structure, cream+white palette instead
@@ -56,7 +58,7 @@
     --mt-tab-track: #e5ddc9;
     --mt-glass-top: rgba(255,255,255,.98); --mt-glass-bottom: rgba(255,255,255,.55);
     --mt-glass-border: rgba(255,255,255,.95); --mt-glass-shine: rgba(255,255,255,1);
-    --mt-stage-top: #ddd4bf; --mt-stage-bottom: var(--bg);
+    --mt-stage-plate: #cdc3ab; --mt-stage-top: #f7f3ea; --mt-stage-outer: #cdc3ab;
   }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
@@ -128,8 +130,26 @@
   body.dark.mobile-modern .card-dialog { background: var(--bg); }
   body.dark.mobile-modern .card-stage {
     position: relative; padding: 64px 40px 36px; overflow: visible;
-    /* explicit color-to-color gradient, not a black tint over --bg -- see --mt-stage-* comment */
-    background: linear-gradient(180deg, var(--mt-stage-top), var(--mt-stage-bottom) 75%);
+  }
+  /* Two-zone background, per detailed feedback:
+     Zone 1 (--mt-stage-plate -> --mt-stage-top): a vertical gradient that's dark AT the
+     platform and lightens going UP -- the reverse of the previous attempt.
+     Zone 2 (--mt-stage-outer): a flat single color for the area below/behind the platform,
+     meeting zone 1 at a HARD edge (no fade) shaped like the platform's own ellipse -- it
+     starts at the screen edges at the height of the platform's side vertices (its widest
+     point) and arcs up to peak exactly at the platform's own top/front vertex.
+     Implemented as: .stage-backdrop is zone 2 (flat fill, the base), and its ::before paints
+     zone 1's gradient on top, clipped with an elliptical mask so it only shows inside that
+     same curve -- outside the mask, zone 2 shows through unmasked. */
+  body.dark.mobile-modern .stage-backdrop {
+    display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: var(--mt-stage-outer);
+  }
+  body.dark.mobile-modern .stage-backdrop::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(to top, var(--mt-stage-plate), var(--mt-stage-top) 85%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 4% at 50% 86%, black 99%, transparent 100%);
+    mask-image: radial-gradient(ellipse 70% 4% at 50% 86%, black 99%, transparent 100%);
   }
   body.dark.mobile-modern .card-stage::before {
     /* ambient glow: center accent + two side "spotlights" at platform height, per reference */
@@ -140,13 +160,16 @@
   body.dark.mobile-modern .card-stage::after {
     /* the actual glass platform the card visually stands on -- wider (less side margin,
        matching the reference), flat translucent disc with a real edge, a shadow for
-       grounding, and a specular highlight instead of a diffuse glow fading to nothing */
+       grounding, and a specular highlight instead of a diffuse glow fading to nothing.
+       The extra 0 6px 0 -2px box-shadow traces a thin solid band along the ellipse's own
+       bottom curve, simulating a visible rim/thickness instead of a flat, dimensionless disc. */
     content: ""; position: absolute; left: 50%; bottom: 10%; width: 92%; height: 8%;
     transform: translateX(-50%); border-radius: 50%; z-index: 0;
     background: radial-gradient(ellipse 34% 65% at 50% 22%, var(--mt-glass-shine), transparent 72%),
                 linear-gradient(180deg, var(--mt-glass-top), var(--mt-glass-bottom));
     border: 1px solid var(--mt-glass-border);
-    box-shadow: 0 18px 34px rgba(0,0,0,.35), inset 0 2px 4px var(--mt-glass-shine);
+    box-shadow: 0 18px 34px rgba(0,0,0,.35), inset 0 2px 4px var(--mt-glass-shine),
+                0 6px 0 -2px rgba(0,0,0,.4), inset 0 -3px 3px rgba(0,0,0,.2);
   }
   body.dark.mobile-modern .modal-card-frame {
     position: relative; z-index: 1; border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,.45);
@@ -166,8 +189,12 @@
      size). Masked with a sharp-ish fade: clearly visible right at the seam, gone by 55% down
      the reflection's own height -- not a slow wash the whole way, which read as "wishy-washy". */
   body.dark.mobile-modern .modal-card-reflection {
+    /* Bug fix: transform-origin:top pivots scaleY(-1) around the box's own top edge, which
+       mirrors its content *upward* past that edge -- i.e. back into the card above, not down
+       into the box's own [top:100%, +height] region. Default origin (center) mirrors the
+       content within its own box bounds instead, which is what's actually wanted here. */
     display: block; position: absolute; top: 100%; left: 0; width: 100%; height: 100%;
-    transform: scaleY(-1); transform-origin: top; border-radius: inherit; object-fit: cover;
+    transform: scaleY(-1); border-radius: inherit; object-fit: cover;
     -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 55%);
     mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 55%);
     pointer-events: none;
