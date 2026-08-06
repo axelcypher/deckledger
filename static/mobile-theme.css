@@ -29,11 +29,16 @@
     --mt-shadow: 0 14px 32px rgba(0,0,0,.45);
     --mt-radius-lg: 24px; --mt-radius-md: 16px; --mt-radius-full: 999px;
     --mt-font-display: "Fraunces", Georgia, serif;
-    --mt-podium: radial-gradient(ellipse 60% 44% at 50% 54%, rgba(111,163,132,.62), transparent 68%),
-                 radial-gradient(ellipse 66% 24% at 50% 88%, rgba(212,176,106,.42), transparent 68%);
+    --mt-podium: radial-gradient(ellipse 26% 30% at 14% 82%, rgba(255,255,255,.16), transparent 70%),
+                 radial-gradient(ellipse 26% 30% at 86% 82%, rgba(255,255,255,.16), transparent 70%),
+                 radial-gradient(ellipse 60% 44% at 50% 54%, rgba(111,163,132,.5), transparent 68%),
+                 radial-gradient(ellipse 66% 24% at 50% 88%, rgba(212,176,106,.35), transparent 68%);
     --mt-tab-track: #0c0f09;
     --mt-glass-top: rgba(255,255,255,.3); --mt-glass-bottom: rgba(255,255,255,.06);
     --mt-glass-border: rgba(255,255,255,.35); --mt-glass-shine: rgba(255,255,255,.45);
+    /* explicit two-color-stop stage gradient -- a black-alpha overlay on top of an already
+       near-black --bg barely shows, so top/bottom need their own real colors, not a tint */
+    --mt-stage-top: #030401; --mt-stage-bottom: var(--bg);
     background: var(--bg);
   }
   /* Light sub-variant: same shapes/type/structure, cream+white palette instead
@@ -44,11 +49,14 @@
     --mt-accent-soft: rgba(31,58,46,.09);
     --mt-gold: #c9a961;
     --mt-shadow: 0 12px 28px rgba(40,30,15,.08);
-    --mt-podium: radial-gradient(ellipse 56% 40% at 50% 54%, rgba(255,255,255,.95), transparent 60%),
+    --mt-podium: radial-gradient(ellipse 26% 30% at 14% 82%, rgba(255,255,255,.5), transparent 70%),
+                 radial-gradient(ellipse 26% 30% at 86% 82%, rgba(255,255,255,.5), transparent 70%),
+                 radial-gradient(ellipse 56% 40% at 50% 54%, rgba(255,255,255,.95), transparent 60%),
                  radial-gradient(ellipse 58% 14% at 50% 90%, rgba(60,45,20,.16), transparent 75%);
     --mt-tab-track: #e5ddc9;
     --mt-glass-top: rgba(255,255,255,.98); --mt-glass-bottom: rgba(255,255,255,.55);
     --mt-glass-border: rgba(255,255,255,.95); --mt-glass-shine: rgba(255,255,255,1);
+    --mt-stage-top: #ddd4bf; --mt-stage-bottom: var(--bg);
   }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
@@ -120,20 +128,20 @@
   body.dark.mobile-modern .card-dialog { background: var(--bg); }
   body.dark.mobile-modern .card-stage {
     position: relative; padding: 64px 40px 36px; overflow: visible;
-    background: linear-gradient(180deg, rgba(0,0,0,.3), transparent 60%), var(--bg);
+    /* explicit color-to-color gradient, not a black tint over --bg -- see --mt-stage-* comment */
+    background: linear-gradient(180deg, var(--mt-stage-top), var(--mt-stage-bottom) 75%);
   }
   body.dark.mobile-modern .card-stage::before {
-    /* ambient colored glow behind everything */
-    content: ""; position: absolute; left: 50%; top: 58%; width: 84%; height: 42%;
+    /* ambient glow: center accent + two side "spotlights" at platform height, per reference */
+    content: ""; position: absolute; left: 50%; top: 58%; width: 92%; height: 44%;
     transform: translate(-50%, -50%); border-radius: 50%; z-index: 0;
     background: var(--mt-podium); background-repeat: no-repeat;
   }
   body.dark.mobile-modern .card-stage::after {
-    /* the actual glass platform the card visually stands on -- a flat translucent disc
-       with a real edge (border), a shadow for grounding, and a specular highlight,
-       instead of just a diffuse glow fading to nothing. Flatter (shorter height relative
-       to width) than the first pass, closer to the reference's steep top-down angle. */
-    content: ""; position: absolute; left: 50%; bottom: 10%; width: 74%; height: 8%;
+    /* the actual glass platform the card visually stands on -- wider (less side margin,
+       matching the reference), flat translucent disc with a real edge, a shadow for
+       grounding, and a specular highlight instead of a diffuse glow fading to nothing */
+    content: ""; position: absolute; left: 50%; bottom: 10%; width: 92%; height: 8%;
     transform: translateX(-50%); border-radius: 50%; z-index: 0;
     background: radial-gradient(ellipse 34% 65% at 50% 22%, var(--mt-glass-shine), transparent 72%),
                 linear-gradient(180deg, var(--mt-glass-top), var(--mt-glass-bottom));
@@ -150,6 +158,19 @@
     transform: translateX(-50%); border-radius: 50%; z-index: -1;
     background: radial-gradient(ellipse, rgba(0,0,0,.5), transparent 72%);
     filter: blur(1.5px);
+  }
+  /* Actual mirrored reflection of the card, not a shine -- -webkit-box-reflect parsed but
+     never actually painted anything in testing, so this is a real flipped <img> (same src,
+     added in the JS markup) instead, positioned directly below the card via top:100% of the
+     frame's own box (percentage-based, so it lines up regardless of the card's rendered
+     size). Masked with a sharp-ish fade: clearly visible right at the seam, gone by 55% down
+     the reflection's own height -- not a slow wash the whole way, which read as "wishy-washy". */
+  body.dark.mobile-modern .modal-card-reflection {
+    display: block; position: absolute; top: 100%; left: 0; width: 100%; height: 100%;
+    transform: scaleY(-1); transform-origin: top; border-radius: inherit; object-fit: cover;
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 55%);
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 55%);
+    pointer-events: none;
   }
   body.dark.mobile-modern .card-nav-button { z-index: 1; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
   body.dark.mobile-modern .variant-hint { z-index: 1; color: var(--muted); opacity: 1; }
