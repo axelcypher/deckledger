@@ -32,6 +32,8 @@
     --mt-podium: radial-gradient(ellipse 60% 44% at 50% 54%, rgba(111,163,132,.62), transparent 68%),
                  radial-gradient(ellipse 66% 24% at 50% 88%, rgba(212,176,106,.42), transparent 68%);
     --mt-tab-track: #0c0f09;
+    --mt-glass-top: rgba(255,255,255,.3); --mt-glass-bottom: rgba(255,255,255,.06);
+    --mt-glass-border: rgba(255,255,255,.35); --mt-glass-shine: rgba(255,255,255,.45);
     background: var(--bg);
   }
   /* Light sub-variant: same shapes/type/structure, cream+white palette instead
@@ -45,6 +47,8 @@
     --mt-podium: radial-gradient(ellipse 56% 40% at 50% 54%, rgba(255,255,255,.95), transparent 60%),
                  radial-gradient(ellipse 58% 14% at 50% 90%, rgba(60,45,20,.16), transparent 75%);
     --mt-tab-track: #e5ddc9;
+    --mt-glass-top: rgba(255,255,255,.98); --mt-glass-bottom: rgba(255,255,255,.55);
+    --mt-glass-border: rgba(255,255,255,.95); --mt-glass-shine: rgba(255,255,255,1);
   }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
@@ -119,9 +123,20 @@
     background: linear-gradient(180deg, rgba(0,0,0,.3), transparent 60%), var(--bg);
   }
   body.dark.mobile-modern .card-stage::before {
+    /* ambient colored glow behind everything */
     content: ""; position: absolute; left: 50%; top: 58%; width: 84%; height: 42%;
     transform: translate(-50%, -50%); border-radius: 50%; z-index: 0;
     background: var(--mt-podium); background-repeat: no-repeat;
+  }
+  body.dark.mobile-modern .card-stage::after {
+    /* the actual glass platform the card visually stands on -- a flat translucent disc
+       with a real edge (border), a shadow for grounding, and a top-lit "sheen" gradient,
+       instead of just a diffuse glow fading to nothing */
+    content: ""; position: absolute; left: 50%; bottom: 9%; width: 68%; height: 14%;
+    transform: translateX(-50%); border-radius: 50%; z-index: 0;
+    background: linear-gradient(180deg, var(--mt-glass-top), var(--mt-glass-bottom));
+    border: 1px solid var(--mt-glass-border);
+    box-shadow: 0 18px 34px rgba(0,0,0,.35), inset 0 2px 4px var(--mt-glass-shine);
   }
   body.dark.mobile-modern .modal-card-frame {
     position: relative; z-index: 1; border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,.45);
