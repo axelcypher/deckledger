@@ -10,11 +10,62 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-180.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=98">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-theme.css') }}?v=1">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=106">
+  <link rel="stylesheet" href="{{ url_for('static', filename='foil-effects.css') }}?v=20">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-theme.css') }}?v=59">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-pages.css') }}?v=19">
 </head>
 <body class="dark">
+  <!-- Card-reflection mask: the fade gradient (its own visibility) with the plate's front
+       edge (id="glass_side") cut out of it, via real SVG-native layering inside one <mask> --
+       not CSS mask-composite, which doesn't functionally apply subtract/destination-out in
+       this browser despite accepting the syntax. filter:brightness(0) forces glass_side to
+       pure black (0 luminance = hidden) regardless of its own internal coloring, which is what
+       actually punches the hole -- SVG mask visibility is luminance x alpha, and glass_side's
+       own artwork is light-colored (high luminance), which would make that area MORE visible,
+       not less, if used as-is. #mt-reflection-cutout-wrap's transform is set dynamically per
+       render (see alignReflectionMask in app.js) to match wherever the plate actually sits on
+       screen -- the plate and reflection are independently positioned elements, so that
+       alignment can't be expressed as a fixed value here.
+       Bug fix: <use href="/glass-plate.svg#glass_side"> (a CROSS-document reference to the
+       external file) computes correct geometry (getBoundingClientRect matches expectations)
+       but paints ZERO pixels once that same external file+fragment is also referenced by an
+       SVG <mask> used as a CSS mask-image anywhere on the page -- confirmed via an isolated
+       same-origin test: removing the production mask let a second <use> to the same external
+       href paint again immediately. A same-DOCUMENT id reference doesn't have this problem, so
+       glass-plate.svg's raw markup is inlined here server-side (see glass_plate_inline_markup()
+       in app.py) -- one canonical file on disk (public/glass-plate.svg, still never duplicated
+       into static/), its content just also lives in this document at render time so #glass_side
+       resolves locally. Wrapped in our own <defs> so none of the inlined content (which
+       includes its own visible top-level groups in the original file) paints on its own. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      {{ glass_plate_inline|safe }}
+      <linearGradient id="mt-reflection-fade" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#fff" stop-opacity=".18"/>
+        <stop offset="0.4" stop-color="#fff" stop-opacity="0"/>
+        <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+      </linearGradient>
+      <!-- maskContentUnits="userSpaceOnUse" (pixel-based), NOT objectBoundingBox (0-1
+           fractional) -- confirmed via a dozen isolated A/B tests that glass_side's <use>
+           paints ZERO pixels (correct getBoundingClientRect, but nothing rasterized) specifically
+           when BOTH its g-transform's scaleX and scaleY are simultaneously the tiny fractions
+           objectBoundingBox forces here (~0.0033 and ~0.0084, from compressing a 500x79 native
+           shape into a ~1-unit box) -- a real Chromium precision/rasterization bug, not a syntax
+           or logic error. Any single axis being a more ordinary magnitude avoided it in testing;
+           real pixel units (rect + g scaled by roughly the plate's actual on-screen size, order
+           0.6-0.8, not 0.003) sidestep the failure zone entirely. Both the rect and the cutout
+           <g> transform are set in real pixels by JS (alignReflectionMask in app.js), since
+           userSpaceOnUse here means "the reflection element's own pixel box". -->
+      <mask id="mt-reflection-mask" maskUnits="objectBoundingBox" maskContentUnits="userSpaceOnUse">
+        <rect id="mt-reflection-fade-rect" x="0" y="0" width="0" height="0" fill="url(#mt-reflection-fade)"/>
+        <g id="mt-reflection-cutout-wrap">
+          <use href="#glass_side" style="filter:brightness(0)"/>
+        </g>
+      </mask>
+    </defs>
+  </svg>
   <div id="app" class="app-shell">
     <aside class="sidebar">
       <button class="brand" data-route="dashboard">
@@ -53,10 +104,16 @@
 
     <header class="topbar">
       <button id="mobile-menu" class="icon-button mobile-only">☰</button>
-      <select id="global-game-filter" class="global-game-filter" aria-label="Aktives TCG"></select>
+      <div id="global-game-picker" class="global-game-picker" title="TCG auswählen">
+        <span id="global-game-icon" class="global-game-icon" style="--tcg-icon:url('/static/tcg-icons/generic.svg?v=2')" aria-hidden="true"></span>
+        <select id="global-game-filter" class="global-game-filter" aria-label="Aktives TCG"></select>
+      </div>
       <button id="global-search-open" class="global-search"><span>⌕</span><span>Karten, Sets oder Nummern suchen …</span><kbd>⌘ K</kbd></button>
+      <button type="button" class="mobile-profile-button" data-route="settings" aria-label="Einstellungen" title="Einstellungen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.7 20c1.4-3.5 4.3-5.4 7.3-5.4s5.9 1.9 7.3 5.4"/></svg>
+      </button>
       <div class="top-actions">
-        <div id="edit-indicator" class="edit-indicator">EDIT MODE</div>
+        <div id="edit-indicator" class="edit-indicator" aria-label="Edit Mode aktiv" title="Edit Mode aktiv"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.4-10.4a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.7 3 3"/></svg></div>
       </div>
     </header>
 
@@ -66,9 +123,9 @@
   <nav id="mobile-tabbar" class="mobile-tabbar" aria-label="Hauptnavigation">
     <button class="mt-tab active" data-route="dashboard" aria-label="Start"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg></button>
     <button class="mt-tab" data-route="collection" aria-label="Sammlung"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="12" height="16" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V7"/></svg></button>
-    <button class="mt-tab mt-tab-add" data-mt-add aria-label="Karte hinzufügen"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="mobile-edit-toggle" class="mt-tab mt-tab-add" type="button" aria-label="Edit Mode aktivieren" aria-pressed="false" title="Edit Mode aktivieren"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.4-10.4a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.7 3 3"/></svg></button>
     <button class="mt-tab" data-route="watchlist" aria-label="Watchlist"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg><span id="mt-watch-count" class="mt-badge hidden">0</span></button>
-    <button class="mt-tab" data-route="settings" aria-label="Profil"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c1.4-3.6 4.4-5.5 7.5-5.5s6.1 1.9 7.5 5.5"/></svg></button>
+    <button class="mt-tab" data-route="decks" aria-label="Deckbuilder"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M8.5 8h6M8.5 12h6"/></svg></button>
   </nav>
 
   <div id="search-overlay" class="overlay hidden">
@@ -109,6 +166,18 @@
     </div>
   </div>
 
+  <div id="deck-transfer-modal" class="overlay hidden">
+    <div class="utility-dialog deck-transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="deck-transfer-title">
+      <div class="dialog-head"><div><span class="eyebrow">DECK</span><h2 id="deck-transfer-title">Deckaktionen</h2></div><button class="close-button" data-close="deck-transfer-modal">×</button></div>
+      <p class="muted">Importieren, sichern oder verwalten.</p>
+      <div class="deck-transfer-options">
+        <button type="button" class="deck-transfer-option" id="deck-transfer-import-choice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 18v2h14v-2"/></svg><span><b>Deck importieren</b><small>Eine bestehende Deckliste übernehmen</small></span><i>›</i></button>
+        <button type="button" class="deck-transfer-option" id="deck-transfer-export-choice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17V5M7 10l5-5 5 5"/><path d="M5 18v2h14v-2"/></svg><span><b>Deck exportieren</b><small>Deckliste oder fehlende Karten herunterladen</small></span><i>›</i></button>
+        <button type="button" class="deck-transfer-option danger" id="deck-delete-choice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg><span><b>Deck löschen</b><small>Dieses Deck dauerhaft entfernen</small></span><i>›</i></button>
+      </div>
+    </div>
+  </div>
+
   <div id="deck-import-modal" class="overlay hidden">
     <div class="utility-dialog import-dialog">
       <div class="dialog-head"><div><span class="eyebrow">DECK ÜBERNEHMEN</span><h2>Deckliste importieren</h2></div><button class="close-button" data-close="deck-import-modal">×</button></div>
@@ -119,9 +188,20 @@
     </div>
   </div>
 
+  <div id="deck-export-modal" class="overlay hidden">
+    <div class="utility-dialog import-dialog">
+      <div class="dialog-head"><div><span class="eyebrow">DECK SICHERN</span><h2>Deck exportieren</h2></div><button class="close-button" data-close="deck-export-modal">×</button></div>
+      <p class="muted">Lade dieses Deck in einem portablen Format herunter.</p>
+      <div class="export-options">
+        <a href="#" id="deck-export-list" class="export-card"><span class="file-icon">↧</span><div><b>Deckliste</b><small>Kartennamen, zeilenweise · für Backups oder andere Deckbuilder</small></div><span>↓</span></a>
+        <a href="#" id="deck-export-missing" class="export-card"><span class="file-icon">$</span><div><b>Fehlende Karten</b><small>Kartennamen, zeilenweise · zum Einfügen in den Cardmarket-Warenkorb</small></div><span>↓</span></a>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-stack" class="toast-stack"></div>
   <button type="button" id="back-to-top" class="back-to-top hidden" aria-label="Nach oben springen">↑</button>
   <div id="offline-indicator" class="offline-indicator hidden"></div>
-  <script src="{{ url_for('static', filename='app.js') }}?v=103"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=146"></script>
 </body>
 </html>

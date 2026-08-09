@@ -25,6 +25,34 @@ LORCANA_PROMO_GROUPS = {
     "DIS": ("Discover Promo", "Promo Set"),
 }
 
+# LorcanaJSON (and every other catalog we've checked -- Ravensburger's own app API, TCGplayer's
+# group "abbreviation" field, Lorcast) key the main numbered sets by their bare release number
+# ("1", "2", ... "13"), not by a letter code -- there IS no single formally-issued abbreviation
+# for these. This is the informal, widely-used community shorthand instead (the one seen across
+# Lorcana Discord/forum/deckbuilder usage), applied here as a display override on top of
+# LorcanaJSON's own numeric "code" so the set grid/card modal show something more recognisable
+# than a bare digit. 1-9 are long-established and confirmed against multiple community
+# references; 10-13 (released after this was last checked) follow the same
+# first-letter-of-each-significant-word convention but haven't been independently verified --
+# flag/correct these if they turn out not to match what's actually in common use.
+LORCANA_SET_ABBREVIATIONS = {
+    "1": "TFC",    # The First Chapter
+    "2": "ROF",    # Rise of the Floodborn
+    "3": "ITI",    # Into the Inklands
+    "4": "URR",    # Ursula's Return
+    "5": "SSK",    # Shimmering Skies
+    "6": "AZS",    # Azurite Sea
+    "7": "ARI",    # Archazia's Island
+    "8": "ROJ",    # Reign of Jafar
+    "9": "FAB",    # Fabled
+    "10": "WSP",   # Whispers in the Well -- confirmed
+    "11": "WIN",   # Winterspell -- confirmed
+    "12": "WLD",   # Wilds Unknown -- confirmed
+    "13": "AOTV",  # Attack of the Vine! -- community usage is genuinely split between "AOTV"
+                   # and "VINE"; keeping AOTV (the first-letters convention every other entry
+                   # here follows) since neither is more "correct" than the other.
+}
+
 # Known physical misprints in the German TFC print run: Ravensburger corrected these in later
 # print runs, but the original error cards are real, physically distinct, collectible printings
 # that Cardmarket lists as their own product. Keyed by LorcanaJSON's card id, which for TFC's
@@ -73,7 +101,11 @@ def fetch_catalog() -> dict:
                 catalog["sets"][set_id] = {
                     "id": set_id,
                     "game_id": "lorcana",
-                    "code": str(code),
+                    # Display abbreviation override -- set_id above intentionally keeps using
+                    # the raw numeric `code` (LorcanaJSON's own key), not this mapped value, so
+                    # existing set_ids (already the primary key everywhere -- collection
+                    # entries, deck cards, price data) never change underneath anything.
+                    "code": LORCANA_SET_ABBREVIATIONS.get(str(code), str(code)),
                     "name": source_set.get("name") or str(code),
                     "set_type": source_set.get("type", "set").replace("_", " ").title(),
                     "release_date": source_set.get("releaseDate"),

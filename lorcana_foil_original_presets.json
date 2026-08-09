@@ -1,0 +1,6496 @@
+{
+  "source": {
+    "app": "Disney Lorcana TCG Companion",
+    "version": "2026.4.1",
+    "unity": "6000.3.17f1",
+    "bundle": "assets/bin/Data/data.unity3d",
+    "serialized_asset": "sharedassets0.assets"
+  },
+  "foil_types": [
+    "Silver",
+    "Lava",
+    "Satin",
+    "Glitter",
+    "VerticalWave",
+    "Tempest",
+    "FreeForm2",
+    "SeaWave",
+    "Lore",
+    "Magma",
+    "RainbowPillars",
+    "CalendarWave",
+    "FreeForm1"
+  ],
+  "top_layer_types": [
+    "HighGloss",
+    "RainbowHotFoil",
+    "MatteHotFoil",
+    "MetallicHotFoil",
+    "SnowHotFoil",
+    "ChromeRainbowHotFoil"
+  ],
+  "supported_combinations": {
+    "None_HighGloss": "CardVarnishRegular",
+    "Silver_None": "CardFoilSilver",
+    "Silver_HighGloss": "CardVarnishSilver",
+    "Lava_None": "CardFoilLava",
+    "Satin_None": "CardFoilSatin",
+    "Satin_HighGloss": "CardFoilSatinHighGloss",
+    "Glitter_None": "CardFoilGlitter",
+    "VerticalWave_None": "CardFoilVertWave",
+    "Tempest_None": "CardFoilTempest",
+    "FreeForm2_None": "CardFreeForm2Foil",
+    "FreeForm2_RainbowHotFoil": "CardFreeForm2RainbowHotFoil",
+    "SeaWave_None": "CardFoilSeaWave",
+    "SeaWave_HighGloss": "CardFoilSeaWaveHighGloss",
+    "SeaWave_MatteHotFoil": "CardSeaWaveMatteHotFoil",
+    "Lore_MetallicHotFoil": "CardLoreMetallicHotFoil",
+    "Magma_None": "CardMagmaFoil",
+    "Magma_MetallicHotFoil": "CardMagmaMetallicHotFoil",
+    "Magma_SnowHotFoil": "CardMagmaSnowHotFoil",
+    "Magma_ChromeRainbowHotFoil": "CardMagmaChromeRainbowHotFoilMaterial",
+    "RainbowPillars_None": "CardRainbowPillarsFoil",
+    "CalendarWave_None": "CardFoilCalendarWave",
+    "FreeForm1_None": "CardFreeForm1Foil"
+  },
+  "shader_graphs": {
+    "127": "Shader Graphs/CardVarnishRegular5",
+    "128": "Shader Graphs/CardFoilSilver5",
+    "129": "Shader Graphs/CardFoilLore",
+    "130": "Shader Graphs/CardFoilFreeForm",
+    "131": "Shader Graphs/CardVarnishSilver",
+    "132": "Shader Graphs/CardFoilFreeFormGoldVarnish",
+    "133": "Shader Graphs/CardFoilGlitter",
+    "135": "Shader Graphs/CardFoilSatin",
+    "136": "Shader Graphs/CardFoilTempest",
+    "137": "Shader Graphs/DefaultHoloFoil"
+  },
+  "original_effect_textures": [
+    {
+      "path_id": 63,
+      "name": "RainbowGradientGold"
+    },
+    {
+      "path_id": 64,
+      "name": "SatinFoilNoise"
+    },
+    {
+      "path_id": 65,
+      "name": "VarnishShine"
+    },
+    {
+      "path_id": 67,
+      "name": "RainbowGradientSatinWide"
+    },
+    {
+      "path_id": 69,
+      "name": "CardMasks"
+    },
+    {
+      "path_id": 76,
+      "name": "TempestPatterns"
+    },
+    {
+      "path_id": 78,
+      "name": "RainbowGradientInkwash"
+    },
+    {
+      "path_id": 82,
+      "name": "RainbowGradientLore"
+    },
+    {
+      "path_id": 83,
+      "name": "SeaWavePattern"
+    },
+    {
+      "path_id": 84,
+      "name": "SilverShine"
+    },
+    {
+      "path_id": 87,
+      "name": "VarnishSurface"
+    },
+    {
+      "path_id": 88,
+      "name": "GradientGold"
+    },
+    {
+      "path_id": 91,
+      "name": "RainbowGradientFreeForm"
+    },
+    {
+      "path_id": 92,
+      "name": "MagmaTexture"
+    },
+    {
+      "path_id": 96,
+      "name": "GlitterPattern"
+    },
+    {
+      "path_id": 98,
+      "name": "RainbowGradientSatin"
+    },
+    {
+      "path_id": 100,
+      "name": "CalendarWavePattern"
+    },
+    {
+      "path_id": 101,
+      "name": "InkwashMask"
+    },
+    {
+      "path_id": 108,
+      "name": "VarnishShineBroad"
+    },
+    {
+      "path_id": 109,
+      "name": "VertWaveTexture"
+    },
+    {
+      "path_id": 113,
+      "name": "LorePattern"
+    },
+    {
+      "path_id": 115,
+      "name": "RainbowGradientTempestGlitter"
+    },
+    {
+      "path_id": 116,
+      "name": "FreeForm2Pattern"
+    },
+    {
+      "path_id": 120,
+      "name": "RainbowGradientSeaWave"
+    },
+    {
+      "path_id": 121,
+      "name": "FreeForm1Pattern"
+    },
+    {
+      "path_id": 123,
+      "name": "RainbowPillarsPattern"
+    }
+  ],
+  "materials": {
+    "CardFoilCalendarWave": {
+      "name": "CardFoilCalendarWave",
+      "path_id": 10,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_NONE"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 100,
+            "name": "CalendarWavePattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 0.0,
+        "_FoilHighlightStrength": 5.0,
+        "_FoilMidToneStrength": 0.4000000059604645,
+        "_FoilMorphSpeed": 1.440000057220459,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.5,
+        "_HotFoilContrast": 0.5,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.6499999761581421,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 0.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 0.0,
+        "_VarnishBevelStrength": 0.11999999731779099,
+        "_VarnishDarkenStrength": 0.22499999403953552,
+        "_VarnishDistortionStrength": 0.03999999910593033,
+        "_VarnishHighlightStrength": 0.5,
+        "_VarnishOutlineStrength": 0.800000011920929,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.550000011920929,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.550000011920929,
+          0.30000001192092896,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          0.3499999940395355,
+          0.25,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.6196079254150391,
+          0.13725489377975464,
+          0.2588235139846802,
+          1.0
+        ],
+        "_Offset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          0.25,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          1.0,
+          0.9834492802619934,
+          0.6839622259140015,
+          1.0
+        ]
+      }
+    },
+    "CardFoilGlitter": {
+      "name": "CardFoilGlitter",
+      "path_id": 11,
+      "shader": {
+        "file_id": 0,
+        "path_id": 133,
+        "name": "Shader Graphs/CardFoilGlitter"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_19825a75a1e1475f9aba106e3e93b681_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_5d5bc58c79de46d28a401b0262a4cdf3_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ad6aaa0cbede4a7a9e59e8d8b6cf82c3_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 115,
+            "name": "RainbowGradientTempestGlitter"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Strength": 0.5,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_RainbowToMotifWeight": 0.17499999701976776,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFoilLava": {
+      "name": "CardFoilLava",
+      "path_id": 12,
+      "shader": {
+        "file_id": 0,
+        "path_id": 137,
+        "name": "Shader Graphs/DefaultHoloFoil"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 78,
+            "name": "RainbowGradientInkwash"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 101,
+            "name": "InkwashMask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.550000011920929,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          1.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFoilSatin": {
+      "name": "CardFoilSatin",
+      "path_id": 13,
+      "shader": {
+        "file_id": 0,
+        "path_id": 135,
+        "name": "Shader Graphs/CardFoilSatin"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_NONE"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_32b038f47e684388a3378904b95b91d3_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_RainbowGradientTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 98,
+            "name": "RainbowGradientSatin"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ecaa018932e843b68c4797464457ac07_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_f44e690f3f3541a884ac95936014fc30_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 64,
+            "name": "SatinFoilNoise"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture2DAsset_450a32acbdb1461b842432479265bb3d_Out_0_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FoilDisplacementStrength": 0.30000001192092896,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_LerpMotifMultipliedMaskToRegularMask": 0.15000000596046448,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_MotifToRainbowRatio": 0.15000000596046448,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 0.8820000290870667,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 0.0,
+        "_VarnishBevelStrength": 0.11999999731779099,
+        "_VarnishDarkenStrength": 0.22499999403953552,
+        "_VarnishDistortionStrength": 0.03999999910593033,
+        "_VarnishHighlightStrength": 0.5,
+        "_VarnishOffset": 0.25,
+        "_VarnishOutlineStrength": 0.800000011920929,
+        "_VarnishRainbowDistortionStrength": 0.06499999761581421,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilDisplacementTiling": [
+          3.0,
+          2.0,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          0.25,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          1.0,
+          0.8117647171020508,
+          0.4470587968826294,
+          1.0
+        ]
+      }
+    },
+    "CardFoilSatinHighGloss": {
+      "name": "CardFoilSatinHighGloss",
+      "path_id": 14,
+      "shader": {
+        "file_id": 0,
+        "path_id": 135,
+        "name": "Shader Graphs/CardFoilSatin"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HIGHGLOSS"
+      ],
+      "invalid_keywords": [
+        "_USEVARNISH"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_32b038f47e684388a3378904b95b91d3_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_RainbowGradientTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 67,
+            "name": "RainbowGradientSatinWide"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ecaa018932e843b68c4797464457ac07_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_f44e690f3f3541a884ac95936014fc30_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 64,
+            "name": "SatinFoilNoise"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture2DAsset_450a32acbdb1461b842432479265bb3d_Out_0_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FoilDisplacementStrength": 0.44999998807907104,
+        "_FoilMidToneStrength": 0.4000000059604645,
+        "_FoilMorphSpeed": 1.440000057220459,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HotFoilBrightness": 0.5,
+        "_HotFoilContrast": 0.5,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.6499999761581421,
+        "_LerpMotifMultipliedMaskToRegularMask": 1.0,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_MotifToRainbowRatio": 1.0,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 1.0,
+        "_VarnishBevelStrength": 0.20000000298023224,
+        "_VarnishDarkenStrength": 0.3499999940395355,
+        "_VarnishDistortionStrength": 0.03999999910593033,
+        "_VarnishHighlightStrength": 0.6499999761581421,
+        "_VarnishOffset": 0.25,
+        "_VarnishOutlineStrength": 0.4000000059604645,
+        "_VarnishRainbowDistortionStrength": 0.32499998807907104,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilDisplacementTiling": [
+          1.0,
+          2.0,
+          0.0,
+          0.0
+        ],
+        "_FoilMorphOffset": [
+          0.550000011920929,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.6196079254150391,
+          0.13725489377975464,
+          0.2588235139846802,
+          1.0
+        ],
+        "_Offset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          0.25,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_VarnishHighlightColor": [
+          1.0,
+          0.8117647171020508,
+          0.4470587968826294,
+          1.0
+        ],
+        "_VarnishLightColor": [
+          0.9843137264251709,
+          0.9137254953384399,
+          0.7960784435272217,
+          1.0
+        ]
+      }
+    },
+    "CardFoilSeaWave": {
+      "name": "CardFoilSeaWave",
+      "path_id": 15,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_HOTFOILSURFACE_METALLIC",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_NONE"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 83,
+            "name": "SeaWavePattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 0.0,
+        "_FoilHighlightStrength": 5.0,
+        "_FoilMidToneStrength": 0.4000000059604645,
+        "_FoilMorphSpeed": 1.440000057220459,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.5,
+        "_HotFoilContrast": 0.5,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.6499999761581421,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 0.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 0.0,
+        "_VarnishBevelStrength": 0.11999999731779099,
+        "_VarnishDarkenStrength": 0.22499999403953552,
+        "_VarnishDistortionStrength": 0.03999999910593033,
+        "_VarnishHighlightStrength": 0.5,
+        "_VarnishOutlineStrength": 0.800000011920929,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.550000011920929,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.6196079254150391,
+          0.13725489377975464,
+          0.2588235139846802,
+          1.0
+        ],
+        "_Offset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          0.25,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          1.0,
+          0.9834492802619934,
+          0.6839622259140015,
+          1.0
+        ]
+      }
+    },
+    "CardFoilSeaWaveHighGloss": {
+      "name": "CardFoilSeaWaveHighGloss",
+      "path_id": 16,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_HOTFOILSURFACE_METALLIC",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HIGHGLOSS"
+      ],
+      "invalid_keywords": [
+        "_USEVARNISH"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 83,
+            "name": "SeaWavePattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 0.0,
+        "_FoilHighlightStrength": 5.0,
+        "_FoilMidToneStrength": 0.4000000059604645,
+        "_FoilMorphSpeed": 1.440000057220459,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.5,
+        "_HotFoilContrast": 0.5,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.6499999761581421,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 1.0,
+        "_VarnishBevelStrength": 0.20000000298023224,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 0.03999999910593033,
+        "_VarnishHighlightStrength": 0.6499999761581421,
+        "_VarnishOutlineStrength": 0.800000011920929,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.550000011920929,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.6196079254150391,
+          0.13725489377975464,
+          0.2588235139846802,
+          1.0
+        ],
+        "_Offset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          0.25,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          0.9843137264251709,
+          0.9137254953384399,
+          0.7960784435272217,
+          1.0
+        ]
+      }
+    },
+    "CardFoilSilver": {
+      "name": "CardFoilSilver",
+      "path_id": 17,
+      "shader": {
+        "file_id": 0,
+        "path_id": 128,
+        "name": "Shader Graphs/CardFoilSilver5"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ec9b044a8f854b959842da02b1cd8abd_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ecaa018932e843b68c4797464457ac07_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFoilTempest": {
+      "name": "CardFoilTempest",
+      "path_id": 18,
+      "shader": {
+        "file_id": 0,
+        "path_id": 136,
+        "name": "Shader Graphs/CardFoilTempest"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ad6aaa0cbede4a7a9e59e8d8b6cf82c3_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 115,
+            "name": "RainbowGradientTempestGlitter"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ef0db2719a6848e5ac298c7eb7328277_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 76,
+            "name": "TempestPatterns"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.10000000149011612,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          0.3100000023841858,
+          0.550000011920929,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.27000001072883606,
+          0.27000001072883606,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFoilVertWave": {
+      "name": "CardFoilVertWave",
+      "path_id": 19,
+      "shader": {
+        "file_id": 0,
+        "path_id": 137,
+        "name": "Shader Graphs/DefaultHoloFoil"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 78,
+            "name": "RainbowGradientInkwash"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 109,
+            "name": "VertWaveTexture"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.550000011920929,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          1.100000023841858,
+          1.399999976158142,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.2800000011920929,
+          0.4699999988079071,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFreeForm1Foil": {
+      "name": "CardFreeForm1Foil",
+      "path_id": 20,
+      "shader": {
+        "file_id": 0,
+        "path_id": 130,
+        "name": "Shader Graphs/CardFoilFreeForm"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ad6aaa0cbede4a7a9e59e8d8b6cf82c3_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 91,
+            "name": "RainbowGradientFreeForm"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 121,
+            "name": "FreeForm1Pattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_Foil_Strength": 0.8999999761581421,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.8999999761581421,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          0.41999998688697815,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.800000011920929,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFreeForm2Foil": {
+      "name": "CardFreeForm2Foil",
+      "path_id": 21,
+      "shader": {
+        "file_id": 0,
+        "path_id": 130,
+        "name": "Shader Graphs/CardFoilFreeForm"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ad6aaa0cbede4a7a9e59e8d8b6cf82c3_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 91,
+            "name": "RainbowGradientFreeForm"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 116,
+            "name": "FreeForm2Pattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_Foil_Strength": 0.8999999761581421,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.8999999761581421,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          0.20000000298023224,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.10000000149011612,
+          0.10000000149011612,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardFreeForm2RainbowHotFoil": {
+      "name": "CardFreeForm2RainbowHotFoil",
+      "path_id": 22,
+      "shader": {
+        "file_id": 0,
+        "path_id": 132,
+        "name": "Shader Graphs/CardFoilFreeFormGoldVarnish"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 79,
+            "name": "card_9998"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 99,
+            "name": "card_9998_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_424b6d7bfe0c45a98e8c08b589a24fdf_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 63,
+            "name": "RainbowGradientGold"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_652ce33a9b0b4e8eb0fc31aec804f2f9_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 88,
+            "name": "GradientGold"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ad6aaa0cbede4a7a9e59e8d8b6cf82c3_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 91,
+            "name": "RainbowGradientFreeForm"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 116,
+            "name": "FreeForm2Pattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_Foil_Strength": 0.8999999761581421,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.8999999761581421,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          0.20000000298023224,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.10000000149011612,
+          0.10000000149011612,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardLoreMetallicHotFoil": {
+      "name": "CardLoreMetallicHotFoil",
+      "path_id": 23,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_FOILOFFSETSRAINBOW",
+        "_HOTFOILSURFACE_METALLIC",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HOTFOIL"
+      ],
+      "invalid_keywords": [
+        "_USEVARNISH"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 82,
+            "name": "RainbowGradientLore"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 113,
+            "name": "LorePattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 108,
+            "name": "VarnishShineBroad"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 1.0,
+        "_FoilHighlightStrength": 5.0,
+        "_FoilMidToneFactor": 1.0,
+        "_FoilMidToneStrength": 1.0,
+        "_FoilMorphSpeed": 0.800000011920929,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.6000000238418579,
+        "_HotFoilContrast": 0.8500000238418579,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.8999999761581421,
+        "_Metallic": 0.0,
+        "_MetallicBrightness": 0.6000000238418579,
+        "_MetallicContrast": 0.8500000238418579,
+        "_MetallicInkColorHueOffset": 0.0,
+        "_MetallicInkColorUseSteel": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Offset": 0.25,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 2.0,
+        "_VarnishBevelStrength": 0.5,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 0.10000000149011612,
+        "_VarnishHighlightStrength": 0.8500000238418579,
+        "_VarnishOutlineStrength": 0.20000000298023224,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.10000000149011612,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.30000001192092896,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          1.399999976158142,
+          1.9320000410079956,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.2235293984413147,
+          0.4470587968826294,
+          0.2039216011762619,
+          1.0
+        ],
+        "_MetallicHotFoilColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_MetallicInkColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_Offset": [
+          0.0,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.33000001311302185,
+          0.33000001311302185,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          3.0,
+          7.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          1.0,
+          0.8117647171020508,
+          0.4470588266849518,
+          1.0
+        ]
+      }
+    },
+    "CardMagmaChromeRainbowHotFoilMaterial": {
+      "name": "CardMagmaChromeRainbowHotFoilMaterial",
+      "path_id": 24,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_FOILOFFSETSRAINBOW",
+        "_HOTFOILSURFACE_COLORRAINBOW",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HOTFOIL"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 92,
+            "name": "MagmaTexture"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 63,
+            "name": "RainbowGradientGold"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 97,
+            "name": "card_9998_normals"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 108,
+            "name": "VarnishShineBroad"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_BrightHighlightsReduction": 0.8500000238418579,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 1.0,
+        "_FoilHighlightStrength": 9.0,
+        "_FoilMidToneStrength": 2.2899999618530273,
+        "_FoilMorphSpeed": 0.20000000298023224,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 2.0,
+        "_HotFoilBrightness": 0.41999998688697815,
+        "_HotFoilContrast": 0.4000000059604645,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Strength": 1.100000023841858,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 2.0,
+        "_VarnishBevelStrength": 0.5,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 0.10000000149011612,
+        "_VarnishHighlightStrength": 0.8500000238418579,
+        "_VarnishOutlineStrength": 0.20000000298023224,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          1.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_VarnishDistortionTiling": [
+          3.0,
+          7.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          1.0,
+          0.8117647171020508,
+          0.4470587968826294,
+          1.0
+        ]
+      }
+    },
+    "CardMagmaFoil": {
+      "name": "CardMagmaFoil",
+      "path_id": 25,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_FOILOFFSETSRAINBOW",
+        "_HOTFOILSURFACE_METALLIC",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_NONE"
+      ],
+      "invalid_keywords": [
+        "_RAINBOWHASREMAP",
+        "_USEVARNISH",
+        "_VARNISHTYPE_METALLICINKCOLOR"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 92,
+            "name": "MagmaTexture"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 108,
+            "name": "VarnishShineBroad"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.8500000238418579,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 1.0,
+        "_FoilHighlightStrength": 9.0,
+        "_FoilMidToneFactor": 1.0,
+        "_FoilMidToneStrength": 2.2899999618530273,
+        "_FoilMorphSpeed": 0.20000000298023224,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.6000000238418579,
+        "_HotFoilContrast": 0.8500000238418579,
+        "_HotFoilOffset": 0.15000000596046448,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 1.100000023841858,
+        "_Metallic": 0.0,
+        "_MetallicBrightness": 0.6000000238418579,
+        "_MetallicContrast": 0.8500000238418579,
+        "_MetallicInkColorHueOffset": 0.0,
+        "_MetallicInkColorUseSteel": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Offset": 0.15000000596046448,
+        "_Parallax": 0.019999999552965164,
+        "_RAINBOWHASREMAP": 1.0,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 0.0,
+        "_VarnishBevelStrength": -0.5,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 0.10000000149011612,
+        "_VarnishHighlightStrength": 0.8500000238418579,
+        "_VarnishOutlineStrength": 0.20000000298023224,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          1.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "_HotFoilBaseColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_HotFoilColor": [
+          0.2235294133424759,
+          0.4470588266849518,
+          0.20392157137393951,
+          1.0
+        ],
+        "_MetallicHotFoilColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_MetallicInkColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_Offset": [
+          0.0,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.33000001311302185,
+          0.33000001311302185,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          0.25,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          0.8509804010391235,
+          0.6392157077789307,
+          0.4274509847164154,
+          1.0
+        ]
+      }
+    },
+    "CardMagmaMetallicHotFoil": {
+      "name": "CardMagmaMetallicHotFoil",
+      "path_id": 26,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_FOILOFFSETSRAINBOW",
+        "_HOTFOILSURFACE_METALLIC",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HOTFOIL"
+      ],
+      "invalid_keywords": [
+        "_RAINBOWHASREMAP",
+        "_USEVARNISH",
+        "_VARNISHTYPE_METALLICINKCOLOR"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 92,
+            "name": "MagmaTexture"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 108,
+            "name": "VarnishShineBroad"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.8500000238418579,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 1.0,
+        "_FoilHighlightStrength": 9.0,
+        "_FoilMidToneFactor": 1.0,
+        "_FoilMidToneStrength": 2.2899999618530273,
+        "_FoilMorphSpeed": 0.20000000298023224,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.6000000238418579,
+        "_HotFoilContrast": 0.8500000238418579,
+        "_HotFoilOffset": 0.15000000596046448,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 1.0,
+        "_Metallic": 0.0,
+        "_MetallicBrightness": 0.6000000238418579,
+        "_MetallicContrast": 0.8500000238418579,
+        "_MetallicInkColorHueOffset": 0.0,
+        "_MetallicInkColorUseSteel": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Offset": 0.15000000596046448,
+        "_Parallax": 0.019999999552965164,
+        "_RAINBOWHASREMAP": 1.0,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 2.0,
+        "_VarnishBevelStrength": -0.5,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 0.10000000149011612,
+        "_VarnishHighlightStrength": 0.8500000238418579,
+        "_VarnishOutlineStrength": 0.20000000298023224,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          1.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "_HotFoilBaseColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_HotFoilColor": [
+          0.2235294133424759,
+          0.4470588266849518,
+          0.20392157137393951,
+          1.0
+        ],
+        "_MetallicHotFoilColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_MetallicInkColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_Offset": [
+          0.0,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.33000001311302185,
+          0.33000001311302185,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          3.0,
+          7.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          0.8509804010391235,
+          0.6392157077789307,
+          0.4274509847164154,
+          1.0
+        ]
+      }
+    },
+    "CardMagmaSnowHotFoil": {
+      "name": "CardMagmaSnowHotFoil",
+      "path_id": 27,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_FOILOFFSETSRAINBOW",
+        "_HOTFOILSURFACE_SNOW",
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HOTFOIL"
+      ],
+      "invalid_keywords": [
+        "_RAINBOWHASREMAP",
+        "_USEVARNISH",
+        "_VARNISHTYPE_METALLICINKCOLOR"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 92,
+            "name": "MagmaTexture"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 96,
+            "name": "GlitterPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 108,
+            "name": "VarnishShineBroad"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.8999999761581421,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 1.0,
+        "_FoilHighlightStrength": 9.0,
+        "_FoilMidToneFactor": 1.0,
+        "_FoilMidToneStrength": 2.2899999618530273,
+        "_FoilMorphSpeed": 0.20000000298023224,
+        "_GlitterSize": 0.699999988079071,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 1.0,
+        "_HotFoilBrightness": 0.6000000238418579,
+        "_HotFoilContrast": 1.6299999952316284,
+        "_HotFoilOffset": 0.15000000596046448,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.800000011920929,
+        "_Metallic": 0.0,
+        "_MetallicBrightness": 0.6000000238418579,
+        "_MetallicContrast": 0.8500000238418579,
+        "_MetallicInkColorHueOffset": 0.0,
+        "_MetallicInkColorUseSteel": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Offset": 0.15000000596046448,
+        "_Parallax": 0.019999999552965164,
+        "_RAINBOWHASREMAP": 1.0,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 2.0,
+        "_VarnishBevelStrength": -0.6000000238418579,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 1.2999999523162842,
+        "_VarnishHighlightStrength": 0.8500000238418579,
+        "_VarnishOutlineStrength": 0.20000000298023224,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          1.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "_HotFoilBaseColor": [
+          0.3764705955982208,
+          0.47058823704719543,
+          0.47058823704719543,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_MetallicHotFoilColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_MetallicInkColor": [
+          1.0,
+          0.27843138575553894,
+          0.29411768913269043,
+          1.0
+        ],
+        "_Offset": [
+          0.0,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.33000001311302185,
+          0.33000001311302185,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          3.0,
+          7.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          0.8588235378265381,
+          0.9372549057006836,
+          0.9529411792755127,
+          1.0
+        ]
+      }
+    },
+    "CardRainbowPillarsFoil": {
+      "name": "CardRainbowPillarsFoil",
+      "path_id": 28,
+      "shader": {
+        "file_id": 0,
+        "path_id": 137,
+        "name": "Shader Graphs/DefaultHoloFoil"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 68,
+            "name": "card_001"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 94,
+            "name": "card_001_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Texture": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 123,
+            "name": "RainbowPillarsPattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.550000011920929,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_Offset": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Tiling": [
+          0.30000001192092896,
+          0.414000004529953,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "CardSeaWaveMatteHotFoil": {
+      "name": "CardSeaWaveMatteHotFoil",
+      "path_id": 29,
+      "shader": {
+        "file_id": 0,
+        "path_id": 129,
+        "name": "Shader Graphs/CardFoilLore"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME",
+        "_VARNISHTYPE_HOTFOIL"
+      ],
+      "invalid_keywords": [
+        "_USEVARNISH",
+        "_VARNISHTYPE_METALLICINKCOLOR"
+      ],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_91b9b577ace748019a7807438ac77b97_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_b94d50f356ab4aa9980ffc008846a1cd_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilColorGradient": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 120,
+            "name": "RainbowGradientSeaWave"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_FoilPattern": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 83,
+            "name": "SeaWavePattern"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_189abfa7029441b2a872a686f60c1b59_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_275af332c9e249698629407265a9f121_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_27bb04339679444fb62a3eebc499f548_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_6d30e0b953df4f898f8aca64be4593ba_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_ee5f7afeb3e24649904302917468a9d7_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SecondTopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_VarnishShineTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_Alpha": 0.0,
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BrightHighlightsReduction": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_FOILOFFSETSRAINBOW": 0.0,
+        "_FoilHighlightStrength": 5.0,
+        "_FoilMidToneFactor": 0.4000000059604645,
+        "_FoilMidToneStrength": 0.4000000059604645,
+        "_FoilMorphSpeed": 1.440000057220459,
+        "_GlitterSize": 1.100000023841858,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HOTFOILSURFACE": 0.0,
+        "_HotFoilBrightness": 0.6000000238418579,
+        "_HotFoilContrast": 0.4000000059604645,
+        "_HotFoilOffset": 0.25,
+        "_Inkwash_Compactness": 2.0,
+        "_Inkwash_Strength": 0.6499999761581421,
+        "_Metallic": 0.0,
+        "_MetallicBrightness": 0.6000000238418579,
+        "_MetallicContrast": 0.4000000059604645,
+        "_MetallicInkColorHueOffset": 0.0,
+        "_MetallicInkColorUseSteel": 0.0,
+        "_Mode": 0.0,
+        "_MotifColorWeight": 0.5,
+        "_OcclusionStrength": 1.0,
+        "_Offset": 0.25,
+        "_Parallax": 0.019999999552965164,
+        "_RainbowStrength": 1.0,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_Speed": 0.15000000596046448,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.4000000059604645,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_USEVARNISH": 1.0,
+        "_UVSec": 0.0,
+        "_VARNISHTYPE": 2.0,
+        "_VarnishBevelStrength": 0.05000000074505806,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishDistortionStrength": 0.03999999910593033,
+        "_VarnishHighlightStrength": 0.8500000238418579,
+        "_VarnishOutlineStrength": 0.800000011920929,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_FoilMorphOffset": [
+          0.550000011920929,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_FoilOffset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_FoilTiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_HotFoilColor": [
+          0.2235293984413147,
+          0.4470587968826294,
+          0.2039216011762619,
+          1.0
+        ],
+        "_MetallicInkColor": [
+          0.4745098054409027,
+          0.800000011920929,
+          0.3686274588108063,
+          1.0
+        ],
+        "_Offset": [
+          0.30000001192092896,
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "_SecondHotFoilColor": [
+          0.27843138575553894,
+          0.5453780889511108,
+          1.0,
+          1.0
+        ],
+        "_Tiling": [
+          0.5,
+          0.5,
+          0.0,
+          0.0
+        ],
+        "_Tilt": [
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishDistortionTiling": [
+          3.0,
+          7.0,
+          0.0,
+          0.0
+        ],
+        "_VarnishLightColor": [
+          1.0,
+          0.8117647171020508,
+          0.4470588266849518,
+          1.0
+        ]
+      }
+    },
+    "CardVarnishRegular": {
+      "name": "CardVarnishRegular",
+      "path_id": 30,
+      "shader": {
+        "file_id": 0,
+        "path_id": 127,
+        "name": "Shader Graphs/CardVarnishRegular5"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_73ebb6f60a5648fead4edb0e1b742729_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_73ebb6f60a5648fead4edb0e1b742729_VarnishShineTex_1105464448_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_42722767dabc4cb3a6c6f6e3f8ef5ea8_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_b03a50bb7ac04e9fa053b072bb1c81bf_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HighlightBackgroundStrength": 0.0,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.33000001311302185,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_VarnishBevelStrength": 0.20000000298023224,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishHighlightStrength": 0.6499999761581421,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          1.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_LightColor": [
+          0.9843137264251709,
+          0.9137254953384399,
+          0.7960783839225769,
+          1.0
+        ]
+      }
+    },
+    "CardVarnishSilver": {
+      "name": "CardVarnishSilver",
+      "path_id": 31,
+      "shader": {
+        "file_id": 0,
+        "path_id": 131,
+        "name": "Shader Graphs/CardVarnishSilver"
+      },
+      "valid_keywords": [
+        "_SCROLLMODE_TIME"
+      ],
+      "invalid_keywords": [],
+      "lightmap_flags": 4,
+      "enable_instancing": false,
+      "double_sided_gi": false,
+      "custom_render_queue": -1,
+      "tags": {},
+      "disabled_shader_passes": [],
+      "textures": {
+        "_CalculateVarnishLayers_a220e3f8b07d4d02b91e9cd7212f72f1_DistortionTex_3454849507_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 87,
+            "name": "VarnishSurface"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_CalculateVarnishLayers_a220e3f8b07d4d02b91e9cd7212f72f1_VarnishShineTex_1105464448_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 65,
+            "name": "VarnishShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MainTex": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 0
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_Motif": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 86,
+            "name": "card_962"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_MotifMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 105,
+            "name": "card_962_mask"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_af6d7cb49c5047e28024f2f2b90753f2_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 69,
+            "name": "CardMasks"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_SampleTexture2D_b03a50bb7ac04e9fa053b072bb1c81bf_Texture_1_Texture2D": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 84,
+            "name": "SilverShine"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        },
+        "_TopLayerMask": {
+          "texture": {
+            "file_id": 0,
+            "path_id": 107,
+            "name": "card_962_varnish"
+          },
+          "scale": [
+            1.0,
+            1.0
+          ],
+          "offset": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "ints": {},
+      "floats": {
+        "_BUILTIN_QueueControl": 0.0,
+        "_BUILTIN_QueueOffset": 0.0,
+        "_BumpScale": 1.0,
+        "_ColorMask": 15.0,
+        "_Cutoff": 0.5,
+        "_DetailNormalMapScale": 1.0,
+        "_DeviceRotationDegrees": 0.0,
+        "_DstBlend": 0.0,
+        "_GlossMapScale": 1.0,
+        "_Glossiness": 0.5,
+        "_GlossyReflections": 1.0,
+        "_HighlightBackgroundStrength": 0.30000001192092896,
+        "_Metallic": 0.0,
+        "_Mode": 0.0,
+        "_OcclusionStrength": 1.0,
+        "_Parallax": 0.019999999552965164,
+        "_SCROLLMODE": 0.0,
+        "_SmoothnessTextureChannel": 0.0,
+        "_SpecularHighlights": 1.0,
+        "_SrcBlend": 1.0,
+        "_Stencil": 0.0,
+        "_StencilComp": 8.0,
+        "_StencilOp": 0.0,
+        "_StencilReadMask": 255.0,
+        "_StencilWriteMask": 255.0,
+        "_TimeFactor": 0.33000001311302185,
+        "_UIMaskSoftnessX": 1.0,
+        "_UIMaskSoftnessY": 1.0,
+        "_UVSec": 0.0,
+        "_VarnishBevelStrength": 0.20000000298023224,
+        "_VarnishDarkenStrength": 0.30000001192092896,
+        "_VarnishHighlightStrength": 0.6499999761581421,
+        "_ZWrite": 1.0
+      },
+      "colors": {
+        "_ClipRect": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "_Color": [
+          0.08847039937973022,
+          0.7584905028343201,
+          0.0,
+          1.0
+        ],
+        "_EmissionColor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "_LightColor": [
+          0.9843137264251709,
+          0.9137254953384399,
+          0.7960783839225769,
+          1.0
+        ]
+      }
+    }
+  },
+  "runtime_symbols": {
+    "classes": [
+      "CardFXRendering",
+      "FoilMaterial",
+      "DeviceRotation",
+      "DeviceTilt",
+      "RotationProvider"
+    ],
+    "methods": [
+      "GetOrCreateMaterialForFoilType",
+      "UpdateOncePerFrame",
+      "UpdateOncePerCard",
+      "SetScrollMode",
+      "SetHotFoilColors",
+      "GetDeviceRotation",
+      "GetRotationDegrees",
+      "TryEnableGyro",
+      "Recenter",
+      "GetTilt",
+      "CalculateTilt"
+    ],
+    "fields": [
+      "MotifMask",
+      "TopLayerMask",
+      "SecondTopLayerMask",
+      "DeviceRotationDegrees",
+      "KEYWORD_TIME",
+      "KEYWORD_TILT",
+      "TILT_ANIMATION_SPEED",
+      "GYRO_ROTATION_SPEED",
+      "SMOOTH_TIME"
+    ]
+  },
+  "notes": [
+    "Material values are serialized values extracted from the shipped Unity player; use them as presets instead of inventing values.",
+    "Runtime card/mask textures are injected into material slots and therefore some serialized materials contain sample card textures. Replace them at runtime.",
+    "The shipped reference materials have _SCROLLMODE_TIME enabled, but compiled shaders also contain _SCROLLMODE_TILT; CardFXRendering switches mode at runtime.",
+    "Silver_HighGloss uses the dedicated CardVarnishSilver overlay."
+  ]
+}

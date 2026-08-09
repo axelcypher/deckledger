@@ -20,6 +20,7 @@ from flask import Flask, Response, g, jsonify, redirect, render_template, reques
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from catalog_provider_contract import digest, slug
+import ravensburger_foil
 
 
 app = Flask(__name__)
@@ -29,6 +30,7 @@ IMAGE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-images"
 IMAGE_SOURCE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-image-sources"
 IMAGE_THUMB_CACHE = Path(os.path.dirname(DB_PATH)) / "card-thumbnails"
 IMAGE_LOCK_CACHE = Path(os.path.dirname(DB_PATH)) / "card-image-locks"
+IMAGE_FOIL_MASK_CACHE = Path(os.path.dirname(DB_PATH)) / "card-foil-masks"
 PUBLIC_DIR = Path(os.environ.get("PUBLIC_DIR", Path(__file__).with_name("public")))
 PUBLIC_SET_DIR = PUBLIC_DIR / "sets"
 PUBLIC_OP_ICON_DIR = PUBLIC_DIR / "icons" / "one-piece"
@@ -182,6 +184,7 @@ FORMAT_PROFILES = {
     "lorcana": [
         {"id": "core", "name": "Core Constructed", "description": "Rotierender offizieller Kartenpool", "zones": [{"id":"main","name":"Deck","target":60}], "rules_url": "https://www.disneylorcana.com/en-US/play/ways-to-play"},
         {"id": "infinity", "name": "Infinity Constructed", "description": "Nicht-rotierender offizieller Kartenpool", "zones": [{"id":"main","name":"Deck","target":60}], "rules_url": "https://www.disneylorcana.com/en-US/play/ways-to-play"},
+        {"id": "coconut", "name": "Coconut (Open Beta)", "description": "Offizieller thematischer Multiplayer-Betatest", "zones": [{"id":"main","name":"Deck","target":60}], "rules_url": "https://files.disneylorcana.com/FormatCoconut_Rules.pdf"},
     ],
     "one-piece": [
         {"id": "standard", "name": "Official Standard", "description": "Aktuelle offizielle Regulation", "zones": [{"id":"leader","name":"Leader","target":1},{"id":"main","name":"Deck","target":50},{"id":"don","name":"DON!!","target":10}], "rules_url": "https://en.onepiece-cardgame.com/rules/"},
@@ -194,6 +197,7 @@ FORMAT_PROFILES = {
 
 def validate_lorcana_deck(deck, cards, counts):
     errors, warnings = [], []
+    is_coconut = deck["format_id"] == "coconut"
     if counts.get("main", 0) < 60:
         errors.append(f'Noch {60-counts.get("main",0)} Karten bis zum Minimum von 60.')
     names = {}
@@ -206,11 +210,25 @@ def validate_lorcana_deck(deck, cards, counts):
             errors.append(f'{c["canonical_name"]} ist eine Quest-Karte und nicht für Constructed-Decks zulässig.')
         if deck["format_id"] == "core" and attrs.get("legality") in ("future", "rotated", "banned"):
             errors.append(f'{c["canonical_name"]} ist im Core-Format nicht legal.')
-    if len(colors - {None}) > 2:
-        errors.append("Das Deck enthält mehr als zwei Tintenfarben.")
-    for name, qty in names.items():
-        if qty > 4:
-            errors.append(f'{name}: maximal 4 Exemplare erlaubt.')
+    color_limit = 3 if is_coconut else 2
+    if len(colors - {None}) > color_limit:
+        errors.append(f"Das Deck enthält mehr als {color_limit} Tintenfarben.")
+    if is_coconut:
+        repeated = [name for name, qty in names.items() if qty > 1]
+        if len(repeated) > 1:
+            errors.append("Im Coconut-Format darf nur die zur Coconut-Karte gehörende Charakterkarte mehrfach enthalten sein.")
+        for name in repeated:
+            qty = names[name]
+            matching_cards = [card for card in cards if card["canonical_name"] == name]
+            if qty > 4:
+                errors.append(f'{name}: auch die Coconut-Charakterkarte ist auf 4 Exemplare begrenzt.')
+            if any(card.get("card_type") != "Character" for card in matching_cards):
+                errors.append(f'{name}: nur die zugehörige Charakterkarte darf mehrfach enthalten sein.')
+        warnings.append("Coconut-Karte und passende Tintenfarbe bitte mit der offiziellen Companion App abgleichen.")
+    else:
+        for name, qty in names.items():
+            if qty > 4:
+                errors.append(f'{name}: maximal 4 Exemplare erlaubt.')
     return errors, warnings
 
 
@@ -570,10 +588,34 @@ def logout():
     return redirect(url_for("login"))
 
 
+def glass_plate_inline_markup():
+    # The card-detail reflection mask needs glass_side (public/glass-plate.svg's front-edge
+    # group) as a <use> target LIVE IN THIS DOCUMENT, not a cross-document reference -- confirmed
+    # via isolated same-origin testing that <use href="/glass-plate.svg#glass_side"> renders
+    # nothing (0 painted pixels, though its own getBoundingClientRect() is computed correctly)
+    # once that external file is *also* referenced by an SVG <mask> used as a CSS mask-image
+    # anywhere on the page; only a same-document id reference paints inside a mask reliably.
+    # So: read the one canonical file (public/glass-plate.svg, never duplicated into static/)
+    # and inline its raw content here at render time. No XML parsing/restructuring -- clip-path
+    # resolution broke previously specifically because extracting/rebuilding a subtree detached
+    # ids from their original document; string-slicing out everything between the outer <svg>
+    # tags keeps the whole file's structure (defs, clip-paths, groups) byte-for-byte intact, so
+    # nothing about how #glass_side's own clip-path references resolve has to change.
+    path = PUBLIC_DIR / "glass-plate.svg"
+    if not path.is_file():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    start = text.find(">", text.find("<svg"))
+    end = text.rfind("</svg>")
+    if start == -1 or end == -1:
+        return ""
+    return text[start + 1:end]
+
+
 @app.get("/")
 @login_required
 def index():
-    return render_template("index.html")
+    return render_template("index.html", glass_plate_inline=glass_plate_inline_markup())
 
 
 @app.get("/service-worker.js")
@@ -1030,11 +1072,31 @@ def game_sets(game_id):
             )""",
             (uid, s["id"]),
         ).fetchone()[0]
+        if not values["total"]:
+            # A `sets` row can exist (announced/synced set metadata) before any of its cards
+            # have actual printings in the catalog -- e.g. a newly-announced set, or a non-card
+            # promotional product that only ever gets metadata, never printings. Both the set
+            # grid (renderGame) and the set-switcher dropdowns (renderSet/renderAllCards) read
+            # this same endpoint, so filtering it out once here keeps a card-less set out of
+            # both instead of just hiding it in one place and leaving an empty/broken tile in
+            # the other.
+            continue
         item = dict(s)
         item["classifications"] = jload(item["classifications"], [])
         item["release_dates"] = release_dates_for_set(s["id"], item["release_date"])
         item["visual_version"] = set_visual_version(s)
         item.update({"owned": values["owned"], "total": values["total"], "value": round(values["value"], 2), "base_completion": round(values["owned"] / values["total"] * 100) if values["total"] else 0, "foil_completion": round(variants_owned / variants_total * 100) if variants_total else 0, "master_completion": round(variants_owned / variants_total * 100) if variants_total else 0, "playset_completion": round(playset_owned / values["total"] * 100) if values["total"] else 0})
+        # Lorcana's set `code` now holds the community abbreviation (providers/lorcana.py:
+        # LORCANA_SET_ABBREVIATIONS), not the plain release number LorcanaJSON itself uses --
+        # the set overview still wants that number visible too ("9 FAB", not just "FAB"), so
+        # it's prepended here for numbered main sets specifically. set_id for those is exactly
+        # "lorcana-<number>" (unchanged by the abbreviation override on purpose -- see that
+        # module's own comment), so the number is recovered from there rather than needing a
+        # second stored column. Promo/quest/challenge sets (ids like "lorcana-p1") don't match
+        # and are left with their existing code untouched.
+        number_match = re.match(r"^lorcana-(\d+)$", s["id"])
+        if number_match:
+            item["code"] = f"{number_match.group(1)} {item['code']}"
         rows.append(item)
     rows.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, "desc")))
     return jsonify(rows)
@@ -1335,6 +1397,7 @@ def card_detail(identity_id):
     # The per-condition/grading breakdown itself is fetched separately for the Erweitert panel.
     variants = db().execute(
         f"""SELECT v.*,p.collector_number,p.language,p.rarity,p.set_id,s.name set_name,s.code set_code,
+            s.printed_card_count printed_card_count,
             COALESCE(agg.quantity,0) quantity,agg.notes,
             COALESCE(agg.override_value,0) override_value,COALESCE(agg.unpriced_quantity,0) unpriced_quantity,
             CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted,
@@ -1846,6 +1909,19 @@ def deck_detail_api(deck_id):
                 return jsonify({"error":"Als Cover kann nur eine Karte aus diesem Deck gewählt werden."}),400
             cover_variant_id=requested_cover
         db().execute("UPDATE decks SET name=?,format_id=?,notes=?,cover_variant_id=?,updated_at=? WHERE id=?",(p.get("name",deck["name"])[:100],p.get("format_id",deck["format_id"]),p.get("notes",deck["notes"] or ""),cover_variant_id,now_iso(),deck_id));db().commit();return jsonify({"saved":True,"cover_variant_id":cover_variant_id,"validation":deck_validation(deck_id)})
+    cards=deck_cards_with_ownership(deck_id)
+    summary=deck_market_summaries([deck_id],user_id()).get(deck_id,empty_deck_market_summary())
+    explicit_don=sum(card["quantity"] for card in cards if card["zone"]=="don")
+    default_don=default_one_piece_don(max(0,10-explicit_don)) if deck["game_id"]=="one-piece" else None
+    return jsonify({"deck":dict(deck),"cards":cards,"validation":deck_validation(deck_id),"summary":summary,"default_don":default_don})
+
+
+def deck_cards_with_ownership(deck_id):
+    """Every deck_cards row for this deck, joined with catalog data and split into
+    owned_quantity/missing_quantity against the current collection. Shared by the deck detail
+    API and both export routes below so the "pool a variant's owned copies across whichever deck
+    rows need it first" logic -- e.g. the same foil printing appearing in two different deck
+    rows -- only lives in one place."""
     cards=[dict(r) for r in db().execute(f"""SELECT dc.*,v.finish,i.id identity_id,i.canonical_name,i.card_type,p.collector_number,p.language,p.rarity,
       s.code set_code,{latest_price_sql('v')} price,
       COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) collection_quantity
@@ -1858,10 +1934,67 @@ def deck_detail_api(deck_id):
         available=remaining_owned[card["variant_id"]];owned=min(card["quantity"],available)
         card["owned_quantity"]=owned;card["missing_quantity"]=max(0,card["quantity"]-owned)
         remaining_owned[card["variant_id"]]=max(0,available-owned)
-    summary=deck_market_summaries([deck_id],user_id()).get(deck_id,empty_deck_market_summary())
-    explicit_don=sum(card["quantity"] for card in cards if card["zone"]=="don")
-    default_don=default_one_piece_don(max(0,10-explicit_don)) if deck["game_id"]=="one-piece" else None
-    return jsonify({"deck":dict(deck),"cards":cards,"validation":deck_validation(deck_id),"summary":summary,"default_don":default_don})
+    return cards
+
+
+def deck_zone_names(game_id, format_id):
+    profile=next((p for p in FORMAT_PROFILES.get(game_id,[]) if p["id"]==format_id),FORMAT_PROFILES.get(game_id,[{}])[0])
+    return {z["id"]:z["name"] for z in profile.get("zones",[])}
+
+
+@app.get("/api/decks/<int:deck_id>/export/list.txt")
+@login_required
+def export_deck_list(deck_id):
+    """General decklist export -- plain text, one card per line as "<qty>x <canonical_name>",
+    grouped under a "# <Zone>" comment per zone. `#`-prefixed lines are comments to our own
+    importer (parse_deck_text), so the zone headers are inert if pasted back in -- this is the
+    exact same name-matching branch that already handles pasted decklists from OTHER
+    deckbuilders, so it's also the most portable format to hand to a human or another tool.
+    Deliberately name-based, NOT collector-number-based: collector_number is only unique WITHIN
+    a set for this game (Lorcana's own numbering restarts at 1 every set -- confirmed against
+    the real data: card number "1" alone matches 24 different EN printings across sets), so a
+    bare "<number> <language>" line round-trips ambiguously ("31 Karten teilen sich diese
+    Nummer") for exactly the games/cards this export needs to work reliably for. One Piece and
+    hololive's collector_number happens to already embed a set-ish prefix (e.g. "OP01-016") and
+    would have round-tripped fine either way, but using name everywhere keeps this one format
+    correct for all three games instead of special-casing per game_id."""
+    deck=db().execute("SELECT * FROM decks WHERE id=? AND user_id=?",(deck_id,user_id())).fetchone()
+    if not deck:return jsonify({"error":"deck not found"}),404
+    cards=deck_cards_with_ownership(deck_id)
+    zone_names=deck_zone_names(deck["game_id"],deck["format_id"])
+    zones={}
+    for card in cards:
+        zones.setdefault(card["zone"],[]).append(card)
+    lines=[f"# {deck['name']}"]
+    for zone_id,zone_cards in zones.items():
+        lines.append(f"\n# {zone_names.get(zone_id,zone_id.capitalize())}")
+        for card in zone_cards:
+            lines.append(f"{card['quantity']}x {card['canonical_name']}")
+    filename=re.sub(r"[^A-Za-z0-9-]+","-",deck["name"].strip()).strip("-").lower() or "deck"
+    return Response("\n".join(lines)+"\n",mimetype="text/plain",headers={"Content-Disposition":f"attachment; filename={filename}.txt"})
+
+
+@app.get("/api/decks/<int:deck_id>/export/missing.txt")
+@login_required
+def export_deck_missing_list(deck_id):
+    """Missing-copies list for pasting into Cardmarket's own bulk "Wantlist"/quick-add box,
+    which matches products by NAME only (no set/collector-number field in that particular
+    entry form) -- one line per card as "<qty>x <name>", English canonical_name (Cardmarket's
+    own product listings are named in English regardless of which print you end up buying).
+    Aggregated across every deck row missing that card (e.g. the same card needed in two
+    different finishes both count toward the one Cardmarket product) and sorted alphabetically,
+    not by zone -- a shopping list, not a decklist."""
+    deck=db().execute("SELECT * FROM decks WHERE id=? AND user_id=?",(deck_id,user_id())).fetchone()
+    if not deck:return jsonify({"error":"deck not found"}),404
+    cards=deck_cards_with_ownership(deck_id)
+    missing={}
+    for card in cards:
+        if card["missing_quantity"]>0:
+            missing[card["canonical_name"]]=missing.get(card["canonical_name"],0)+card["missing_quantity"]
+    lines=[f"{qty}x {name}" for name,qty in sorted(missing.items())]
+    body="\n".join(lines)+"\n" if lines else "# Keine fehlenden Karten in diesem Deck.\n"
+    filename=re.sub(r"[^A-Za-z0-9-]+","-",deck["name"].strip()).strip("-").lower() or "deck"
+    return Response(body,mimetype="text/plain",headers={"Content-Disposition":f"attachment; filename={filename}-fehlend.txt"})
 
 
 def parse_deck_text(text, game_id):
@@ -2312,6 +2445,67 @@ def cached_thumbnail(source_path: Path, cache_key: str) -> Path | None:
             return None
 
 
+def cached_foil_mask(source_path: Path, cache_key: str) -> Path | None:
+    """Luminance map derived from the card's OWN artwork, used as a CSS mask-image for the
+    mobile foil/prismatic/aurora effect: dark/black regions of THIS card get alpha 0 (no
+    shimmer), everything else gets FULL alpha (full shimmer) -- instead of the effect washing
+    uniformly over the whole card rectangle (borders, text boxes, dark backgrounds included)
+    the way the older unmasked version did. Generated once per card image and cached, same
+    lock-file pattern as cached_thumbnail above.
+    Filename carries a version suffix (-v2) so this curve fix invalidates every mask already
+    cached under the old, straight-linear version below instead of silently keeping the old
+    (bad) ones around under the same cache key."""
+    from PIL import Image, ImageFilter, ImageOps
+
+    IMAGE_FOIL_MASK_CACHE.mkdir(parents=True, exist_ok=True)
+    IMAGE_LOCK_CACHE.mkdir(parents=True, exist_ok=True)
+    mask_path = IMAGE_FOIL_MASK_CACHE / f"{cache_key}-mask-v2.webp"
+    if mask_path.exists():
+        return mask_path
+    lock_path = IMAGE_LOCK_CACHE / f"foilmask-{cache_key}.lock"
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        if mask_path.exists():
+            return mask_path
+        try:
+            with Image.open(source_path) as source:
+                gray = ImageOps.exif_transpose(source).convert("L")
+                # Downscale before blurring -- the mask only needs to be smooth, not pixel-
+                # sharp, and this keeps generation fast even on large source images.
+                gray.thumbnail((300, 420), Image.Resampling.LANCZOS)
+                gray = gray.filter(ImageFilter.GaussianBlur(radius=3))
+                # Bug fix (feedback): a straight 1:1 luminance->alpha map meant the effect
+                # visibly faded across most of the card, not just genuinely black regions --
+                # any midtone pixel got a proportionally dimmed mask value, which read as the
+                # foil card "losing intensity" almost everywhere instead of just over its
+                # actual black areas. Steep threshold curve instead: only pixels close to true
+                # black (<=18/255) get excluded; everything from a fairly dim 60/255 upward
+                # gets FULL, undiminished alpha. The 18-60 band is just a short ramp so the
+                # mask edge isn't a hard jagged cutoff, not a general brightness response.
+                gray = gray.point(lambda l: 0 if l <= 18 else (255 if l >= 60 else int((l - 18) * 255 / 42)))
+                mask = Image.new("RGBA", gray.size, (255, 255, 255, 0))
+                mask.putalpha(gray)
+                mask.save(mask_path, format="WEBP", quality=80, method=4)
+            return mask_path
+        except Exception as error:
+            app.logger.warning("Foil mask generation failed for %s: %s", source_path, error)
+            return None
+
+
+def foil_mask_fallback() -> Path:
+    """Cards with no real cached artwork (generated-placeholder-SVG fallback) have nothing to
+    derive a luminance map from. mask-image that fails to load makes its whole element
+    invisible per spec -- rather than 404 and silently kill the foil effect, fail open with a
+    flat, fully-opaque mask (no exclusion anywhere), matching the old unmasked behavior for
+    just that edge case."""
+    IMAGE_FOIL_MASK_CACHE.mkdir(parents=True, exist_ok=True)
+    path = IMAGE_FOIL_MASK_CACHE / "_fallback.webp"
+    if not path.exists():
+        from PIL import Image
+        Image.new("RGB", (2, 2), (255, 255, 255)).save(path, format="WEBP", quality=90)
+    return path
+
+
 def image_file_response(path: Path, content_type: str, source: str):
     response = send_file(path, mimetype=content_type, conditional=True, etag=True, max_age=31_536_000)
     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -2349,6 +2543,92 @@ def card_art(variant_id):
     <rect x="28" y="540" width="484" height="176" rx="18" fill="#07101f" opacity=".9"/><text x="52" y="590" font-family="Arial,sans-serif" font-size="29" font-weight="800" fill="#fff">{title[:29]}</text><text x="52" y="624" font-family="Arial,sans-serif" font-size="16" fill="#cbd5e1">{rarity} · {finish}</text>
     <path d="M52 657 H460" stroke="#fff" stroke-opacity=".13"/><text x="52" y="687" font-family="Arial,sans-serif" font-size="13" fill="#94a3b8">DECKLEDGER CATALOGUE EDITION</text></svg>'''
     return Response(svg,mimetype="image/svg+xml",headers={"Cache-Control":"public, max-age=31536000, immutable"})
+
+
+@app.get("/foil-mask/<variant_id>.webp")
+def foil_mask(variant_id):
+    row = db().execute("""SELECT i.canonical_name,p.id printing_id,p.collector_number,p.rarity,p.language,
+      v.variant_code,v.game_id,v.finish,v.attributes variant_attributes,g.accent,s.code set_code,s.accent set_accent
+      FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
+      JOIN games g ON g.id=v.game_id JOIN sets s ON s.id=p.set_id WHERE v.id=?""", (variant_id,)).fetchone()
+    if not row: return Response(status=404)
+    try:
+        real_image = cached_real_image(row, variant_id)
+        if real_image:
+            image_path, _content_type, cache_key = real_image
+            mask_path = cached_foil_mask(image_path, cache_key)
+            if mask_path:
+                return image_file_response(mask_path, "image/webp", "local-foil-mask-cache")
+    except Exception as error:
+        app.logger.warning("Foil mask lookup failed for %s: %s", variant_id, error)
+    return image_file_response(foil_mask_fallback(), "image/webp", "foil-mask-fallback")
+
+
+def _official_foil_variant(variant_id):
+    """Shared lookup for the two Ravensburger-foil routes below: our own variant row -> the
+    matching Ravensburger sub-variant dict (see ravensburger_foil.py's own docstring for the
+    matching key), or None for anything that isn't a Lorcana card or has no official data.
+    Never raises -- both routes treat "no data" as a normal 404, not a 500."""
+    row = db().execute("""SELECT v.finish, v.game_id, v.attributes variant_attributes, p.language
+      FROM variants v JOIN printings p ON p.id=v.printing_id WHERE v.id=?""", (variant_id,)).fetchone()
+    if not row or row["game_id"] != "lorcana":
+        return None
+    attributes = jload(row["variant_attributes"], {})
+    try:
+        return ravensburger_foil.find_official_variant(attributes.get("imageUrl"), row["language"], row["finish"])
+    except Exception as error:
+        app.logger.warning("Ravensburger foil lookup failed for %s: %s", variant_id, error)
+        return None
+
+
+@app.get("/api/foil-layer-meta/<variant_id>")
+def foil_layer_meta(variant_id):
+    """Metadata for the OFFICIAL Ravensburger foil layers (see ravensburger_foil.py) -- the
+    actual mask pixels are served separately (foil_layer_mask_asset below, one request per
+    mask so the browser can cache each independently); this just tells the frontend which of
+    up to three masks exist for this variant plus the type/color parameters that will drive
+    the per-foil_type effect presets in a later step. "available:false" (never a 4xx/5xx) is
+    the normal, expected response for anything outside Lorcana or without official data --
+    callers fall back to the existing generic foil effect unconditionally in that case."""
+    official = _official_foil_variant(variant_id)
+    # "available" specifically means "there's a base foil mask to render" -- a matched-but-plain
+    # Regular sub-variant (e.g. the Normal finish of a card that also has a Foiled printing) is
+    # a real, correct match with nothing wrong about it, but has no foil_mask_url and thus
+    # nothing for the frontend to actually layer -- treating that as available would just push
+    # the "is there really anything here" check onto every caller instead of answering it once.
+    if not official or not official.get("foil_mask_url"):
+        return jsonify({"available": False})
+    return jsonify({
+        "available": True,
+        "foil_type": official.get("foil_type"),
+        "foil_top_layer": official.get("foil_top_layer"),
+        "hot_foil_color": official.get("hot_foil_color"),
+        "second_hot_foil_color": official.get("second_hot_foil_color"),
+        "mask_url": url_for("foil_layer_mask_asset", variant_id=variant_id, kind="base") if official.get("foil_mask_url") else None,
+        "top_layer_mask_url": url_for("foil_layer_mask_asset", variant_id=variant_id, kind="top") if official.get("foil_top_layer_mask_url") else None,
+        "second_top_layer_mask_url": url_for("foil_layer_mask_asset", variant_id=variant_id, kind="top2") if official.get("second_foil_top_layer_mask_url") else None,
+    })
+
+
+@app.get("/foil-layer-mask/<variant_id>/<kind>.jpg")
+def foil_layer_mask_asset(variant_id, kind):
+    """Proxies + disk-caches one of Ravensburger's own mask images (never the frontend hitting
+    ravensburger.com directly -- no CORS dependency, same "external asset needs our own route"
+    rule as glass-plate.svg/foil-base-reflection.png elsewhere in this file, just fetched
+    on-demand instead of hand-placed in public/). kind is "base"/"top"/"top2", matching
+    ravensburger_foil.MASK_KIND_FIELDS."""
+    if kind not in ravensburger_foil.MASK_KIND_FIELDS:
+        return Response(status=404)
+    official = _official_foil_variant(variant_id)
+    if not official:
+        return Response(status=404)
+    source_url = official.get(ravensburger_foil.MASK_KIND_FIELDS[kind])
+    if not source_url:
+        return Response(status=404)
+    path = ravensburger_foil.cached_asset(source_url)
+    if not path:
+        return Response(status=404)
+    return image_file_response(path, "image/jpeg", "ravensburger-foil-asset-cache")
 
 
 @app.get("/game-logo/<game_id>")
@@ -2567,6 +2847,56 @@ def card_back(game_id):
     if not game_row:
         return Response(status=404)
     return Response(card_back_placeholder(game_row), mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/glass-plate.svg")
+def glass_plate_asset():
+    path = PUBLIC_DIR / "glass-plate.svg"
+    if not path.is_file():
+        return Response(status=404)
+    # conditional+etag (not a fixed max_age) so edits to the file on disk -- this is meant to
+    # be hand-tuned in place -- are picked up on the next request via a 304 revalidation
+    # instead of needing a manually-bumped ?v= query param each time.
+    return send_file(path, mimetype="image/svg+xml", conditional=True, etag=True, max_age=0)
+
+
+@app.get("/foil-base-reflection.png")
+def foil_base_reflection_asset():
+    path = PUBLIC_DIR / "foil_base_reflection.png"
+    if not path.is_file():
+        return Response(status=404)
+    return send_file(path, mimetype="image/png", conditional=True, etag=True, max_age=0)
+
+
+# ---- Lorcana WebGL foil renderer: shared effect textures + material presets ----
+# The 26 textures (public/assets/lorcana/foil/*.png) were extracted from the Disney Lorcana TCG
+# Companion app's own Unity build (assets/bin/Data/data.unity3d, via UnityPy) -- these are the
+# SAME shared, non-card-specific effect textures the official app itself uses (rainbow
+# gradients, noise/pattern textures, shine/varnish maps), not generated stand-ins. See
+# lorcana_foil_original_presets.json's own "source" field for exactly which app build they came
+# from. conditional+etag (not a fixed max_age), matching glass-plate.svg above -- these are
+# meant to be hand-verified/replaceable in place, not versioned via a ?v= query param.
+LORCANA_FOIL_ASSET_DIR = PUBLIC_DIR / "assets" / "lorcana" / "foil"
+
+
+@app.get("/assets/lorcana/foil/<name>.png")
+def lorcana_foil_texture_asset(name):
+    safe_name = re.sub(r"[^A-Za-z0-9_-]", "", name)
+    path = LORCANA_FOIL_ASSET_DIR / f"{safe_name}.png"
+    if not path.is_file():
+        return Response(status=404)
+    return send_file(path, mimetype="image/png", conditional=True, etag=True, max_age=0)
+
+
+@app.get("/assets/lorcana/foil-presets.json")
+def lorcana_foil_presets_asset():
+    # Lives at the project root (where it was dropped), not duplicated into public/ -- served
+    # directly from there via its own route, same "one canonical file, still gets a route"
+    # pattern as glass-plate.svg's inlining elsewhere in this file.
+    path = Path(__file__).with_name("lorcana_foil_original_presets.json")
+    if not path.is_file():
+        return Response(status=404)
+    return send_file(path, mimetype="application/json", conditional=True, etag=True, max_age=0)
 
 
 @app.get("/health")
