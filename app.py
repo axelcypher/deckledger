@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS collection_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
   variant_id TEXT NOT NULL REFERENCES variants(id), condition TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0,
   notes TEXT, is_graded INTEGER NOT NULL DEFAULT 0, grade_label TEXT NOT NULL DEFAULT '', price_override REAL,
+  created_at TEXT NOT NULL DEFAULT '', last_added_at TEXT NOT NULL DEFAULT '',
   UNIQUE(user_id, variant_id, condition, is_graded, grade_label)
 );
 CREATE TABLE IF NOT EXISTS watchlist_entries (
@@ -359,6 +360,37 @@ def rarity_rank(game_id, rarity):
     return RARITY_ORDER.get(game_id, {}).get(rarity, RARITY_FALLBACK_RANK)
 
 
+def matches_catalog_filters(game_id, rarity, attributes, selected_rarities, selected_costs, selected_colors, inkwell):
+    """Shared in-memory counterpart to the set/deck catalogue filters.
+
+    Collection and watchlist rows are already small user-specific result sets, so applying the
+    same normalized gameplay filters after loading them keeps their UI and semantics identical
+    to the set catalogue without duplicating game-specific SQL in both endpoints.
+    """
+    attributes = attributes or {}
+    if selected_rarities:
+        selected_ranks = {LORCANA_RARITY_KEYS[key] for key in selected_rarities if key in LORCANA_RARITY_KEYS}
+        if selected_ranks and rarity_rank(game_id, rarity) not in selected_ranks:
+            return False
+    if selected_costs:
+        try:
+            card_cost = int(float(attributes.get("cost")))
+        except (TypeError, ValueError):
+            return False
+        if not any(card_cost >= 7 if value == "7" and game_id == "lorcana" else card_cost == int(value) for value in selected_costs if value.isdigit()):
+            return False
+    if selected_colors:
+        card_colors = {part for part in re.split(r"[-/]", str(attributes.get("color") or "")) if part}
+        if not card_colors.intersection(selected_colors):
+            return False
+    if inkwell in {"true", "false"}:
+        raw = attributes.get("inkwell")
+        actual = raw is True or raw == 1 or str(raw).lower() in {"true", "1", "yes"}
+        if actual != (inkwell == "true"):
+            return False
+    return True
+
+
 def rarity_case_sql(game_id, column):
     """SQL CASE mirroring rarity_rank(), for ORDER BY on paginated queries. Rarity labels are our
     own constants (never user input), so inlining them as string literals is safe."""
@@ -512,6 +544,15 @@ def init_database():
         connection.execute("ALTER TABLE collection_entries_new RENAME TO collection_entries")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_collection_user ON collection_entries(user_id)")
         connection.commit()
+    collection_columns = {row[1] for row in connection.execute("PRAGMA table_info(collection_entries)")}
+    if "created_at" not in collection_columns:
+        connection.execute("ALTER TABLE collection_entries ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+    if "last_added_at" not in collection_columns:
+        connection.execute("ALTER TABLE collection_entries ADD COLUMN last_added_at TEXT NOT NULL DEFAULT ''")
+    collection_stamp = now_iso()
+    connection.execute("UPDATE collection_entries SET created_at=? WHERE created_at=''", (collection_stamp,))
+    connection.execute("UPDATE collection_entries SET last_added_at=created_at WHERE last_added_at=''", ())
+    connection.commit()
     # Gunicorn workers can import the app concurrently on a fresh volume.
     # Serialize the one-time seed so both workers never insert the demo user.
     connection.execute("BEGIN IMMEDIATE")
@@ -650,6 +691,11 @@ def bootstrap():
     current = db().execute("SELECT id,username,display_name,role FROM users WHERE id=?", (uid,)).fetchone()
     settings = {r["key"]: jload(r["value"], r["value"]) for r in db().execute("SELECT key,value FROM user_settings WHERE user_id=?", (uid,))}
     default_languages = settings.get("defaultLanguages") or {}
+    main_set_types = {
+        "one-piece": ("booster set",),
+        "lorcana": ("expansion",),
+        "hololive": ("booster", "boosters"),
+    }
     games = []
     for row in db().execute("SELECT * FROM games WHERE enabled=1 ORDER BY name"):
         game_id = row["id"]
@@ -667,9 +713,38 @@ def bootstrap():
             "SELECT COUNT(*) FROM variants v JOIN printings p ON p.id=v.printing_id WHERE v.game_id=? AND (? IS NULL OR p.language=?)",
             (game_id, lang, lang),
         ).fetchone()[0]
+        types = main_set_types.get(game_id, ())
+        if types:
+            placeholders = ",".join("?" for _ in types)
+            main_stats = db().execute(
+                f"""SELECT COUNT(DISTINCT p.id) total,
+                      COUNT(DISTINCT CASE WHEN c.quantity>0 THEN p.id END) owned
+                    FROM printings p JOIN sets s ON s.id=p.set_id
+                    JOIN variants v ON v.printing_id=p.id
+                    LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
+                    WHERE p.game_id=? AND lower(s.set_type) IN ({placeholders})
+                      AND (? IS NULL OR p.language=?)""",
+                (uid, game_id, *types, lang, lang),
+            ).fetchone()
+        else:
+            main_stats = {"total": 0, "owned": 0}
+        set_count = db().execute("SELECT COUNT(*) FROM sets WHERE game_id=?", (game_id,)).fetchone()[0]
+        deck_count = db().execute("SELECT COUNT(*) FROM decks WHERE user_id=? AND game_id=?", (uid, game_id)).fetchone()[0]
+        watch_count = db().execute(
+            """SELECT COUNT(DISTINCT nwe.variant_id) FROM named_watchlist_entries nwe
+               JOIN named_watchlists nw ON nw.id=nwe.list_id
+               WHERE nw.user_id=? AND nw.game_id=?""",
+            (uid, game_id),
+        ).fetchone()[0]
+        main_total, main_owned = main_stats["total"], main_stats["owned"]
         game = dict(row)
         game["languages"] = languages
-        game.update({"copies": stats["copies"], "unique_cards": stats["unique_cards"], "value": round(stats["value"], 2), "completion": round(stats["unique_cards"] / total * 100) if total else 0})
+        game.update({
+            "copies": stats["copies"], "unique_cards": stats["unique_cards"], "value": round(stats["value"], 2),
+            "completion": round(stats["unique_cards"] / total * 100) if total else 0,
+            "main_completion": round(main_owned / main_total * 100) if main_total else 0,
+            "set_count": set_count, "deck_count": deck_count, "watch_count": watch_count,
+        })
         games.append(game)
     imports = [dict(r) for r in db().execute("SELECT id,created_at,game_id,undone_at FROM import_operations WHERE user_id=? ORDER BY id DESC LIMIT 4", (uid,))]
     price_sync = db().execute("SELECT MAX(observed_at) FROM price_observations").fetchone()[0]
@@ -708,8 +783,7 @@ def home_banner():
     raw = db().execute("SELECT value FROM user_settings WHERE user_id=? AND key='homeBanner'", (uid,)).fetchone()
     banner_settings = jload(raw["value"], {}) if raw else {}
     modes = [m for m in (banner_settings.get("modes") or ["newest"]) if m in ("newest", "value")] or ["newest"]
-    excluded = set(banner_settings.get("excludedGames") or [])
-    games = [dict(r) for r in db().execute("SELECT id,name,short_name,accent FROM games WHERE enabled=1 ORDER BY name") if r["id"] not in excluded]
+    games = [dict(r) for r in db().execute("SELECT id,name,short_name,accent FROM games WHERE enabled=1 ORDER BY name")]
     slides = []
     for game in games:
         for mode in modes:
@@ -717,6 +791,38 @@ def home_banner():
             if cards:
                 slides.append({"game_id": game["id"], "game_name": game["name"], "game_short_name": game["short_name"], "accent": game["accent"], "mode": mode, "cards": cards})
     return jsonify({"slides": slides})
+
+
+@app.get("/api/home-recent")
+@login_required
+def home_recent():
+    game_id = request.args.get("game_id")
+    if not game_id:
+        return jsonify([])
+    rows = db().execute(
+        f"""SELECT v.id variant_id,i.id identity_id,i.canonical_name,p.collector_number,
+              s.name set_name,s.code set_code,SUM(c.quantity) quantity,
+              MAX(c.last_added_at) added_at,{latest_price_sql('v')} price
+            FROM collection_entries c
+            JOIN variants v ON v.id=c.variant_id
+            JOIN printings p ON p.id=v.printing_id
+            JOIN card_identities i ON i.id=p.identity_id
+            JOIN sets s ON s.id=p.set_id
+            WHERE c.user_id=? AND v.game_id=? AND c.quantity>0
+            GROUP BY v.id
+            ORDER BY MAX(c.last_added_at) DESC,MAX(c.id) DESC
+            LIMIT 30""",
+        (user_id(), game_id),
+    ).fetchall()
+    recent, seen = [], set()
+    for row in rows:
+        if row["identity_id"] in seen:
+            continue
+        seen.add(row["identity_id"])
+        recent.append(dict(row))
+        if len(recent) == 5:
+            break
+    return jsonify(recent)
 
 
 @app.post("/api/prices/sync")
@@ -1248,7 +1354,7 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
             if card_cost is None:
                 return False
             for value in costs:
-                if value == "7":
+                if value == "7" and game_id == "lorcana":
                     if card_cost >= 7:
                         return True
                 elif str(card_cost) == value:
@@ -1494,6 +1600,7 @@ def update_collection():
         price_override = float(raw_override) if raw_override not in (None, "") else None
     else:
         price_override = existing["price_override"] if existing else None
+    stamp = now_iso()
     if quantity == 0:
         db().execute(
             "DELETE FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?",
@@ -1501,13 +1608,13 @@ def update_collection():
         )
     elif existing:
         db().execute(
-            "UPDATE collection_entries SET quantity=?,notes=COALESCE(?,notes),price_override=? WHERE id=?",
-            (quantity, payload.get("notes"), price_override, existing["id"]),
+            "UPDATE collection_entries SET quantity=?,notes=COALESCE(?,notes),price_override=?,last_added_at=? WHERE id=?",
+            (quantity, payload.get("notes"), price_override, stamp if quantity > before else existing["last_added_at"], existing["id"]),
         )
     else:
         db().execute(
-            "INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override) VALUES(?,?,?,?,?,?,?,?)",
-            (user_id(), variant_id, condition, quantity, payload.get("notes"), is_graded, grade_label, price_override),
+            "INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (user_id(), variant_id, condition, quantity, payload.get("notes"), is_graded, grade_label, price_override, stamp, stamp),
         )
     db().commit()
     return jsonify({"variant_id": variant_id, "before": before, "quantity": quantity})
@@ -1582,15 +1689,25 @@ def watchlist_cards(list_id):
     owned=db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?",(list_id,user_id())).fetchone()
     if not owned:return jsonify({"error":"watchlist not found"}),404
     q=request.args.get("q","").strip(); language=request.args.get("language","all"); set_id=request.args.get("set_id",""); finish=request.args.get("finish",""); sort=request.args.get("sort","added")
+    rarity=request.args.get("rarity","")
+    selected_rarities=[value for value in request.args.get("rarities","").split(",") if value]
+    selected_costs=[value for value in request.args.get("costs","").split(",") if value.isdigit()]
+    selected_colors=[value for value in request.args.get("colors","").split(",") if value]
+    inkwell=request.args.get("inkwell","")
     rows = db().execute(
         f"""SELECT v.id variant_id,v.finish,i.id identity_id,i.canonical_name,p.collector_number,p.language,
-            p.rarity,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
+            p.rarity,i.card_type,i.attributes identity_attrs,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
             COALESCE(SUM(c.quantity),0) quantity,nwe.created_at
             FROM named_watchlist_entries nwe JOIN variants v ON v.id=nwe.variant_id JOIN printings p ON p.id=v.printing_id
             JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
             LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? WHERE nwe.list_id=? GROUP BY v.id""", (user_id(),list_id)
     ).fetchall()
-    result=[dict(r) for r in rows]
+    result=[]
+    for row in rows:
+        item=dict(row);item["identity_attrs"]=jload(item["identity_attrs"],{})
+        if rarity and item["rarity"]!=rarity:continue
+        if not matches_catalog_filters(item["game_id"],item["rarity"],item["identity_attrs"],selected_rarities,selected_costs,selected_colors,inkwell):continue
+        result.append(item)
     if q: result=[r for r in result if q.lower() in r["canonical_name"].lower() or q.lower() in r["collector_number"].lower()]
     if language!="all":result=[r for r in result if r["language"]==language]
     if set_id:result=[r for r in result if r["set_id"]==set_id]
@@ -1616,6 +1733,10 @@ def collection_browser():
     game_id=request.args.get("game_id"); q=request.args.get("q","").strip().lower(); set_id=request.args.get("set_id","")
     language=request.args.get("language","all"); rarity=request.args.get("rarity",""); finish=request.args.get("finish","")
     mode=request.args.get("mode","all"); sort=request.args.get("sort","number")
+    selected_rarities=[value for value in request.args.get("rarities","").split(",") if value]
+    selected_costs=[value for value in request.args.get("costs","").split(",") if value.isdigit()]
+    selected_colors=[value for value in request.args.get("colors","").split(",") if value]
+    inkwell=request.args.get("inkwell","")
     rows=db().execute(f"""SELECT v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.source_type,p.id printing_id,
       i.id identity_id,i.canonical_name,i.card_type,i.attributes identity_attrs,p.collector_number,p.language,p.rarity,
       s.id set_id,s.name set_name,s.code set_code,s.release_date,g.accent,
@@ -1632,6 +1753,7 @@ def collection_browser():
         if set_id and r["set_id"]!=set_id:continue
         if language!="all" and r["language"]!=language:continue
         if rarity and r["rarity"]!=rarity:continue
+        if not matches_catalog_filters(game_id,r["rarity"],r["identity_attrs"],selected_rarities,selected_costs,selected_colors,inkwell):continue
         if finish and r["finish"]!=finish:continue
         if mode=="duplicates" and r["quantity"]<2:continue
         if mode=="watchlisted" and not r["watchlisted"]:continue
@@ -1664,6 +1786,8 @@ def deck_catalog():
     selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
     selected_costs = [value for value in request.args.get("costs", "").split(",") if value.isdigit()]
     selected_attributes = [value for value in request.args.get("attributes", "").split(",") if value]
+    selected_rarities = [value for value in request.args.get("rarities", "").split(",") if value]
+    rarity = request.args.get("rarity", "")
     selected_kinds = [value for value in request.args.get("kinds", "").split(",") if value]
     selected_bloom_levels = [value for value in request.args.get("bloomLevels", "").split(",") if value]
     inkwell = request.args.get("inkwell", "")
@@ -1709,6 +1833,14 @@ def deck_catalog():
     if selected_types:
         filters.append(f"i.card_type IN ({','.join('?' for _ in selected_types)})")
         values.extend(selected_types)
+    if rarity:
+        filters.append("p.rarity=?")
+        values.append(rarity)
+    if selected_rarities:
+        selected_ranks = [LORCANA_RARITY_KEYS[key] for key in selected_rarities if key in LORCANA_RARITY_KEYS]
+        if selected_ranks:
+            filters.append(f"{rarity_case_sql(game_id, 'p.rarity')} IN ({','.join('?' for _ in selected_ranks)})")
+            values.extend(selected_ranks)
     if selected_colors:
         filters.append("("+" OR ".join(
             "instr('-'||replace(COALESCE(json_extract(i.attributes,'$.color'),''),'/','-')||'-', '-'||?||'-')>0"
@@ -1719,7 +1851,7 @@ def deck_catalog():
         cost_expr = "CAST(json_extract(i.attributes,'$.cost') AS INTEGER)"
         cost_clauses = []
         for value in selected_costs:
-            if value == "7":
+            if value == "7" and game_id == "lorcana":
                 cost_clauses.append(f"{cost_expr}>=7")
             else:
                 cost_clauses.append(f"{cost_expr}=?")
@@ -1788,8 +1920,11 @@ def deck_catalog():
         """SELECT DISTINCT json_extract(attributes,'$.color') color FROM card_identities
            WHERE game_id=? AND color IS NOT NULL AND color<>'' ORDER BY color""", (game_id,)
     )]
+    rarities = sorted({row[0] for row in db().execute(
+        "SELECT DISTINCT rarity FROM printings WHERE game_id=? AND rarity<>''", (game_id,)
+    )}, key=lambda value: rarity_rank(game_id, value))
     return jsonify({
-        "cards": result, "sets": sets, "types": types, "colors": colors,
+        "cards": result, "sets": sets, "types": types, "colors": colors, "rarities": rarities,
         "pagination": {"offset": offset, "limit": limit, "total": total, "has_more": offset + len(result) < total},
     })
 
@@ -2229,15 +2364,20 @@ def import_json_apply():
     rows = parse_json_backup(p.get("collection") or [])
     strategy = p.get("strategy", "add")
     changes = []
+    import_stamp = now_iso()
     for row in rows:
         if row["status"] != "matched" or not row.get("match"): continue
         vid, cond, qty, notes = row["match"]["variant_id"], row["condition"], row["quantity"], row.get("notes")
-        old = db().execute("SELECT quantity,notes FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=?", (user_id(),vid,cond)).fetchone()
+        old = db().execute("SELECT quantity,notes,last_added_at FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=0 AND grade_label=''", (user_id(),vid,cond)).fetchone()
         before, notes_before = (old["quantity"], old["notes"]) if old else (0, None)
         after = qty if strategy == "replace" else before + qty
+        last_added_at = import_stamp if after > before else (old["last_added_at"] if old else import_stamp)
         db().execute(
-            "INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes) VALUES(?,?,?,?,?) ON CONFLICT(user_id,variant_id,condition) DO UPDATE SET quantity=excluded.quantity,notes=COALESCE(excluded.notes,collection_entries.notes)",
-            (user_id(), vid, cond, after, notes)
+            """INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,created_at,last_added_at)
+               VALUES(?,?,?,?,?,0,'',?,?)
+               ON CONFLICT(user_id,variant_id,condition,is_graded,grade_label) DO UPDATE SET
+                 quantity=excluded.quantity,notes=COALESCE(excluded.notes,collection_entries.notes),last_added_at=excluded.last_added_at""",
+            (user_id(), vid, cond, after, notes, import_stamp, last_added_at)
         )
         changes.append({"variant_id":vid,"condition":cond,"before":before,"after":after,"notes_before":notes_before})
     games = sorted({row["match"]["game_id"] for row in rows if row.get("match")})
@@ -2255,13 +2395,21 @@ def import_apply():
     p = request.get_json(force=True)
     rows = parse_import(p.get("text",""),p.get("game_id","lorcana"),p.get("language","EN"),p.get("condition","Near Mint"))
     changes = []
+    import_stamp = now_iso()
     for row in rows:
         if row["status"] != "matched" or not row.get("match"): continue
         vid, cond, qty = row["match"]["variant_id"], row["condition"], row["quantity"]
-        old = db().execute("SELECT quantity FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=?", (user_id(),vid,cond)).fetchone()
+        old = db().execute("SELECT quantity,last_added_at FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=0 AND grade_label=''", (user_id(),vid,cond)).fetchone()
         before = old["quantity"] if old else 0
         after = qty if p.get("strategy") == "replace" else before + qty
-        db().execute("INSERT INTO collection_entries(user_id,variant_id,condition,quantity) VALUES(?,?,?,?) ON CONFLICT(user_id,variant_id,condition) DO UPDATE SET quantity=excluded.quantity", (user_id(),vid,cond,after))
+        last_added_at = import_stamp if after > before else (old["last_added_at"] if old else import_stamp)
+        db().execute(
+            """INSERT INTO collection_entries(user_id,variant_id,condition,quantity,is_graded,grade_label,created_at,last_added_at)
+               VALUES(?,?,?,?,0,'',?,?)
+               ON CONFLICT(user_id,variant_id,condition,is_graded,grade_label) DO UPDATE SET
+                 quantity=excluded.quantity,last_added_at=excluded.last_added_at""",
+            (user_id(),vid,cond,after,import_stamp,last_added_at),
+        )
         changes.append({"variant_id":vid,"condition":cond,"before":before,"after":after})
     cur = db().execute("INSERT INTO import_operations(user_id,created_at,game_id,source_text,changes) VALUES(?,?,?,?,?)", (user_id(),now_iso(),p.get("game_id"),p.get("text",""),json.dumps(changes)))
     db().commit()

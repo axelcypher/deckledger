@@ -285,6 +285,11 @@
    every descendant's own rule keys off that. */
 .card-tilt-zone {
   perspective: 900px;
+  /* A pressed card owns the gesture. Without this, touch panning can cancel the pointer
+     stream before the tilt receives its subsequent move/up events. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 /* <img> is natively draggable by default -- pressing and moving the mouse over one starts the
    browser's own drag-the-image-out gesture instead of ordinary mousemove/mouseup, which starves

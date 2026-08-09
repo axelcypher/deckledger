@@ -6,9 +6,9 @@ const state = {
   activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
   collapsedSetGroups: {},
   cardFilters: {rarity:'', rarities:[], costs:[], colors:[], inkwell:'', finish:'normal', foilMode:''},
-  collectionFilters: {q:'',set_id:'',language:'all',rarity:'',finish:'',mode:'all',sort:'number'},
-  watchFilters: {q:'',set_id:'',language:'all',finish:'',sort:'added'}, deckFilters:{q:'',set_id:'',language:'EN',type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''}, deckZone:'main', deckCatalogObserver:null,
-  homeBanner:null, homeBannerTimer:null
+  collectionFilters: {q:'',set_id:'',language:'all',rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'},
+  watchFilters: {q:'',set_id:'',language:'all',rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',sort:'added'}, deckFilters:{q:'',set_id:'',language:'EN',rarity:'',rarities:[],type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''}, deckZone:'main', deckCatalogObserver:null,
+  homeBanner:null, homeBannerTimer:null, mobileFiltersOpen:{}
 };
 
 const $ = (q, root=document) => root.querySelector(q);
@@ -237,9 +237,9 @@ function setActiveGame(gameId, persist=true) {
     // already the default, not just what got explicitly saved.
     const defaultLang=state.boot.settings?.defaultLanguages?.[gameId]||state.game.languages[0];
     state.language=defaultLang;state.setType='all';state.setSort='type';state.setDirection='desc';state.cardFilters={rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'normal',foilMode:''};
-    state.collectionFilters={q:'',set_id:'',language:defaultLang,rarity:'',finish:'',mode:'all',sort:'number'};
-    state.watchFilters={q:'',set_id:'',language:defaultLang,finish:'',sort:'added'};
-    state.deckFilters={q:'',set_id:'',language:defaultLang,type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};
+    state.collectionFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'};
+    state.watchFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',sort:'added'};
+    state.deckFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};
     state.deckZone='main';
   }
   if(persist) post('/api/settings',{activeGameId:gameId});
@@ -247,7 +247,8 @@ function setActiveGame(gameId, persist=true) {
 
 function routeTo(route, data) {
   hideDeckImagePreview();closeDeckAddPopup();setDeckCatalogOpen(false);clearTimeout(state.homeBannerTimer);
-  state.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
+  state.mobileFiltersOpen={};
+  state.route=route; document.body.dataset.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
   if(route==='dashboard') renderDashboard();
   if(route==='game') renderGame(data || state.game?.id);
   if(route==='game-cards') renderAllCards(data || state.game?.id);
@@ -273,6 +274,31 @@ function setDeckCatalogOpen(open){
 }
 
 function initials(name){return name.split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase()}
+
+function mountFilterPanel(key,selectors,label='Filter'){
+  const targets=selectors.map(selector=>$(selector,content)).filter(Boolean);
+  if(!targets.length)return;
+  const panel=document.createElement('deckledger-filter-panel');
+  panel.setAttribute('filter-key',key);
+  panel.setAttribute('label',label);
+  panel.dataset.mobileFilterShell=key;
+  if(state.mobileFiltersOpen[key])panel.setAttribute('open','');
+  targets[0].before(panel);
+  targets.forEach(target=>{
+    target.classList.add('shared-filter-content');
+    panel.contentElement.append(target);
+  });
+}
+
+function statPill(items,{className='',columns=items.length,mobileColumns=Math.min(items.length,3)}={}){
+  const safeColumns=Math.max(1,Math.min(8,Number(columns)||items.length||1));
+  const safeMobileColumns=Math.max(1,Math.min(8,Number(mobileColumns)||Math.min(safeColumns,3)));
+  const classAttribute=className?` class="${escapeHtml(className)}"`:'';
+  return `<deckledger-stat-pill${classAttribute} columns="${safeColumns}" mobile-columns="${safeMobileColumns}">${items.map(item=>{
+    const itemClass=item.className?` class="${escapeHtml(item.className)}"`:'';
+    return `<div data-stat${itemClass}><span>${escapeHtml(item.label)}</span><b>${item.value}</b></div>`;
+  }).join('')}</deckledger-stat-pill>`;
+}
 function symbol(game){return {'lorcana':'✦','one-piece':'☠','hololive':'◈'}[game]||'◆'}
 
 const SET_GROUP_ORDER=['Booster','Decks','Promos','Quests','Sammlungen','Produkte','Zubehör'];
@@ -320,22 +346,32 @@ function sortedSets(sets){
 
 function renderDashboard(){
   const games=state.boot.games;
-  const totalValue=games.reduce((a,g)=>a+g.value,0), copies=games.reduce((a,g)=>a+g.copies,0), unique=games.reduce((a,g)=>a+g.unique_cards,0);
+  const activeGame=games.find(game=>game.id===state.activeGameId)||games[0];
+  const totalValue=activeGame?.value||0,copies=activeGame?.copies||0,unique=activeGame?.unique_cards||0;
+  const dashboardStats=statPill([
+    {label:'Gesamtwert',value:money(totalValue)},
+    {label:'Karten',value:copies},
+    {label:'Varianten',value:unique},
+  ],{className:'hero-summary',columns:3,mobileColumns:3});
   content.innerHTML=`<div class="dashboard-shell">
     <section class="dashboard-hero">
       <div class="hero-top">
         <div class="hero-copy"><h1>Willkommen zurück, ${escapeHtml(state.boot.user.display_name.split(' ')[0])}.</h1><p>Deine Sammlung wächst. Hier siehst du ihren aktuellen Stand über alle Spiele hinweg.</p></div>
-        <div class="hero-summary"><div><b>${money(totalValue)}</b><span>Gesamtwert</span></div><div><b>${copies}</b><span>Karten</span></div><div><b>${unique}</b><span>Varianten</span></div></div>
+        ${dashboardStats}
       </div>
       <nav class="dashboard-quick-nav" aria-label="Schnellzugriff">
-        <button type="button" data-dashboard-route="collection"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="12" height="16" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2V7"/></svg><span>Sammlung</span></button>
-        <button type="button" data-dashboard-route="game"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg><span>Sets</span></button>
-        <button type="button" data-dashboard-route="decks"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13"/></svg><span>Decks</span></button>
-        <button type="button" data-dashboard-route="watchlist"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg><span>Watchlist</span></button>
+        <button type="button" data-dashboard-route="collection"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="12" height="16" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2V7"/></svg><span>Sammlung</span><strong>${activeGame?.main_completion||0}%</strong></button>
+        <button type="button" data-dashboard-route="game"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg><span>Sets</span><strong>${activeGame?.set_count||0}</strong></button>
+        <button type="button" data-dashboard-route="decks"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13"/></svg><span>Decks</span><strong>${activeGame?.deck_count||0}</strong></button>
+        <button type="button" data-dashboard-route="watchlist"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg><span>Watchlist</span><strong>${activeGame?.watch_count||0}</strong></button>
       </nav>
       <section id="home-banner" class="home-banner hidden">
         <div class="home-banner-head"><span class="eyebrow" id="home-banner-label">NEU &amp; ANGESAGT</span></div>
         <div class="home-banner-viewport"><div class="home-banner-track" id="home-banner-track"></div></div>
+      </section>
+      <section id="dashboard-recent" class="dashboard-recent hidden">
+        <h2>Recent Additions</h2>
+        <div id="dashboard-recent-list" class="dashboard-recent-list"></div>
       </section>
     </section>
     <section class="game-grid">${games.map(g=>`
@@ -347,22 +383,20 @@ function renderDashboard(){
           <div class="game-stats"><span><b>${g.copies}</b> Karten</span><span><b>${g.unique_cards}</b> Varianten · ${g.completion}%</span></div>
         </div>
       </button>`).join('')}</section>
+    <button type="button" class="dashboard-account-button" data-dashboard-route="settings">Settings</button>
   </div>`;
   $$('[data-game]',content).forEach(el=>el.onclick=()=>{setActiveGame(el.dataset.game);routeTo('game',el.dataset.game)});
   $$('[data-dashboard-route]',content).forEach(el=>el.onclick=()=>{const route=el.dataset.dashboardRoute;routeTo(route,route==='game'?state.activeGameId:undefined)});
   const bannerTrack=$('#home-banner-track');
-  bannerTrack.addEventListener('mouseenter',()=>clearTimeout(state.homeBannerTimer));
-  bannerTrack.addEventListener('mouseleave',()=>{
-    if(!state.homeBanner)return;
-    const duration=Math.max(14,state.homeBanner.slides[state.homeBanner.index].cards.length*1.5);
-    state.homeBannerTimer=setTimeout(advanceBanner,duration*1000);
-  });
   bannerTrack.addEventListener('click',e=>{const card=e.target.closest('.banner-card');if(card)openCard(card.dataset.identity,card.dataset.variant)});
   loadHomeBanner();
+  loadRecentAdditions();
 }
 
+const bannerDuration=cards=>Math.max(30,cards.length*3.5);
+
 function bannerCard(c,accent){
-  return `<div class="banner-card" style="--accent:${accent}" data-identity="${c.identity_id}" data-variant="${c.variant_id}"><div class="banner-card-art card-finish-frame ${finishPresentation(c).effect}"><img loading="eager" decoding="async" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}"></div></div>`;
+  return `<div class="banner-card" style="--accent:${accent}" data-identity="${c.identity_id}" data-variant="${c.variant_id}"><div class="banner-card-art card-finish-frame ${finishPresentation(c).effect}"><img loading="eager" decoding="async" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}"></div><div class="banner-card-meta"><b title="${escapeHtml(c.canonical_name)}">${escapeHtml(c.canonical_name)}</b><span>${price(c.price)}</span></div></div>`;
 }
 
 function preloadBannerImages(slides){
@@ -373,8 +407,8 @@ function paintBannerSlide(index){
   const slide=state.homeBanner.slides[index],track=$('#home-banner-track');
   if(!track)return 0;
   const cardsHtml=slide.cards.map(c=>bannerCard(c,slide.accent)).join('');
-  track.innerHTML=cardsHtml+cardsHtml;
-  const duration=Math.max(14,slide.cards.length*1.5);
+  track.innerHTML=`<div class="home-banner-group">${cardsHtml}</div><div class="home-banner-group" aria-hidden="true">${cardsHtml}</div>`;
+  const duration=bannerDuration(slide.cards);
   track.style.setProperty('--marquee-duration',`${duration}s`);
   // Restarting a CSS animation after changing its duration needs a real
   // reflow between clearing and reapplying it. A single synchronous
@@ -385,43 +419,52 @@ function paintBannerSlide(index){
   track.style.animation='none';
   requestAnimationFrame(()=>requestAnimationFrame(()=>{track.style.animation=''}));
   const label=$('#home-banner-label');
-  if(label)label.textContent=`${slide.mode==='value'?'Wertvollste Karten':'Neueste Karten'} deiner Sammlung`;
+  if(label)label.textContent='Highlights';
   return duration;
-}
-
-async function advanceBanner(){
-  const banner=$('#home-banner');
-  if(!banner||!state.homeBanner)return;
-  banner.classList.add('fading');
-  await new Promise(r=>setTimeout(r,420));
-  if(!$('#home-banner'))return;
-  state.homeBanner.index=(state.homeBanner.index+1)%state.homeBanner.slides.length;
-  const duration=paintBannerSlide(state.homeBanner.index);
-  await new Promise(r=>requestAnimationFrame(r));
-  banner.classList.remove('fading');
-  state.homeBannerTimer=setTimeout(advanceBanner,duration*1000);
 }
 
 async function loadHomeBanner(){
   clearTimeout(state.homeBannerTimer);
   try{
     const data=await api('/api/home-banner');
-    if(!data.slides.length||!$('#home-banner'))return;
-    state.homeBanner={slides:data.slides,index:0};
-    preloadBannerImages(data.slides);
-    const duration=paintBannerSlide(0);
+    const matching=data.slides.filter(slide=>slide.game_id===state.activeGameId);
+    const seen=new Set(),cards=[];
+    for(const slide of matching)for(const card of slide.cards){
+      if(seen.has(card.identity_id))continue;
+      seen.add(card.identity_id);cards.push(card);
+    }
+    if(!cards.length||!$('#home-banner'))return;
+    const reel={...matching[0],cards};
+    state.homeBanner={slides:[reel],index:0};
+    preloadBannerImages([reel]);
+    paintBannerSlide(0);
     $('#home-banner').classList.remove('hidden');
-    state.homeBannerTimer=setTimeout(advanceBanner,duration*1000);
   }catch(error){/* banner is decorative; fail silently */}
 }
 
+async function loadRecentAdditions(){
+  const section=$('#dashboard-recent'),list=$('#dashboard-recent-list');
+  if(!section||!list)return;
+  try{
+    const cards=await api(`/api/home-recent?game_id=${encodeURIComponent(state.activeGameId)}`);
+    if(!cards.length||!$('#dashboard-recent-list'))return;
+    list.innerHTML=cards.slice(0,4).map(card=>`<button type="button" class="dashboard-recent-row" data-recent-identity="${card.identity_id}" data-recent-variant="${card.variant_id}">
+      <img loading="lazy" decoding="async" src="${artUrl(card.variant_id)}" alt="">
+      <span class="dashboard-recent-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_name)} · #${escapeHtml(card.collector_number)}</small></span>
+      <span class="dashboard-recent-price">${price(card.price)}</span>
+    </button>`).join('');
+    section.classList.remove('hidden');
+    $$('[data-recent-variant]',list).forEach(row=>row.onclick=()=>openCard(row.dataset.recentIdentity,row.dataset.recentVariant));
+  }catch(error){/* recent additions are supplementary; keep the dashboard usable */}
+}
+
 function renderSettings(){
-  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic',mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic',mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
     <section class="settings-section">
-      <h2>Mobile Ansicht</h2>
-      <p class="muted">Gilt nur auf schmalen Bildschirmen (Handy) -- am Desktop ändert sich nichts.</p>
-      <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Neu (Beta)</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
+      <h2>Darstellung</h2>
+      <p class="muted">Das moderne Theme passt sich eigenständig an Handy, Tablet und Desktop an.</p>
+      <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Modern</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
       ${mobileTheme==='modern'?`<div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>`:''}
     </section>
     <section class="settings-section">
@@ -430,15 +473,13 @@ function renderSettings(){
       <div class="settings-grid">${games.map(g=>`<label class="settings-field"><span>${escapeHtml(g.name)}</span><select data-lang-game="${g.id}" class="select-control">${g.languages.map(l=>`<option value="${l}" ${(defaultLanguages[g.id]||g.languages[0])===l?'selected':''}>${l}</option>`).join('')}</select></label>`).join('')}</div>
     </section>
     <section class="settings-section">
-      <h2>Startseiten-Banner</h2>
-      <p class="muted">Wähle, welche Kartenlisten im "Neu &amp; Angesagt"-Banner rotieren.</p>
+      <h2>Highlights</h2>
+      <p class="muted">Wähle, welche Karten des aktuell aktiven TCGs in das endlose Highlight-Reel einfließen.</p>
       <div class="settings-checklist">
         <label class="checkbox-row"><input type="checkbox" data-banner-mode="newest" ${modes.includes('newest')?'checked':''}> Die 20 neuesten Karten</label>
         <label class="checkbox-row"><input type="checkbox" data-banner-mode="value" ${modes.includes('value')?'checked':''}> Die 20 wertvollsten Karten</label>
       </div>
-      <p class="muted settings-subhead">TCGs ausschließen</p>
-      <div class="settings-checklist">${games.map(g=>`<label class="checkbox-row"><input type="checkbox" data-banner-exclude="${g.id}" ${excludedGames.includes(g.id)?'checked':''}> ${escapeHtml(g.name)}</label>`).join('')}</div>
-      <p class="muted settings-hint">Standardmäßig rotiert das Banner endlos zwischen allen nicht ausgeschlossenen TCGs. Sind mehrere Kartenlisten aktiv, wechselt es zusätzlich zwischen ihnen.</p>
+      <p class="muted settings-hint">Mehrere aktive Listen werden zu einer gemeinsamen, duplikatfreien Spur zusammengeführt.</p>
     </section>`;
   $$('[data-mobile-theme]',content).forEach(b=>b.onclick=async()=>{
     const value=b.dataset.mobileTheme;
@@ -446,7 +487,7 @@ function renderSettings(){
     state.boot.settings.mobileTheme=value;
     document.body.classList.toggle('mobile-modern',value!=='classic');
     renderSettings();
-    toast('Mobile Ansicht gespeichert');
+    toast('Darstellung gespeichert');
   });
   $$('[data-mobile-appearance]',content).forEach(b=>b.onclick=async()=>{
     const value=b.dataset.mobileAppearance;
@@ -467,17 +508,8 @@ function renderSettings(){
     let next=[...(current.modes||['newest'])];
     if(e.target.checked){if(!next.includes(cb.dataset.bannerMode))next.push(cb.dataset.bannerMode)}
     else{next=next.filter(m=>m!==cb.dataset.bannerMode);if(!next.length){e.target.checked=true;toast('Mindestens eine Kartenliste muss aktiv sein.');return}}
-    const updated={...current,modes:next};
-    await post('/api/settings',{homeBanner:updated});
-    state.boot.settings.homeBanner=updated;
-    toast('Banner-Einstellung gespeichert');
-  });
-  $$('[data-banner-exclude]',content).forEach(cb=>cb.onchange=async e=>{
-    const current=state.boot.settings.homeBanner||{};
-    let next=[...(current.excludedGames||[])];
-    if(e.target.checked){if(!next.includes(cb.dataset.bannerExclude))next.push(cb.dataset.bannerExclude)}
-    else{next=next.filter(id=>id!==cb.dataset.bannerExclude)}
-    const updated={...current,excludedGames:next};
+    const {excludedGames:ignored,...rest}=current;
+    const updated={...rest,modes:next};
     await post('/api/settings',{homeBanner:updated});
     state.boot.settings.homeBanner=updated;
     toast('Banner-Einstellung gespeichert');
@@ -699,11 +731,16 @@ async function renderGame(gameId){
     <section class="game-banner" style="--accent:${game.accent}"><span class="game-banner-symbol"><img src="/game-logo/${game.id}" alt=""></span><div><h1>${escapeHtml(game.name)}</h1><p>${sets.length} Sets und Produkte · ${game.languages.join(' & ')}</p></div><div class="banner-value"><b>${money(game.value)}</b><span>SAMMLUNGSWERT · ${completion}% Ø FORTSCHRITT</span></div></section>
     <div class="toolbar set-overview-toolbar"><h2>Sets & Veröffentlichungen</h2><div class="toolbar-spacer"></div><button class="secondary-button all-cards-button" id="show-all-cards">Alle Karten</button><select id="set-type-filter" class="select-control" aria-label="Nach Set-Art filtern"><option value="all">Alle Set-Arten</option>${availableGroups.map(group=>`<option value="${escapeHtml(group)}" ${state.setType===group?'selected':''}>${escapeHtml(group)}</option>`).join('')}</select><select id="set-sort" class="select-control" aria-label="Sets sortieren"><option value="type">Art · gruppiert</option><option value="date">Erscheinungsdatum</option><option value="code">Setcode</option><option value="name">Name</option><option value="value">Sammlungswert</option><option value="completion">Fortschritt</option></select><select id="set-direction" class="select-control" aria-label="Sortierreihenfolge"><option value="desc">Neu → Alt · Nr. ↓</option><option value="asc">Alt → Neu · Nr. ↑</option></select><div class="zoom-control"><span>−</span><input id="set-zoom" type="range" min="2" max="4" value="${state.setZoom}"><span>＋</span></div></div>
     <div class="set-overview-groups">${state.setSort==='type'?(groups.length?groups.map(([group,items])=>setGroupSection(gameId,group,items)).join(''):'<div class="empty-state"><b>Keine Sets dieser Art</b><span>Wähle eine andere Set-Art.</span></div>'):(flatSets.length?`<div class="set-grid" style="--set-cols:${state.setZoom}">${flatSets.map(s=>setTile(s)).join('')}</div>`:'<div class="empty-state"><b>Keine Sets dieser Art</b><span>Wähle eine andere Set-Art.</span></div>')}</div>`;
+  mountFilterPanel('sets',['.set-overview-toolbar'],'Sets filtern & sortieren');
   $('#set-sort').value=state.setSort;
   $('#set-direction').value=state.setDirection;
   $('[data-route-back]').onclick=()=>routeTo('dashboard');
   $('#show-all-cards').onclick=()=>routeTo('game-cards',gameId);
-  $$('.set-card',content).forEach(el=>el.onclick=()=>routeTo('set',el.dataset.set));
+  $$('.set-card',content).forEach(el=>{
+    el.tabIndex=0;el.setAttribute('role','button');
+    el.onclick=()=>routeTo('set',el.dataset.set);
+    el.onkeydown=event=>{if(event.target===el&&(event.key==='Enter'||event.key===' ')){event.preventDefault();el.click()}};
+  });
   $$('[data-set-group-toggle]',content).forEach(button=>button.onclick=()=>{
     const section=button.closest('.set-group'),group=section.dataset.setGroup,key=`${gameId}:${group}`;
     const collapsed=!section.classList.contains('collapsed');
@@ -735,17 +772,24 @@ async function renderSet(setId, preserve=false){
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
   const isLorcana=game.id==='lorcana',isOnePiece=game.id==='one-piece',isHololive=game.id==='hololive';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
+  const setStats=statPill([
+    {label:'Base',value:`${st.base}%`},
+    {label:'Foil',value:`${st.foil}%`},
+    {label:'Master',value:`${st.master}%`},
+    {label:'Playset',value:`${st.playset}%`},
+    {label:'Besitz / Fehlt',value:`${st.owned} / ${st.missing}`},
+    {label:'Setwert',value:money(st.value)},
+  ],{className:'compact-stats',columns:6,mobileColumns:3});
   content.innerHTML=`
     <section class="set-compact-head">
       <div class="set-compact-title"><div class="breadcrumbs"><button class="breadcrumb-back" id="cards-back" title="Zurück zur Setübersicht" aria-label="Zurück zur Setübersicht">←</button><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1><span>${escapeHtml(s.code)}</span>${escapeHtml(s.name)} <small>${releaseDate(s)} · ${s.printed_card_count} Karten</small></h1></div>
       <div class="compact-badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div>
-      <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${st.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${st.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${st.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${st.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${st.owned} / ${st.missing}</b></div><div class="compact-stat value"><span>Setwert</span><b>${money(st.value)}</b></div></div>
+      ${setStats}
     </section>
     <div class="card-toolbar-sticky">
       <div class="op-catalog-filterbar catalog-filter-mobile">
-        ${setSwitcherPopup('set',setOptions,s.id,`${s.code} ${setAbbreviation(s.name)}`)}
-        ${isLorcana?lorcanaCardFilterBar(f,'set'):isOnePiece?opCardFilterBar(f,'set',data.rarities):isHololive?hololiveCardFilterBar(f,'set',data.rarities):''}
-        ${isLorcana||isOnePiece||isHololive?'':`<select id="rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
+        ${setSwitcherPopup('set',setOptions,s.id,setFilterLabel(s))}
+        ${catalogGameFilterBar(game,f,'set',data.rarities)}
         <div class="toolbar-filter-anchor catalog-settings-control">
           <button type="button" class="icon-button" data-filter-toggle="set-view-popup" aria-expanded="false" aria-label="Ansicht" title="Ansicht">⚙</button>
           <div class="toolbar-filter-popup hidden" id="set-view-popup">
@@ -758,6 +802,7 @@ async function renderSet(setId, preserve=false){
       </div>
     </div>
     <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(card=>cardTile(card,foilDisplayActive)).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
+  mountFilterPanel('set-cards',['.card-toolbar-sticky'],'Karten filtern & sortieren');
   $('#sort-filter').value=state.sort;
   $('[data-dashboard]').onclick=()=>routeTo('dashboard'); $('[data-game-back]').onclick=()=>routeTo('game',game.id);
   $('#cards-back').onclick=()=>routeTo('game',game.id);
@@ -782,17 +827,24 @@ async function renderAllCards(gameId,preserve=false){
   const stats=data.stats;
   const isLorcana=game.id==='lorcana',isOnePiece=game.id==='one-piece',isHololive=game.id==='hololive';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
+  const allCardStats=statPill([
+    {label:'Base',value:`${stats.base}%`},
+    {label:'Foil',value:`${stats.foil}%`},
+    {label:'Master',value:`${stats.master}%`},
+    {label:'Playset',value:`${stats.playset}%`},
+    {label:'Besitz / Fehlt',value:`${stats.owned} / ${stats.missing}`},
+    {label:'Gesamtwert',value:money(stats.value)},
+  ],{className:'compact-stats',columns:6,mobileColumns:3});
   content.innerHTML=`
     <section class="set-compact-head all-cards-head">
       <div class="set-compact-title"><div class="breadcrumbs"><button class="breadcrumb-back" id="cards-back" title="Zurück zur Setübersicht" aria-label="Zurück zur Setübersicht">←</button><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1>Alle Karten <small>${stats.total} Karten in ${data.groups.length} Sets</small></h1></div>
-      <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${stats.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${stats.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${stats.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${stats.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${stats.owned} / ${stats.missing}</b></div><div class="compact-stat value"><span>Gesamtwert</span><b>${money(stats.value)}</b></div></div>
+      ${allCardStats}
     </section>
     <div class="card-toolbar-sticky">
       <div class="op-catalog-filterbar catalog-filter-mobile">
         <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
         ${setSwitcherPopup('all',setOptions,'__all__','Alle Karten')}
-        ${isLorcana?lorcanaCardFilterBar(f,'all'):isOnePiece?opCardFilterBar(f,'all',data.rarities):isHololive?hololiveCardFilterBar(f,'all',data.rarities):''}
-        ${isLorcana||isOnePiece||isHololive?'':`<select id="all-rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
+        ${catalogGameFilterBar(game,f,'all',data.rarities)}
         <div class="toolbar-filter-anchor catalog-settings-control">
           <button type="button" class="icon-button" data-filter-toggle="all-view-popup" aria-expanded="false" aria-label="Ansicht" title="Ansicht">⚙</button>
           <div class="toolbar-filter-popup hidden" id="all-view-popup">
@@ -806,6 +858,7 @@ async function renderAllCards(gameId,preserve=false){
       </div>
     </div>
     <div class="all-card-groups">${data.groups.length?data.groups.map(group=>`<section class="all-card-set"><header class="set-card-divider"><img loading="lazy" src="/set-logo/${encodeURIComponent(group.set.id)}?v=${encodeURIComponent(group.set.visual_version||'provider-v1')}" alt=""><div><span>${escapeHtml(group.set.code)}</span><h2>${escapeHtml(group.set.name)}</h2></div><small>${releaseDate(group.set)} · ${group.cards.length} Karten</small></header><div class="card-grid" style="--card-size:${state.zoom}px">${group.cards.map(card=>cardTile(card,foilDisplayActive)).join('')}</div></section>`).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</div>`;
+  mountFilterPanel('all-cards',['.card-toolbar-sticky'],'Karten filtern & sortieren');
   $('#all-sort-filter').value=state.sort;$('#all-set-order').value=state.setDirection;bindCardEvents();
   $('[data-dashboard]').onclick=()=>routeTo('dashboard');$('[data-game-back]').onclick=()=>routeTo('game',gameId);$('#cards-back').onclick=()=>routeTo('game',gameId);
   $$('[data-set-switch]').forEach(b=>b.onclick=()=>{const val=b.dataset.setSwitch;val==='__all__'?renderAllCards(gameId,true):routeTo('set',val)});
@@ -877,6 +930,8 @@ function cardTile(card,foilDisplayActive=false){
 
 function bindCardEvents(watchlistId=null){
   $$('.card-tile',content).forEach(tile=>{
+    tile.tabIndex=0;tile.setAttribute('role','button');
+    tile.onkeydown=event=>{if(event.target===tile&&(event.key==='Enter'||event.key===' ')){event.preventDefault();tile.click()}};
     tile.onclick=e=>{if(e.target.closest('.watch-button,.quantity-control,.quick-add'))return;openCard(tile.dataset.identity,tile.dataset.variant)};
     $('.watch-button',tile).onclick=async e=>{e.stopPropagation();const r=await post('/api/watchlist',{variant_id:tile.dataset.variant,...(watchlistId?{list_id:watchlistId}:{})});e.currentTarget.classList.toggle('active',r.active);e.currentTarget.textContent=r.active?'♥':'♡';toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt');refreshWatchCount();if(state.route==='watchlist')renderWatchlist(true)};
     $$('.quantity-control',tile).forEach(row=>{const variantId=row.dataset.variant||tile.dataset.variant;$$('button',row).forEach(btn=>btn.onclick=e=>{e.stopPropagation();changeQuantity(variantId,Number(btn.dataset.delta))})});
@@ -1020,8 +1075,9 @@ function patchLocalQuantity(variantId,delta,sourceButton){
     if(b)b.textContent=String(Math.max(0,(parseInt(b.textContent,10)||0)+delta));
   }
   if(state.modalVariant?.id===variantId){
-    const modalB=$('.modal-quantity .controls b',$('#card-dialog'));
-    if(modalB)modalB.textContent=String(Math.max(0,(parseInt(modalB.textContent,10)||0)+delta));
+    $$('.modal-quantity .controls b,.modal-footer-quantity b',$('#card-dialog')).forEach(modalB=>{
+      modalB.textContent=String(Math.max(0,(parseInt(modalB.textContent,10)||0)+delta));
+    });
     state.modalVariant.quantity=Math.max(0,(state.modalVariant.quantity||0)+delta);
   }
 }
@@ -1112,7 +1168,7 @@ function advancedCollectionPanelHtml(entries){
     <div class="condition-rows">${COLLECTION_CONDITIONS.map(c=>{const e=byCondition[c],qty=e?e.quantity:0;return `<div class="condition-row"><span>${escapeHtml(c)}</span><div class="controls"><button type="button" class="condition-qty-btn" data-condition="${escapeHtml(c)}" data-delta="-1" ${qty<=0?'disabled':''}>−</button><b>${qty}</b><button type="button" class="condition-qty-btn" data-condition="${escapeHtml(c)}" data-delta="1">＋</button></div></div>`}).join('')}</div>
     <div class="detail-section-title">GEGRADETE EXEMPLARE</div>
     <div class="graded-rows">${graded.length?graded.map(e=>`<div class="graded-row"><div class="graded-row-label"><b>${escapeHtml(e.grade_label)}</b><small>${escapeHtml(e.condition)}</small></div><div class="controls"><button type="button" class="graded-qty-btn" data-condition="${escapeHtml(e.condition)}" data-grade="${escapeHtml(e.grade_label)}" data-delta="-1">−</button><b>${e.quantity}</b><button type="button" class="graded-qty-btn" data-condition="${escapeHtml(e.condition)}" data-grade="${escapeHtml(e.grade_label)}" data-delta="1">＋</button></div><input type="number" step="0.01" class="graded-price-input select-control" data-condition="${escapeHtml(e.condition)}" data-grade="${escapeHtml(e.grade_label)}" value="${e.price_override??''}" placeholder="Preis-Override €"></div>`).join(''):'<p class="muted">Noch keine gegradeten Exemplare.</p>'}</div>
-    <button type="button" class="secondary-button" id="add-graded-toggle">+ Gegradetes Exemplar</button>
+    <button type="button" class="secondary-button" id="add-graded-toggle"><span>Gegradetes Exemplar</span><i aria-hidden="true">＋</i></button>
     <div class="graded-add-form hidden" id="graded-add-form">
       <input type="text" id="new-grade-label" placeholder="Grading, z.B. PSA 10">
       <select id="new-grade-condition" class="select-control">${COLLECTION_CONDITIONS.map(c=>`<option value="${escapeHtml(c)}" ${c==='Near Mint'?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select>
@@ -1121,33 +1177,47 @@ function advancedCollectionPanelHtml(entries){
     </div>`;
 }
 
-function wireAdvancedPanel(variantId){
-  $$('.condition-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),sourceButton:b}));
-  $$('.graded-qty-btn').forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),isGraded:true,gradeLabel:b.dataset.grade,sourceButton:b}));
-  $$('.graded-price-input').forEach(input=>input.onchange=()=>changeCollectionEntry(variantId,{condition:input.dataset.condition,delta:0,isGraded:true,gradeLabel:input.dataset.grade,priceOverride:input.value===''?null:Number(input.value)}));
-  $('#add-graded-toggle').onclick=()=>$('#graded-add-form').classList.toggle('hidden');
-  $('#add-graded-submit').onclick=()=>{
-    const label=$('#new-grade-label').value.trim();
+function wireAdvancedPanel(variantId,panel){
+  $$('.condition-qty-btn',panel).forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),sourceButton:b}));
+  $$('.graded-qty-btn',panel).forEach(b=>b.onclick=()=>changeCollectionEntry(variantId,{condition:b.dataset.condition,delta:Number(b.dataset.delta),isGraded:true,gradeLabel:b.dataset.grade,sourceButton:b}));
+  $$('.graded-price-input',panel).forEach(input=>input.onchange=()=>changeCollectionEntry(variantId,{condition:input.dataset.condition,delta:0,isGraded:true,gradeLabel:input.dataset.grade,priceOverride:input.value===''?null:Number(input.value)}));
+  const gradedToggle=$('#add-graded-toggle',panel), gradedForm=$('#graded-add-form',panel);
+  if(gradedToggle)gradedToggle.onclick=()=>gradedForm?.classList.toggle('hidden');
+  const gradedSubmit=$('#add-graded-submit',panel);
+  if(gradedSubmit)gradedSubmit.onclick=()=>{
+    const label=$('#new-grade-label',panel).value.trim();
     if(!label){toast('Bitte eine Grading-Bezeichnung eingeben');return}
-    const condition=$('#new-grade-condition').value, priceRaw=$('#new-grade-price').value;
+    const condition=$('#new-grade-condition',panel).value, priceRaw=$('#new-grade-price',panel).value;
     changeCollectionEntry(variantId,{condition,delta:1,isGraded:true,gradeLabel:label,priceOverride:priceRaw===''?undefined:Number(priceRaw)});
   };
 }
 
+function activeAdvancedPanel(){
+  const useFooter=document.body.classList.contains('mobile-modern');
+  return $(useFooter?'#footer-advanced-panel':'#advanced-panel');
+}
+
 async function loadAdvancedPanel(){
-  const panel=$('#advanced-panel'); if(!panel)return;
+  const panel=activeAdvancedPanel(); if(!panel)return;
   const variantId=state.modalVariant.id;
   const entries=await api(`/api/collection/entries/${variantId}`);
+  if(panel!==activeAdvancedPanel()||variantId!==state.modalVariant?.id)return;
   panel.innerHTML=advancedCollectionPanelHtml(entries);
-  wireAdvancedPanel(variantId);
+  wireAdvancedPanel(variantId,panel);
 }
 
 function toggleAdvancedPanel(){
   advancedPanelExpanded=!advancedPanelExpanded;
-  const btn=$('#advanced-toggle');
-  btn.setAttribute('aria-expanded',String(advancedPanelExpanded));
-  btn.textContent=`Erweitert ${advancedPanelExpanded?'▴':'▾'}`;
-  $('#advanced-panel').classList.toggle('hidden',!advancedPanelExpanded);
+  $$('#advanced-toggle,#footer-advanced-toggle').forEach(btn=>{
+    btn.setAttribute('aria-expanded',String(advancedPanelExpanded));
+    if(btn.id==='footer-advanced-toggle'){
+      btn.setAttribute('aria-label',advancedPanelExpanded?'Zustände einklappen':'Zustände ausklappen');
+    }else{
+      btn.textContent=`Erweitert ${advancedPanelExpanded?'▴':'▾'}`;
+    }
+  });
+  $('#advanced-panel')?.classList.toggle('hidden',!advancedPanelExpanded);
+  $('.modal-action-bar')?.classList.toggle('is-expanded',advancedPanelExpanded);
   if(advancedPanelExpanded)loadAdvancedPanel();
 }
 
@@ -1157,18 +1227,40 @@ async function renderWatchlist(preserve=false){
   if(!state.watchlistId||!lists.some(l=>l.id===state.watchlistId))state.watchlistId=lists[0]?.id;
   if(!state.watchlistId){content.innerHTML='<div class="empty-state"><b>Noch keine Watchlist</b></div>';return}
   const f=state.watchFilters, params=new URLSearchParams(f), data=await api(`/api/watchlists/${state.watchlistId}/cards?${params}`), sets=await api(`/api/games/${state.activeGameId}/sets`);
+  const currentSet=sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   state.cards=data.cards.map(r=>({...r,variants:[r],variant_count:1,owned_variants:r.quantity?1:0,watchlisted:true,value:r.quantity*r.price}));
+  const watchStats=statPill([
+    {label:'Liste',value:escapeHtml(data.list.name)},
+    {label:'Varianten',value:data.cards.length},
+    {label:'Marktwert',value:money(data.cards.reduce((a,c)=>a+c.price,0))},
+  ],{className:'browser-summary',columns:3,mobileColumns:3});
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · PREISBEOBACHTUNG</span><h1>Watchlists</h1><p>Getrennte Listen für Kaufziele, Deckprojekte und Preisalarme.</p></div><div class="page-head-actions"><button class="primary-button" id="new-watchlist">＋ Neue Watchlist</button></div></div>
     <div class="list-tabs">${lists.map(l=>`<button data-list="${l.id}" class="${l.id===state.watchlistId?'active':''}"><b>${escapeHtml(l.name)}</b><span>${l.count} · ${money(l.value)}</span></button>`).join('')}</div>
-    <div class="browser-summary"><div><span>LISTE</span><b>${escapeHtml(data.list.name)}</b></div><div><span>VARIANTEN</span><b>${data.cards.length}</b></div><div><span>MARKTWERT</span><b>${money(data.cards.reduce((a,c)=>a+c.price,0))}</b></div><div class="browser-summary-actions"><button class="secondary-button" id="rename-watchlist">Umbenennen</button>${data.list.is_default?'':`<button class="danger-button" id="delete-watchlist">Löschen</button>`}</div></div>
-    <div class="card-toolbar browser-toolbar"><div class="filter-search"><span>⌕</span><input id="watch-q" value="${escapeHtml(f.q)}" placeholder="Watchlist durchsuchen"></div><select id="watch-set" class="select-control"><option value="">Alle Sets</option>${sets.map(s=>`<option value="${s.id}" ${f.set_id===s.id?'selected':''}>${escapeHtml(s.code)} · ${escapeHtml(s.name)}</option>`).join('')}</select><select id="watch-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select><select id="watch-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select><select id="watch-sort" class="select-control"><option value="added">Zuletzt hinzugefügt</option><option value="name">Name</option><option value="number">Nummer</option><option value="price_high">Preis absteigend</option><option value="price_low">Preis aufsteigend</option></select></div>
+    <div class="browser-summary-row">${watchStats}<div class="browser-summary-actions"><button class="secondary-button" id="rename-watchlist">Umbenennen</button>${data.list.is_default?'':`<button class="danger-button" id="delete-watchlist">Löschen</button>`}</div></div>
+    <div class="card-toolbar-sticky watch-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile watch-filter-mobile">
+      <div class="filter-search"><span>⌕</span><input id="watch-q" value="${escapeHtml(f.q)}" placeholder="Watchlist durchsuchen"></div>
+      ${setSwitcherPopup('watch',sets,f.set_id||'__all__',currentSet?setFilterLabel(currentSet):'Alle Sets')}
+      ${catalogGameFilterBar(game,f,'watch',rarityOptions)}
+      <div class="toolbar-filter-anchor catalog-settings-control">
+        <button type="button" class="icon-button" data-filter-toggle="watch-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
+        <div class="toolbar-filter-popup hidden" id="watch-view-popup">
+          <label>Sprache<select id="watch-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
+          <label>Ausführung<select id="watch-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
+          <label>Sortierung<select id="watch-sort" class="select-control"><option value="added">Zuletzt hinzugefügt</option><option value="name">Name</option><option value="number">Nummer</option><option value="price_high">Preis absteigend</option><option value="price_low">Preis aufsteigend</option></select></label>
+        </div>
+      </div>
+    </div></div>
     <section class="card-grid" style="--card-size:${state.zoom}px">${state.cards.length?state.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten in dieser Ansicht</b><span>Passe die Filter an oder füge Karten hinzu.</span></div>'}</section>`;
+  mountFilterPanel('watchlist',['.watch-filter-shell'],'Watchlist filtern & sortieren');
   $('#watch-sort').value=f.sort;bindCardEvents(state.watchlistId);
   $$('.list-tabs button').forEach(b=>b.onclick=()=>{state.watchlistId=Number(b.dataset.list);renderWatchlist(true)});
+  $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderWatchlist(true)});
+  bindCatalogFilterControls(f,()=>renderWatchlist(true));
   $('#new-watchlist').onclick=async()=>{const name=prompt('Name der neuen Watchlist:','Deckprojekt');if(!name)return;const created=await post('/api/watchlists',{game_id:state.activeGameId,name});state.watchlistId=created.id;renderWatchlist(true);refreshWatchCount()};
   $('#rename-watchlist').onclick=async()=>{const name=prompt('Neuer Name:',data.list.name);if(!name)return;await api(`/api/watchlists/${state.watchlistId}`,{method:'PATCH',body:JSON.stringify({name})});renderWatchlist(true)};
   if($('#delete-watchlist'))$('#delete-watchlist').onclick=async()=>{if(!confirm('Diese Watchlist wirklich löschen?'))return;await api(`/api/watchlists/${state.watchlistId}`,{method:'DELETE'});state.watchlistId=null;renderWatchlist(true);refreshWatchCount()};
   bindBrowserFilters('watch',()=>renderWatchlist(true));
+  $('#watch-language').onchange=event=>{f.language=event.target.value;f.rarity='';f.rarities=[];renderWatchlist(true)};
 }
 
 function collectionRarityOptions(gameId,language){
@@ -1186,12 +1278,17 @@ async function renderCollection(preserve=false){
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Sammlung wird zusammengestellt …</p></div>';
   const game=state.boot.games.find(g=>g.id===state.activeGameId),f=state.collectionFilters,params=new URLSearchParams({game_id:state.activeGameId,...f}),data=await api(`/api/collection?${params}`);state.cards=data.cards;
   const currentSet=data.sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
+  const collectionStats=statPill([
+    {label:'Varianten',value:data.stats.variants},
+    {label:'Exemplare',value:data.stats.copies},
+    {label:'Marktwert',value:money(data.stats.value)},
+  ],{className:'browser-summary',columns:3,mobileColumns:3});
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · SAMMLUNG</span><h1>Meine Karten</h1><p>Durchsuchbare Variantenansicht mit denselben Werkzeugen wie im Set-Katalog.</p></div><div class="page-head-actions"><button class="secondary-button" id="collection-export">Exportieren</button></div></div>
-    <div class="browser-summary"><div><span>VARIANTEN</span><b>${data.stats.variants}</b></div><div><span>EXEMPLARE</span><b>${data.stats.copies}</b></div><div><span>MARKTWERT</span><b>${money(data.stats.value)}</b></div></div>
+    ${collectionStats}
     <div class="card-toolbar-sticky collection-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile collection-filter-mobile">
       <div class="filter-search"><span>⌕</span><input id="collection-q" value="${escapeHtml(f.q)}" placeholder="Sammlung durchsuchen"></div>
-      ${setSwitcherPopup('collection',data.sets,f.set_id||'__all__',currentSet?`${currentSet.code} ${setAbbreviation(currentSet.name)}`:'Alle Sets')}
-      ${gameRarityPopup(rarityOptions,f,'collection')}
+      ${setSwitcherPopup('collection',data.sets,f.set_id||'__all__',currentSet?setFilterLabel(currentSet):'Alle Sets')}
+      ${catalogGameFilterBar(game,f,'collection',rarityOptions)}
       <div class="toolbar-filter-anchor catalog-settings-control">
         <button type="button" class="icon-button" data-filter-toggle="collection-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
         <div class="toolbar-filter-popup hidden" id="collection-view-popup">
@@ -1203,11 +1300,12 @@ async function renderCollection(preserve=false){
       </div>
     </div></div>
     <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
+  mountFilterPanel('collection',['.collection-filter-shell'],'Sammlung filtern & sortieren');
   $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};
   $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderCollection(true)});
-  $$('[data-card-single-filter]',content).forEach(button=>button.onclick=()=>{const value=button.dataset.value;f.rarity=f.rarity===value?'':value;renderCollection(true)});
+  bindCatalogFilterControls(f,()=>renderCollection(true));
   bindCardEvents();bindBrowserFilters('collection',()=>renderCollection(true));
-  $('#collection-language').onchange=event=>{f.language=event.target.value;f.rarity='';renderCollection(true)};
+  $('#collection-language').onchange=event=>{f.language=event.target.value;f.rarity='';f.rarities=[];renderCollection(true)};
 }
 
 function bindBrowserFilters(prefix,render){
@@ -1215,6 +1313,17 @@ function bindBrowserFilters(prefix,render){
   $(`#${prefix}-q`).oninput=e=>{clearTimeout(timer);target.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus(`#${prefix}-q`,render),250)};
   const mappings=prefix==='watch'?['set','language','finish','sort']:['set','language','rarity','finish','mode','sort'];
   mappings.forEach(key=>{const control=$(`#${prefix}-${key}`);if(control)control.onchange=e=>{target[key==='set'?'set_id':key]=e.target.value;render()}});
+}
+
+function bindCatalogFilterControls(filters,render,root=content){
+  $$('[data-card-filter]',root).forEach(button=>button.onclick=()=>{
+    const key=button.dataset.cardFilter,value=button.dataset.value,current=filters[key]||[];
+    filters[key]=current.includes(value)?current.filter(item=>item!==value):[...current,value];render();
+  });
+  $$('[data-card-single-filter]',root).forEach(button=>button.onclick=()=>{
+    const key=button.dataset.cardSingleFilter,value=button.dataset.value;
+    filters[key]=filters[key]===value?'':value;render();
+  });
 }
 
 let deckImagePreview=null;
@@ -1292,7 +1401,7 @@ function opFilterPanel(filters){
   const selected=(key,value)=>(filters[key]||[]).includes(String(value));
   const pills=(items,key)=>items.map(([value,label])=>`<button type="button" class="op-filter-chip ${selected(key,value)?'active':''}" data-op-filter="${key}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('');
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${pills(OP_TYPE_FILTERS,'types')}</div></div>
-    <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,index)=>index+1).map(cost=>`<button type="button" class="op-image-filter ${selected('costs',cost)?'active':''}" data-op-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=2" alt="${cost}"></button>`).join('')}</div></div>
+    <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,index)=>index+1).map(cost=>`<button type="button" class="op-image-filter ${selected('costs',cost)?'active':''}" style="--op-cost-icon:url('/op-filter-icon/cost-${cost}.png?v=3')" data-op-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=3" alt="${cost}"></button>`).join('')}</div></div>
     <div class="op-filter-group op-colors"><span>Farbe</span><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${selected('colors',name)?'active':''}" data-op-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>
     <div class="op-filter-group op-attributes"><span>Attribut</span><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${selected('attributes',value)?'active':''}" data-op-filter="attributes" data-value="${value}" aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`;
 }
@@ -1316,53 +1425,75 @@ function lorcanaFinishLabel(finish,rarity){
   if(LORCANA_PLAIN_FINISHES.has(finish))return finish;
   return rarity||finish;
 }
-function lorcanaRarityPopup(filters,prefix){
+function filterData(scope,key,value,single=false){
+  const attribute=scope==='deck'?(single?'data-single-filter':'data-deck-filter'):(single?'data-card-single-filter':'data-card-filter');
+  return `${attribute}="${escapeHtml(key)}" data-value="${escapeHtml(value)}"`;
+}
+function lorcanaRarityPopup(filters,prefix,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   const popupId=`${prefix}-rarity-popup`;
   return `<div class="toolbar-filter-anchor rarity-filter-anchor">
     <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
     <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
-      ${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" data-card-filter="rarities" data-value="${key}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}
+      ${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" ${filterData(scope,'rarities',key)} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}
     </div>
   </div>`;
 }
-function lorcanaCardFilterBar(filters,prefix){
+function lorcanaCardFilterGroups(filters,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
-    ${lorcanaRarityPopup(filters,prefix)}
-    <div class="op-filter-group game-costs"><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost===7?'7+':cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inks"><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-card-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inkability"><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-card-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-card-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
+    <div class="op-filter-group game-costs"><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" ${filterData(scope,'costs',cost)} aria-label="Kosten ${cost===7?'7+':cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inks"><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" ${filterData(scope,'colors',value)} title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inkability"><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" ${filterData(scope,'inkwell','true',true)} title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" ${filterData(scope,'inkwell','false',true)} title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
+}
+function lorcanaCardFilterBar(filters,prefix,scope='card'){
+  return `${lorcanaRarityPopup(filters,prefix,scope)}${lorcanaCardFilterGroups(filters,scope)}`;
 }
 function lorcanaAnsichtExtras(filters){
   return `<label>Ausführung<div class="segmented"><button type="button" data-card-mode="finish" data-value="normal" class="${filters.finish==='normal'?'active':''}">Normal</button><button type="button" data-card-mode="finish" data-value="foil" class="${filters.finish==='foil'?'active':''}">Foil</button></div></label>
     <label>Foil-Besitz<div class="segmented"><button type="button" data-card-mode="foilMode" data-value="" class="${filters.foilMode===''?'active':''}">Alle</button><button type="button" data-card-mode="foilMode" data-value="owned" class="${filters.foilMode==='owned'?'active':''}">Im Besitz</button><button type="button" data-card-mode="foilMode" data-value="missing" class="${filters.foilMode==='missing'?'active':''}">Fehlend</button></div></label>`;
 }
-function gameRarityPopup(rarityOptions,filters,prefix){
+function gameRarityPopup(rarityOptions,filters,prefix,scope='card'){
   const popupId=`${prefix}-rarity-popup`;
   return `<div class="toolbar-filter-anchor rarity-filter-anchor">
     <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
     <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
-      ${rarityOptions.map(r=>`<button type="button" class="op-filter-chip ${filters.rarity===r?'active':''}" data-card-single-filter="rarity" data-value="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')}
+      ${rarityOptions.map(r=>`<button type="button" class="op-filter-chip ${filters.rarity===r?'active':''}" ${filterData(scope,'rarity',r,true)}>${escapeHtml(r)}</button>`).join('')}
     </div>
   </div>`;
 }
-function opCardFilterBar(filters,prefix,rarityOptions){
+function opCardFilterGroups(filters,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
-    ${gameRarityPopup(rarityOptions,filters,prefix)}
-    <div class="op-filter-group op-costs"><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-image-filter ${active('costs',cost)?'active':''}" data-card-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=2" alt="${cost}"></button>`).join('')}</div></div>
-    <div class="op-filter-group op-colors"><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+    <div class="op-filter-group op-costs"><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-image-filter ${active('costs',cost)?'active':''}" style="--op-cost-icon:url('/op-filter-icon/cost-${cost}.png?v=3')" ${filterData(scope,'costs',cost)} aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=3" alt="${cost}"></button>`).join('')}</div></div>
+    <div class="op-filter-group op-colors"><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" ${filterData(scope,'colors',name)} aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+}
+function opCardFilterBar(filters,prefix,rarityOptions,scope='card'){
+  return `${gameRarityPopup(rarityOptions,filters,prefix,scope)}${opCardFilterGroups(filters,scope)}`;
 }
 const HOLOLIVE_COLOR_FILTERS=[['White','#c9ccd1'],['Green','#168b64'],['Red','#c42536'],['Blue','#297eb5'],['Purple','#9749a3'],['Yellow','#e6d93b']];
-function hololiveCardFilterBar(filters,prefix,rarityOptions){
+function hololiveCardFilterGroups(filters,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
-    ${gameRarityPopup(rarityOptions,filters,prefix)}
-    <div class="op-filter-group op-colors"><div>${HOLOLIVE_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" data-card-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+    <div class="op-filter-group op-colors"><div>${HOLOLIVE_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" ${filterData(scope,'colors',name)} aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
+}
+function hololiveCardFilterBar(filters,prefix,rarityOptions,scope='card'){
+  return `${gameRarityPopup(rarityOptions,filters,prefix,scope)}${hololiveCardFilterGroups(filters,scope)}`;
+}
+function catalogGameFilterBar(game,filters,prefix,rarityOptions,scope='card'){
+  if(game.id==='lorcana')return lorcanaCardFilterBar(filters,prefix,scope);
+  if(game.id==='one-piece')return opCardFilterBar(filters,prefix,rarityOptions,scope);
+  if(game.id==='hololive')return hololiveCardFilterBar(filters,prefix,rarityOptions,scope);
+  return gameRarityPopup(rarityOptions,filters,prefix,scope);
 }
 function setAbbreviation(name){
   return name.replace(/[^\p{L}\s]/gu,'').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').toUpperCase();
+}
+function setFilterLabel(set){
+  const abbreviation=/^\d+$/.test(String(set.code||''))?setAbbreviation(set.name||''):String(set.code||'');
+  const lorcanaNumber=String(set.id||'').match(/^lorcana-(\d+)$/)?.[1];
+  if(lorcanaNumber)return `${lorcanaNumber} ${abbreviation}`.trim();
+  return `${set.code||''} ${setAbbreviation(set.name||'')}`.trim();
 }
 function setSwitcherPopup(prefix,setOptions,currentSetId,currentLabel){
   const popupId=`${prefix}-set-popup`;
@@ -1439,6 +1570,8 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   const f=state.deckFilters,isOnePiece=game.id==='one-piece',isLorcana=game.id==='lorcana',isHololive=game.id==='hololive';
   const initialCatalogLimit=Math.max(72,Math.min(20000,Number(catalogPosition?.loadedCount)||72));
   const params=new URLSearchParams({game_id:state.activeGameId,q:f.q||'',sort:f.sort||'number',limit:String(initialCatalogLimit),offset:'0'});
+  if(f.rarity)params.set('rarity',f.rarity);
+  if(f.rarities?.length)params.set('rarities',f.rarities.join(','));
   if(isOnePiece){
     params.set('language','EN');
     ['colors','types','costs','attributes'].forEach(key=>{if(f[key]?.length)params.set(key,f[key].join(','))});
@@ -1449,7 +1582,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
       if(f.inkwell)params.set('inkwell',f.inkwell);
     }
     if(isHololive){
-      ['kinds','bloomLevels'].forEach(key=>{if(f[key]?.length)params.set(key,f[key].join(','))});
+      ['colors','kinds','bloomLevels'].forEach(key=>{if(f[key]?.length)params.set(key,f[key].join(','))});
     }
   }
   const [detail,catalog]=await Promise.all([api(`/api/decks/${state.deckId}`),api(`/api/deckbuilder/catalog?${params}`)]),profile=formats.find(x=>x.id===detail.deck.format_id)||formats[0];
@@ -1457,7 +1590,12 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   const validation=detail.validation, zoneCards=detail.cards.filter(c=>c.zone===state.deckZone), currentZone=profile.zones.find(z=>z.id===state.deckZone);
   const summary=detail.summary;
   const purchaseSummary=`<div class="deck-purchase-summary"><div><span>In deiner Sammlung</span><b>${summary.owned_copies} / ${summary.required_copies}</b><small>${summary.complete_entries} Kartenpositionen vollständig</small></div><div class="${summary.missing_copies?'missing':'complete'}"><span>Fehlende Exemplare</span><b>${summary.missing_copies}</b><small>${summary.missing_entries} Kartenpositionen betroffen</small></div><div class="purchase-cost"><span>Fehlende Karten kaufen</span><b>${money(summary.missing_cost)}</b><small>${summary.missing_unpriced_copies?`${summary.missing_unpriced_copies} fehlende Exemplare ohne Preis`:'Alle fehlenden Karten eingepreist'}</small></div></div>`;
-  const deckStatChips=`<div class="deck-stat-chips"><div><span>Vorhanden</span><b>${summary.owned_copies}/${summary.required_copies}</b></div><div class="${summary.missing_copies?'missing':'complete'}"><span>Fehlt</span><b>${summary.missing_copies}</b></div><div><span>Nachkauf</span><b>${money(summary.missing_cost)}</b></div><div><span>Deckwert</span><b>${money(summary.deck_value)}</b></div></div>`;
+  const deckStatChips=statPill([
+    {label:'Vorhanden',value:`${summary.owned_copies}/${summary.required_copies}`},
+    {label:'Fehlt',value:summary.missing_copies,className:summary.missing_copies?'missing':'complete'},
+    {label:'Nachkauf',value:money(summary.missing_cost)},
+    {label:'Deckwert',value:money(summary.deck_value)},
+  ],{className:'deck-stat-chips',columns:4,mobileColumns:4});
   const validationNotice=validation.valid?'':`<div class="deck-validation invalid"><span class="validation-icon">!</span><div><b>Deck noch nicht spielbereit</b><small>${escapeHtml(validation.errors[0]||validation.warnings[0])}</small></div><span class="validation-count">${validation.errors.length} Fehler · ${validation.warnings.length} Hinweise</span></div>`;
   const deckQuantities=detail.cards.reduce((all,card)=>{all[card.variant_id]=(all[card.variant_id]||0)+card.quantity;return all},{});
   const coverVariantId=detail.deck.cover_variant_id||null;
@@ -1484,9 +1622,30 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     deckWorkspace=`${purchaseSummary}${validationNotice}<nav class="zone-tabs">${profile.zones.map(z=>`<button data-zone="${z.id}" class="${z.id===state.deckZone?'active':''}"><span>${escapeHtml(z.name)}</span><b>${validation.counts[z.id]||0} / ${z.target}</b></button>`).join('')}</nav><div class="deck-zone-head"><div><span class="eyebrow">${escapeHtml(currentZone.name).toUpperCase()}</span><h2>${zoneCards.reduce((a,c)=>a+c.quantity,0)} Karten</h2></div><div class="deck-errors">${validation.errors.slice(0,3).map(x=>`<span>! ${escapeHtml(x)}</span>`).join('')}${validation.warnings.slice(0,2).map(x=>`<span class="warning">△ ${escapeHtml(x)}</span>`).join('')}</div></div><div class="deck-card-list ${state.deckView==='grid'?'deck-card-grid':''}">${zoneCards.length?zoneCards.map(card=>deckContentCard(card,false,coverVariantId)).join(''):'<div class="deck-zone-empty">Noch keine Karten in diesem Bereich.</div>'}</div>`;
   }
   const viewTools=`<div class="op-filter-group catalog-view-tools"><span>Ansicht</span><div><div class="deck-view-toggle segmented" aria-label="Ansicht"><button data-deck-view="list" class="${state.deckView==='list'?'active':''}" title="Liste">☷</button><button data-deck-view="grid" class="${state.deckView==='grid'?'active':''}" title="Kacheln">▦</button></div><label class="catalog-zoom ${state.deckView==='grid'?'':'hidden'}"><input id="deck-zoom" type="range" min="105" max="190" step="5" value="${state.deckZoom}" aria-label="Kachelgröße"><output id="deck-zoom-value">${state.deckZoom}%</output></label></div></div>`;
-  const languageControl=isOnePiece?'':`<select id="deck-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(language=>`<option value="${language}" ${f.language===language?'selected':''}>${language}</option>`).join('')}</select>`;
-  const gameFilters=isOnePiece?opFilterPanel(f):isLorcana?lorcanaFilterPanel(f):isHololive?hololiveFilterPanel(f):'';
-  const filters=`<div class="op-catalog-controls"><div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="${isOnePiece?'Englische Karten':'Karten'} suchen"></div>${languageControl}<select id="deck-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="cost">Kosten</option><option value="rarity">Seltenheit</option></select><div class="toolbar-spacer"></div>${viewTools}</div>${gameFilters?`<div class="op-catalog-filterbar deck-game-filterbar">${gameFilters}</div>`:''}`;
+  const deckRarity=isLorcana?lorcanaRarityPopup(f,'deck','deck'):gameRarityPopup(catalog.rarities||[],f,'deck','deck');
+  const deckTypes=isOnePiece
+    ?`<div class="op-filter-group op-types"><div>${deckFilterPills(OP_TYPE_FILTERS,'types',f)}</div></div>`
+    :isLorcana?`<div class="op-filter-group op-types"><div>${deckFilterPills(LORCANA_TYPE_FILTERS,'types',f)}</div></div>`
+    :isHololive?`<div class="op-filter-group op-types"><div>${deckFilterPills(HOLOLIVE_KIND_FILTERS,'kinds',f)}</div></div>`:'';
+  const deckSecondaryTypes=isHololive?`<div class="op-filter-group"><div>${deckFilterPills(HOLOLIVE_BLOOM_FILTERS,'bloomLevels',f)}</div></div>`:'';
+  const sharedGameFilters=isOnePiece?opCardFilterGroups(f,'deck'):isLorcana?lorcanaCardFilterGroups(f,'deck'):isHololive?hololiveCardFilterGroups(f,'deck'):'';
+  const deckAttributes=isOnePiece?`<div class="op-filter-group op-attributes"><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${(f.attributes||[]).includes(value)?'active':''}" ${filterData('deck','attributes',value)} aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`:'';
+  const filters=`<div class="op-catalog-filterbar catalog-filter-mobile deck-catalog-filter-mobile">
+    <div class="deck-catalog-filter-row deck-catalog-filter-primary">
+      <div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="Karten suchen"></div>
+      ${deckRarity}
+      <div class="toolbar-filter-anchor catalog-settings-control">
+        <button type="button" class="icon-button" data-filter-toggle="deck-view-popup" aria-expanded="false" aria-label="Ansicht und Sortierung" title="Ansicht und Sortierung">⚙</button>
+        <div class="toolbar-filter-popup hidden" id="deck-view-popup">
+          ${isOnePiece?'':`<label>Sprache<select id="deck-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(language=>`<option value="${language}" ${f.language===language?'selected':''}>${language}</option>`).join('')}</select></label>`}
+          <label>Sortierung<select id="deck-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="cost">Kosten</option><option value="rarity">Seltenheit</option></select></label>
+          ${viewTools}
+        </div>
+      </div>
+      ${deckTypes}
+    </div>
+    <div class="deck-catalog-filter-row deck-catalog-filter-secondary">${deckSecondaryTypes}${sharedGameFilters}${deckAttributes}</div>
+  </div>`;
   content.innerHTML=`<div class="deck-shell deck-shell-editor" style="--deck-card-size:${state.deckZoom}px;--catalog-card-size:${state.deckZoom}px">
     <section class="deck-editor"><header class="deck-editor-head"><button class="compact-back-button" id="deck-overview-back" title="Alle Decks" aria-label="Alle Decks">←</button><div class="deck-title-field"><input id="deck-name" value="${escapeHtml(detail.deck.name)}" aria-label="Deckname"></div><select id="deck-format" class="select-control">${formats.map(x=>`<option value="${x.id}" ${x.id===detail.deck.format_id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select><a class="deck-rules-button" href="${escapeHtml(validation.rules_url)}" target="_blank" rel="noopener"><span>Regeln</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"/><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a><button id="deck-actions-open" class="icon-button deck-header-menu-button" title="Deckaktionen" aria-label="Deckaktionen öffnen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg></button></header>
       <button type="button" class="deck-catalog-open-button" id="deck-catalog-open" aria-controls="deck-card-catalog" aria-expanded="${state.deckCatalogOpen}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="12" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M11 9v6M8 12h6"/></svg><span><b>Karten hinzufügen</b><small>${catalog.pagination.total} Basiskarten durchsuchen</small></span><i>›</i></button>
@@ -1494,6 +1653,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     </section>
     <button type="button" class="deck-catalog-backdrop ${state.deckCatalogOpen?'is-open':''}" aria-label="Kartenkatalog schließen"></button>
     <aside id="deck-card-catalog" class="deck-catalog ${state.deckCatalogOpen?'is-open':''}"><div class="deck-catalog-title"><div><b>Kartenkatalog</b><span>${catalog.pagination.total} Basiskarten · ${isOnePiece?'EN':f.language==='all'?'alle Sprachen':f.language}</span></div><button type="button" class="deck-catalog-close" id="deck-catalog-close" aria-label="Kartenkatalog schließen">×</button></div>${filters}<div class="catalog-card-list ${state.deckView==='grid'?'catalog-card-grid-list':''}">${catalog.cards.map(c=>deckCatalogCard(c,profile,deckQuantities)).join('')}<div class="deck-catalog-sentinel">${catalog.pagination.has_more?'Weitere Karten werden geladen …':'Alle Treffer geladen'}</div></div></aside></div>`;
+  mountFilterPanel('deck-catalog',['.deck-catalog-filter-mobile'],'Karten filtern & sortieren');
   setDeckCatalogOpen(state.deckCatalogOpen);
   bindDeckImagePreviews();
   const catalogList=$('.catalog-card-list'),sentinel=$('.deck-catalog-sentinel');
@@ -1546,13 +1706,9 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   };
   let timer;$('#deck-q').oninput=e=>{clearTimeout(timer);f.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deck-q',()=>renderDeckbuilder(true)),250)};
   $('#deck-sort').value=f.sort;$('#deck-sort').onchange=event=>{f.sort=event.target.value;renderDeckbuilder(true)};
-  if(isOnePiece){
-    $$('[data-op-filter]').forEach(button=>button.onclick=()=>{const key=button.dataset.opFilter,value=button.dataset.value,current=f[key]||[];f[key]=current.includes(value)?current.filter(item=>item!==value):[...current,value];renderDeckbuilder(true)});
-  }else{
-    $('#deck-language').onchange=event=>{f.language=event.target.value;renderDeckbuilder(true)};
-    $$('[data-deck-filter]').forEach(button=>button.onclick=()=>{const key=button.dataset.deckFilter,value=button.dataset.value,current=f[key]||[];f[key]=current.includes(value)?current.filter(item=>item!==value):[...current,value];renderDeckbuilder(true)});
-    $$('[data-single-filter]').forEach(button=>button.onclick=()=>{const key=button.dataset.singleFilter,value=button.dataset.value;f[key]=f[key]===value?'':value;renderDeckbuilder(true)});
-  }
+  $('#deck-language')?.addEventListener('change',event=>{f.language=event.target.value;f.rarity='';f.rarities=[];renderDeckbuilder(true)});
+  $$('[data-deck-filter]').forEach(button=>button.onclick=()=>{const key=button.dataset.deckFilter,value=button.dataset.value,current=f[key]||[];f[key]=current.includes(value)?current.filter(item=>item!==value):[...current,value];renderDeckbuilder(true)});
+  $$('[data-single-filter]').forEach(button=>button.onclick=()=>{const key=button.dataset.singleFilter,value=button.dataset.value;f[key]=f[key]===value?'':value;renderDeckbuilder(true)});
 }
 
 async function createDeck(profile){const r=await post('/api/decks',{game_id:state.activeGameId,name:'Neues Deck',format_id:profile?.id});state.deckId=r.id;state.deckZone=profile?.zones?.[0]?.id||'main';renderDeckbuilder()}
@@ -1564,12 +1720,74 @@ async function openCard(identityId,variantId,refresh=false){
   const card=await api(`/api/cards/${identityId}`); state.modalCard=card; state.modalVariant=card.variants.find(v=>v.id===variantId)||card.variants[0];state.activeWatchlists=await api(`/api/watchlists?game_id=${state.modalVariant.game_id}`); renderCardModal();
 }
 
+let modalVariantSwitching=false;
+
+async function closeVariantSettings(dialog){
+  const settings=$$('.variant-setting.open',dialog);
+  await Promise.all(settings.map(async setting=>{
+    const options=$('.variant-setting-options',setting);
+    const height=options?.getBoundingClientRect().height||0;
+    const animation=height?options.animate(
+      [{height:`${height}px`,opacity:1},{height:'0px',opacity:0}],
+      {duration:220,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}
+    ):null;
+    if(animation)await animation.finished.catch(()=>{});
+    setting.classList.remove('open');
+    $('[data-variant-setting-toggle]',setting)?.setAttribute('aria-expanded','false');
+    animation?.cancel();
+  }));
+}
+
+function preloadModalCardArt(variant){
+  return new Promise(resolve=>{
+    const image=new Image();
+    const done=()=>resolve();
+    image.onload=done; image.onerror=done; image.src=artUrl(variant.id,'full');
+    if(image.complete)resolve();
+  });
+}
+
+async function transitionModalVariant(nextVariant){
+  if(!nextVariant||modalVariantSwitching)return;
+  const dialog=$('#card-dialog');
+  modalVariantSwitching=true;
+  try{
+    const closing=closeVariantSettings(dialog);
+    if(nextVariant.id===state.modalVariant?.id){await closing;return}
+    await Promise.all([closing,preloadModalCardArt(nextVariant)]);
+    const outgoing=$$('.modal-card-frame-wrap,.modal-card-reflection-mask',dialog);
+    await Promise.all(outgoing.map(element=>element.animate(
+      [{opacity:1},{opacity:0}],{duration:170,easing:'ease-in-out',fill:'forwards'}
+    ).finished.catch(()=>{})));
+    state.modalVariant=nextVariant;
+    renderCardModal();
+    const incoming=$$('.modal-card-frame-wrap,.modal-card-reflection-mask',$('#card-dialog'));
+    await Promise.all(incoming.map(async element=>{
+      const animation=element.animate(
+        [{opacity:0},{opacity:1}],{duration:200,easing:'ease-in-out',fill:'both'}
+      );
+      await animation.finished.catch(()=>{});
+      animation.cancel();
+    }));
+  }finally{
+    modalVariantSwitching=false;
+  }
+}
+
 function renderCardModal(){
   const card=state.modalCard,v=state.modalVariant;
   const physicalVariants=card.variants.filter(x=>x.language===v.language);
   const idx=physicalVariants.findIndex(x=>x.id===v.id), gridIdx=state.cards.findIndex(c=>c.identity_id===card.id);
   const variantLabel=x=>`${x.set_code} · ${x.collector_number} · ${variantName(x)}`;
   const languages=[...new Set(card.variants.map(x=>x.language))];
+  const modernTheme=document.body.classList.contains('mobile-modern');
+  if(modernTheme&&state.modalTab==='relationships')state.modalTab='collection';
+  const modalTabs=modernTheme
+    ?[['collection','Overview'],['market','Price History'],['card','Info']]
+    :[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']];
+  const quickMenuContent=modernTheme
+    ?`<div class="modal-relationship-popup"><div class="modal-relationship-title">Beziehungen</div>${modalRelationshipContent(card,v)}</div>`
+    :`<div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div>`;
   const visual=finishPresentation(v);
   // Card names are "<Titel> - <Untertitel>" (Lorcana convention) -- split so the two
   // halves can be styled distinctly (mobile-modern: subtitle smaller + lighter). Safe
@@ -1585,31 +1803,60 @@ function renderCardModal(){
     <button class="close-button" data-close="card-modal">×</button>
     <div class="modal-quick-menu-wrap">
       <button class="modal-menu-button" data-modal-menu-toggle aria-label="Menü" aria-expanded="false">⋯</button>
-      <div class="modal-quick-menu hidden" id="modal-quick-menu"><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></div>
+      <div class="modal-quick-menu hidden" id="modal-quick-menu">${quickMenuContent}</div>
     </div>
-    <section class="card-stage"><div class="stage-backdrop"></div><div class="stage-platform-wrap"><img class="stage-platform-svg" src="/glass-plate.svg" alt="" aria-hidden="true"></div><div class="stage-flare-anchor"></div><div class="stage-flare-cross"></div><div class="variant-hint top">${idx>0?`<button data-variant-nav="-1">↑ ${escapeHtml(variantLabel(physicalVariants[idx-1]))}</button>`:''}</div><button class="card-nav-button prev" ${gridIdx<=0?'disabled':''} data-card-nav="-1">‹</button><div class="modal-card-frame-wrap card-tilt-zone"><div class="modal-card-frame card-finish-frame card-tilt ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.id)}')"><img class="modal-card-image" draggable="false" src="${artUrl(v.id,'full')}" alt="${escapeHtml(card.canonical_name)}">${visual.effect!=='finish-normal'?'<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><div class="card-shine" aria-hidden="true"></div>':''}${visual.effect!=='finish-normal'&&v.game_id==='lorcana'?officialFoilLayerMarkup():''}</div><img class="modal-card-reflection" src="${artUrl(v.id,'full')}" alt="" aria-hidden="true"></div><button class="card-nav-button next" ${gridIdx<0||gridIdx>=state.cards.length-1?'disabled':''} data-card-nav="1">›</button><div class="variant-hint bottom">${idx<physicalVariants.length-1?`<button data-variant-nav="1">↓ ${escapeHtml(variantLabel(physicalVariants[idx+1]))}</button>`:''}</div></section>
-    <aside class="modal-side"><header class="modal-head"><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${titleHtml}</h2><b class="modal-price">${priceSymbolFirst(v.price)}</b>${titleSubHtml}<span class="modal-set-line">${escapeHtml(v.set_name)}<b class="meta-sep">·</b>#${escapeHtml(v.collector_number)} / ${v.printed_card_count!=null?v.printed_card_count:'–'}</span><span class="modal-rarity-line">${escapeHtml(v.rarity)}<b class="meta-sep">·</b>${escapeHtml(variantName(v))}</span><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></header><nav class="modal-tabs">${[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']].map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside>
-    <div class="modal-action-bar"><button class="modal-watch-bottom" data-modal-quick-watch aria-label="Watchlist umschalten">${v.watchlisted?'♥':'♡'}</button></div>
+    <section class="card-stage"><div class="stage-backdrop"></div><div class="stage-platform-wrap"><img class="stage-platform-svg" src="/glass-plate.svg" alt="" aria-hidden="true"></div><div class="stage-flare-anchor" aria-hidden="true"><span class="stage-flare left"><i style="--ray-angle:-166deg;--ray-length:72px;--ray-alpha:.42"></i><i style="--ray-angle:-132deg;--ray-length:118px;--ray-alpha:.58;--ray-size:1.5px"></i><i style="--ray-angle:-94deg;--ray-length:82px;--ray-alpha:.36"></i><i style="--ray-angle:-58deg;--ray-length:142px;--ray-alpha:.72;--ray-size:1.5px"></i><i style="--ray-angle:-19deg;--ray-length:96px;--ray-alpha:.48"></i><i style="--ray-angle:23deg;--ray-length:128px;--ray-alpha:.62;--ray-size:2px"></i><i style="--ray-angle:61deg;--ray-length:76px;--ray-alpha:.35"></i><i style="--ray-angle:108deg;--ray-length:112px;--ray-alpha:.5;--ray-size:1.5px"></i><i style="--ray-angle:147deg;--ray-length:88px;--ray-alpha:.4"></i></span><span class="stage-flare right"><i style="--ray-angle:-173deg;--ray-length:126px;--ray-alpha:.6;--ray-size:1.5px"></i><i style="--ray-angle:-139deg;--ray-length:78px;--ray-alpha:.38"></i><i style="--ray-angle:-103deg;--ray-length:138px;--ray-alpha:.68;--ray-size:2px"></i><i style="--ray-angle:-66deg;--ray-length:91px;--ray-alpha:.44"></i><i style="--ray-angle:-27deg;--ray-length:116px;--ray-alpha:.56;--ray-size:1.5px"></i><i style="--ray-angle:14deg;--ray-length:70px;--ray-alpha:.34"></i><i style="--ray-angle:49deg;--ray-length:146px;--ray-alpha:.72;--ray-size:1.5px"></i><i style="--ray-angle:96deg;--ray-length:84px;--ray-alpha:.42"></i><i style="--ray-angle:139deg;--ray-length:108px;--ray-alpha:.5;--ray-size:2px"></i></span></div><div class="stage-flare-cross"></div><div class="variant-hint top">${idx>0?`<button data-variant-nav="-1">↑ ${escapeHtml(variantLabel(physicalVariants[idx-1]))}</button>`:''}</div><button class="card-nav-button prev" ${gridIdx<=0?'disabled':''} data-card-nav="-1">‹</button><div class="modal-card-frame-wrap card-tilt-zone"><div class="modal-card-frame card-finish-frame card-tilt ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.id)}')"><img class="modal-card-image" draggable="false" src="${artUrl(v.id,'full')}" alt="${escapeHtml(card.canonical_name)}">${visual.effect!=='finish-normal'?'<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><div class="card-shine" aria-hidden="true"></div>':''}${visual.effect!=='finish-normal'&&v.game_id==='lorcana'?officialFoilLayerMarkup():''}</div><img class="modal-card-reflection" src="${artUrl(v.id,'full')}" alt="" aria-hidden="true"></div><button class="card-nav-button next" ${gridIdx<0||gridIdx>=state.cards.length-1?'disabled':''} data-card-nav="1">›</button><div class="variant-hint bottom">${idx<physicalVariants.length-1?`<button data-variant-nav="1">↓ ${escapeHtml(variantLabel(physicalVariants[idx+1]))}</button>`:''}</div></section>
+    <aside class="modal-side"><header class="modal-head"><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${titleHtml}</h2><b class="modal-price">${priceSymbolFirst(v.price)}</b>${titleSubHtml}<span class="modal-set-line">${escapeHtml(v.set_name)}<b class="meta-sep">·</b>#${escapeHtml(v.collector_number)} / ${v.printed_card_count!=null?v.printed_card_count:'–'}</span><span class="modal-rarity-line">${escapeHtml(v.rarity)}<b class="meta-sep">·</b>${escapeHtml(variantName(v))}</span><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></header><nav class="modal-tabs">${modalTabs.map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside>
+    <div class="modal-action-bar ${advancedPanelExpanded?'is-expanded':''}"><div class="modal-footer-actions"><div class="modal-footer-quantity" aria-label="Menge"><span class="modal-footer-quantity-label">Owned</span><button type="button" class="modal-qty-btn" data-delta="-1" aria-label="Menge verringern">−</button><b>${v.quantity}</b><button type="button" class="modal-qty-btn" data-delta="1" aria-label="Menge erhöhen">＋</button><button type="button" class="modal-footer-advanced-toggle" id="footer-advanced-toggle" aria-expanded="${advancedPanelExpanded}" aria-label="${advancedPanelExpanded?'Zustände einklappen':'Zustände ausklappen'}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 10 4.5-4 4.5 4"/></svg></button></div><button class="modal-watch-bottom" data-modal-quick-watch aria-label="Watchlist umschalten">${v.watchlisted?'♥':'♡'}</button></div><div class="modal-footer-advanced advanced-panel" id="footer-advanced-panel"></div></div>
   </div>`;
+  // Keep the plate mask in a stationary coordinate system. The reflection image may rotate
+  // inside it, but the mask host itself must never inherit that parallax transform.
+  const reflection=$('.modal-card-reflection',$('#card-dialog'));
+  if(reflection){
+    const reflectionMask=document.createElement('div');
+    reflectionMask.className='modal-card-reflection-mask';
+    reflectionMask.setAttribute('aria-hidden','true');
+    const reflectionMirror=document.createElement('div');
+    reflectionMirror.className='modal-card-reflection-mirror';
+    const reflectionPerspective=document.createElement('div');
+    reflectionPerspective.className='modal-card-reflection-perspective';
+    reflection.before(reflectionMask);
+    reflectionMask.append(reflectionMirror);
+    reflectionMirror.append(reflectionPerspective);
+    reflectionPerspective.append(reflection);
+  }
   $('[data-close="card-modal"]').onclick=()=>closeOverlay('card-modal');
   $('[data-modal-menu-toggle]')?.addEventListener('click',e=>{const menu=$('#modal-quick-menu');const open=menu.classList.toggle('hidden');e.currentTarget.setAttribute('aria-expanded',String(!open))});
   $('[data-modal-quick-watch]').onclick=async()=>{const listId=Number(state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt')};
   $$('[data-tab]',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalTab=b.dataset.tab;renderCardModal()});
   $$('[data-language]',$('#card-dialog')).forEach(b=>b.onclick=()=>{
     const candidates=card.variants.filter(x=>x.language===b.dataset.language);
-    state.modalVariant=candidates.find(x=>x.artwork_id===v.artwork_id&&x.variant_code===v.variant_code)
+    const nextVariant=candidates.find(x=>x.artwork_id===v.artwork_id&&x.variant_code===v.variant_code)
       ||candidates.find(x=>x.set_code===v.set_code&&x.collector_number===v.collector_number&&x.variant_code===v.variant_code)
       ||candidates.find(x=>x.variant_code===v.variant_code)||candidates[0];
-    renderCardModal();
+    transitionModalVariant(nextVariant);
+  });
+  $$('[data-variant-setting-toggle]',$('#card-dialog')).forEach(button=>button.onclick=()=>{
+    const setting=button.closest('.variant-setting');
+    const willOpen=!setting.classList.contains('open');
+    $$('.variant-setting',$('#card-dialog')).forEach(item=>{
+      item.classList.remove('open');
+      $('[data-variant-setting-toggle]',item)?.setAttribute('aria-expanded','false');
+    });
+    if(willOpen){
+      setting.classList.add('open');
+      button.setAttribute('aria-expanded','true');
+    }
   });
   $$('[data-variant-nav]',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalVariant=physicalVariants[idx+Number(b.dataset.variantNav)];renderCardModal()});
-  $$('.variant-option',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalVariant=card.variants.find(v=>v.id===b.dataset.variant);renderCardModal()});
+  $$('.variant-option',$('#card-dialog')).forEach(b=>b.onclick=()=>transitionModalVariant(card.variants.find(v=>v.id===b.dataset.variant)));
   $$('[data-card-nav]',$('#card-dialog')).forEach(b=>b.onclick=()=>{const target=state.cards[gridIdx+Number(b.dataset.cardNav)];if(target)openCard(target.identity_id,target.variant_id,true)});
   const qtyControls=$$('.modal-qty-btn',$('#card-dialog')); qtyControls.forEach(b=>b.onclick=()=>changeQuantity(v.id,Number(b.dataset.delta)));
   const watch=$('.modal-watch',$('#card-dialog')); if(watch)watch.onclick=async()=>{const listId=Number($('#modal-watchlist')?.value||state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur gewählten Watchlist hinzugefügt':'Von der gewählten Watchlist entfernt')};
   const refresh=$('#price-refresh',$('#card-dialog')); if(refresh)refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent='Preise werden geladen …';try{await post('/api/prices/sync',{});toast('Marktpreise aktualisiert');await openCard(card.id,v.id,true)}catch(error){toast(error.message||'Preisimport fehlgeschlagen');refresh.disabled=false;refresh.textContent='Preise aktualisieren'}};
-  const advancedToggle=$('#advanced-toggle',$('#card-dialog'));
-  if(advancedToggle){advancedToggle.onclick=toggleAdvancedPanel; if(advancedPanelExpanded)loadAdvancedPanel()}
+  const advancedToggles=$$('#advanced-toggle,#footer-advanced-toggle',$('#card-dialog'));
+  advancedToggles.forEach(toggle=>toggle.onclick=toggleAdvancedPanel);
+  if(advancedToggles.length&&advancedPanelExpanded)loadAdvancedPanel();
   alignReflectionMask();
   // "wenn eine Karte geladen wird die foillayer dafür gezogen und gespeichert werden" -- fired
   // once per modal render, only when the generic foil markup above was actually emitted (same
@@ -1629,8 +1876,8 @@ function renderCardModal(){
 
 // Positions the SVG mask cutout (index.html: #mt-reflection-mask / #mt-reflection-cutout-wrap)
 // that hides the card reflection specifically at the plate's front edge (id="glass_side",
-// inlined into index.html -- see glass_plate_inline_markup() in app.py). The mask's <rect> (the
-// fade) and the <g> wrapping glass_side both live in userSpaceOnUse pixel units, NOT
+// inlined into index.html -- see glass_plate_inline_markup() in app.py). The mask's solid base
+// <rect> and the <g> wrapping glass_side both live in userSpaceOnUse pixel units, NOT
 // objectBoundingBox fractions -- confirmed via isolated testing that glass_side's <use> paints
 // zero pixels (correct geometry, nothing rasterized) when both its transform's scale factors are
 // simultaneously tiny fractions, which is exactly what compressing the native 500x79 shape into
@@ -1642,52 +1889,144 @@ function renderCardModal(){
 // proportionality between them -- a hardcoded value only ever lines up at one exact width).
 function alignReflectionMask(){
   const dialog=$('#card-dialog');
+  const stage=$('.card-stage',dialog);
   const plate=$('.stage-platform-wrap',dialog);
-  const refl=$('.modal-card-reflection',dialog);
+  const reflMask=$('.modal-card-reflection-mask',dialog);
   const cutout=document.getElementById('mt-reflection-cutout-wrap');
   const fadeRect=document.getElementById('mt-reflection-fade-rect');
-  if(!plate||!refl||!cutout||!fadeRect)return;
-  const p=plate.getBoundingClientRect(), r=refl.getBoundingClientRect();
-  if(!r.height||!p.height)return;
+  if(!stage||!plate||!reflMask||!cutout||!fadeRect)return;
+  const s=stage.getBoundingClientRect(), p=plate.getBoundingClientRect();
+  if(!s.height||!p.height)return;
+
+  // The plate is sized from its responsive width while the stage is sized from the viewport
+  // height. Resolve the plate once in real pixels and let every dependent visual consume the
+  // same geometry: background seam, card contact point and both side lights. This prevents
+  // those layers drifting apart when either viewport dimension changes.
+  const plateLeft=p.left-s.left, plateTop=p.top-s.top;
+  const plateEdgeTop=plateTop+(p.height*1.5/79)+6;
+  const plateEdgeCenter=plateTop+(p.height*34.5/79)+6;
+  const plateEdgeHeight=Math.max(1,2*(plateEdgeCenter-plateEdgeTop));
+  // The visible separator is the upper half of stage-backdrop::after's ellipse. Resolve its
+  // y coordinate at the flare's existing horizontal position (10% into the plate) so the
+  // light core sits on that curve rather than inside the glass surface.
+  const flareX=plateLeft+p.width*.1;
+  const ellipseRx=s.width/2, ellipseRy=plateEdgeHeight/2;
+  const normalizedX=Math.max(-1,Math.min(1,(flareX-ellipseRx)/ellipseRx));
+  const flareEdgeY=plateEdgeCenter-ellipseRy*Math.sqrt(Math.max(0,1-normalizedX*normalizedX));
+  stage.style.setProperty('--plate-left',`${plateLeft}px`);
+  stage.style.setProperty('--plate-top',`${plateTop}px`);
+  stage.style.setProperty('--plate-width',`${p.width}px`);
+  stage.style.setProperty('--plate-height',`${p.height}px`);
+  stage.style.setProperty('--plate-contact-y',`${plateTop+(p.height*34.5/79)}px`);
+  stage.style.setProperty('--plate-edge-top-y',`${plateEdgeTop}px`);
+  stage.style.setProperty('--plate-edge-center-y',`${plateEdgeCenter}px`);
+  stage.style.setProperty('--plate-edge-height',`${plateEdgeHeight}px`);
+  stage.style.setProperty('--flare-edge-local-y',`${flareEdgeY-plateTop}px`);
+
+  // Aim the two broad spotlight blooms from their flare sources at the upper midpoint of the
+  // responsive card. The source sits at 80% of the bloom box; sizing the box from the real
+  // source-to-target distance leaves a soft continuation below the plate edge while carrying
+  // the long axis slightly past the card's top edge.
+  const cardWrap=$('.modal-card-frame-wrap',dialog);
+  if(cardWrap){
+    const c=cardWrap.getBoundingClientRect();
+    const targetX=c.left+c.width/2-s.left, targetY=c.top-s.top;
+    const sourceY=flareEdgeY-5;
+    const leftSourceX=plateLeft+p.width*.1, rightSourceX=plateLeft+p.width*.9;
+    const spotlightAngle=(sourceX)=>Math.atan2(targetX-sourceX,sourceY-targetY)*180/Math.PI;
+    const spotlightDistance=(sourceX)=>Math.hypot(targetX-sourceX,targetY-sourceY);
+    const distance=Math.max(spotlightDistance(leftSourceX),spotlightDistance(rightSourceX));
+    stage.style.setProperty('--spotlight-left-angle',`${spotlightAngle(leftSourceX)}deg`);
+    stage.style.setProperty('--spotlight-right-angle',`${spotlightAngle(rightSourceX)}deg`);
+    stage.style.setProperty('--spotlight-height',`${Math.max(300,distance/.75)}px`);
+    stage.style.setProperty('--spotlight-width',`${Math.max(170,Math.min(250,c.width*.9))}px`);
+  }
+
+  // The mask host covers the whole stage, not just the short reflection strip. This removes
+  // the old horizontal clip at the resting card edge: a tilted reflection may extend upward
+  // across the glass top, while the SVG mask below still cuts out only glass_side. Because the
+  // host lives inside cardWrap, convert all stage/card coordinates into that local space.
+  const reflection=$('.modal-card-reflection',reflMask);
+  const reflectionMirror=$('.modal-card-reflection-mirror',reflMask);
+  const reflectionPerspective=$('.modal-card-reflection-perspective',reflMask);
+  if(!cardWrap||!reflection||!reflectionMirror||!reflectionPerspective)return;
+  const c=cardWrap.getBoundingClientRect();
+  reflMask.style.left=`${s.left-c.left}px`;
+  reflMask.style.top=`${s.top-c.top}px`;
+  reflMask.style.width=`${s.width}px`;
+  reflMask.style.height=`${s.height}px`;
+  // Reproduce the card's projection first, then mirror that complete projected plane around
+  // the resting glass contact line. This is what makes the two edge distances diverge into a
+  // wedge under combined pitch/yaw instead of remaining parallel.
+  reflectionPerspective.style.perspectiveOrigin=`${c.left+c.width/2-s.left}px ${c.top+c.height/2-s.top}px`;
+  reflectionMirror.style.transformOrigin=`0 ${c.bottom-s.top}px`;
+  reflection.style.left=`${c.left-s.left}px`;
+  reflection.style.top=`${c.top-s.top}px`;
+  reflection.style.width=`${c.width}px`;
+  reflection.style.height=`${c.height}px`;
+
+  // Reading the now-stationary, stage-sized host after setting geometry forces those values to
+  // participate in this same measurement pass.
+  const r=reflMask.getBoundingClientRect();
+  if(!r.height)return;
   // Pixel (userSpaceOnUse), not 0-1 objectBoundingBox fractions -- confirmed via isolated
   // testing that glass_side's <use> paints zero pixels when both its transform's scale factors
   // are simultaneously tiny fractions (compressing the native 500x79 shape into a ~1-unit box
   // forces exactly that). Real pixel-sized scale factors (order 0.6-0.8, matching the plate's
   // actual on-screen size) avoid the failure zone. The mask's own coordinate system here is the
-  // reflection element's own pixel box, so the fade rect needs its size set to match too.
+  // stationary mask host's own pixel box, so the white base rect needs its size set to match.
   fadeRect.setAttribute('width',r.width);
   fadeRect.setAttribute('height',r.height);
-  const pxX=p.x-r.x;
-  // This element is scaleY(-1)'d, so the mask flips along with it -- authoring a position in
-  // local/pre-flip coordinates means reflecting the target visual edges through the box's own
-  // local center first (same derivation used for the old CSS mask-position approach): local =
-  // own-size - visual.
-  const visualTop=p.y-r.y, visualBottom=(p.y+p.height)-r.y;
-  const localTop=r.height-visualTop, localBottom=r.height-visualBottom;
-  // localTop is where the plate's native Y=0 (top/back) lands once flipped into local space;
-  // it's the LARGER of the two (localBottom is native Y=79, the front edge). The Y-scale must
-  // be negative: native Y increasing (0 -> 79, back -> front) has to walk local-Y DOWNWARD
-  // (localTop -> localBottom) for the flip to land it right-side-up on screen. A positive
-  // scale from the smaller value mirrors the whole plate top-for-bottom inside the mask.
-  const pxY=Math.max(localTop,localBottom);
-  const scaleW=p.width/500, scaleH=-(p.height/79);
+  // The mask host itself never tilts or flips. Map the plate's native 500x79 coordinates
+  // directly into this stationary box; only the reflection image inside it is transformed.
+  const pxX=p.x-r.x, pxY=p.y-r.y;
+  const scaleW=p.width/500, scaleH=p.height/79;
   cutout.setAttribute('transform',`translate(${pxX} ${pxY}) scale(${scaleW} ${scaleH})`);
+}
+
+function modalRelationshipContent(card,v){
+  const physicalVariants=card.variants.filter(x=>x.language===v.language);
+  const modalIsLorcana=v.game_id==='lorcana';
+  return `<div class="detail-section-title">IDENTITÄT & DRUCKE</div><div class="relationship"><span>◇</span><div><b>Gameplay-Identität</b><small>${escapeHtml(card.canonical_name)} · sprachunabhängig</small></div></div><div class="relationship"><span>文</span><div><b>${new Set(card.variants.map(x=>x.language)).size} Sprachversionen</b><small>${[...new Set(card.variants.map(x=>x.language))].join(' · ')} · separat auswählbar</small></div></div><div class="relationship"><span>▤</span><div><b>${new Set(physicalVariants.map(x=>x.printing_id)).size} Drucke auf ${v.language}</b><small>Set- und Promo-Drucke dieser Sprache</small></div></div><div class="relationship"><span>✦</span><div><b>${physicalVariants.length} Ausführungen auf ${v.language}</b><small>${[...new Set(physicalVariants.map(x=>modalIsLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish))].join(' · ')}</small></div></div><div class="relationship"><span>↗</span><div><b>Physisches Set</b><small>${escapeHtml(v.set_name)} (${escapeHtml(v.set_code)})</small></div></div>`;
+}
+
+function rulesTextHtml(text=''){
+  const headingPattern=/(^|\n)([A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &'’!?.:+-]{1,}?)(?=\s+(?:[A-ZÄÖÜ][a-zäöüß]|[⟳↻]))/g;
+  let html='',last=0,match;
+  while((match=headingPattern.exec(text))){
+    html+=escapeHtml(text.slice(last,match.index)).replace(/\n+/g,' ');
+    html+=`<strong class="rules-keyword">${escapeHtml(match[2].trim())}</strong>`;
+    last=match.index+match[0].length;
+  }
+  return html+escapeHtml(text.slice(last)).replace(/\n+/g,' ');
 }
 
 function modalTabContent(card,v){
   const physicalVariants=card.variants.filter(x=>x.language===v.language);
   const modalIsLorcana=v.game_id==='lorcana';
-  if(state.modalTab==='collection')return `<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div><div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div></div><div class="detail-section"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid collection-info-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
+  if(state.modalTab==='collection'){
+    const variantButtons=`<div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div>`;
+    const classicPicker=`<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div>${variantButtons}</div>`;
+    const languages=[...new Set(card.variants.map(x=>x.language))];
+    const mobilePicker=`<div class="variant-settings">
+      <div class="variant-setting"><button type="button" class="variant-setting-row" data-variant-setting-toggle aria-expanded="false"><span>Sprache</span><b>${escapeHtml(v.language)}</b><i aria-hidden="true">›</i></button><div class="variant-setting-options"><div class="variant-setting-options-inner"><div class="language-switcher">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${escapeHtml(language)}</button>`).join('')}</div></div></div></div>
+      <div class="variant-setting"><button type="button" class="variant-setting-row" data-variant-setting-toggle aria-expanded="false"><span>Print</span><b>${escapeHtml(variantName(v))}</b><i aria-hidden="true">›</i></button><div class="variant-setting-options"><div class="variant-setting-options-inner">${variantButtons}</div></div></div>
+    </div>`;
+    const desktopPicker=`<div class="desktop-variant-settings">${variantButtons}<div class="language-switcher desktop-language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${escapeHtml(language)}</button>`).join('')}</div></div>`;
+    const modernTheme=document.body.classList.contains('mobile-modern');
+    const picker=modernTheme?(window.innerWidth<=760?mobilePicker:desktopPicker):classicPicker;
+    return `${picker}<div class="detail-section mobile-collection-controls"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid collection-info-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
+  }
   if(state.modalTab==='market'){
     const original=nativePrice(v);
     const conversion=original?` · ${escapeHtml(original)} in ${escapeHtml(v.price_native_currency)} · EZB ${date(v.price_exchange_date)}`:'';
     const secondaryMetric=v.price_avg30!=null
       ? `<div><span>30-Tage-Ø</span><b>${price(v.price_avg30)}</b></div>`
       : `<div><span>Originalpreis</span><b>${original||'Nicht verfügbar'}</b></div>`;
-    return `<div class="price-hero"><span>${escapeHtml(v.price_source)} Marktpreis</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${escapeHtml(v.price_source)}</b></div></div>`}<a class="price-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(modalIsLorcana?lorcanaFinishLabel(v.finish,v.rarity):v.finish)} · direkte Produktseite</small></div><span>→</span></a><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
+    return `<div class="price-hero"><span>${escapeHtml(v.price_source)} Marktpreis</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${escapeHtml(v.price_source)}</b></div></div>`}<a class="price-source-link market-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(modalIsLorcana?lorcanaFinishLabel(v.finish,v.rarity):v.finish)} · direkte Produktseite</small></div><span>→</span></a><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
   }
-  if(state.modalTab==='card')return `<div class="detail-section"><div class="detail-section-title">KARTENTEXT</div><p class="rules-text">${escapeHtml(card.rules_text)}</p></div><div class="detail-grid"><div class="detail-field"><span>Kartentyp</span><b>${escapeHtml(card.card_type)}</b></div><div class="detail-field"><span>Farbe</span><b>${escapeHtml(card.attributes.color)}</b></div><div class="detail-field"><span>Kosten</span><b>${card.attributes.cost}</b></div><div class="detail-field"><span>Legalität</span><b>${escapeHtml(card.attributes.legality)}</b></div><div class="detail-field"><span>Set</span><b>${escapeHtml(v.set_name)}</b></div><div class="detail-field"><span>Seltenheit</span><b>${escapeHtml(v.rarity)}</b></div></div><a class="price-source-link" href="${escapeHtml(v.image_source_url)}" target="_blank" rel="noopener noreferrer"><span>▧</span><div><b>Bildquelle öffnen</b><small>${escapeHtml(v.image_source)}</small></div><span>→</span></a>`;
-  return `<div class="detail-section-title">IDENTITÄT & DRUCKE</div><div class="relationship"><span>◇</span><div><b>Gameplay-Identität</b><small>${escapeHtml(card.canonical_name)} · sprachunabhängig</small></div></div><div class="relationship"><span>文</span><div><b>${new Set(card.variants.map(x=>x.language)).size} Sprachversionen</b><small>${[...new Set(card.variants.map(x=>x.language))].join(' · ')} · separat auswählbar</small></div></div><div class="relationship"><span>▤</span><div><b>${new Set(physicalVariants.map(x=>x.printing_id)).size} Drucke auf ${v.language}</b><small>Set- und Promo-Drucke dieser Sprache</small></div></div><div class="relationship"><span>✦</span><div><b>${physicalVariants.length} Ausführungen auf ${v.language}</b><small>${[...new Set(physicalVariants.map(x=>modalIsLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish))].join(' · ')}</small></div></div><div class="relationship"><span>↗</span><div><b>Physisches Set</b><small>${escapeHtml(v.set_name)} (${escapeHtml(v.set_code)})</small></div></div>`;
+  if(state.modalTab==='card')return `<div class="detail-section modal-rules-section"><p class="rules-text">${rulesTextHtml(card.rules_text)}</p></div><div class="detail-grid modal-info-grid"><div class="detail-field"><span>Kartentyp</span><b>${escapeHtml(card.card_type)}</b></div><div class="detail-field"><span>Farbe</span><b>${escapeHtml(card.attributes.color)}</b></div><div class="detail-field"><span>Kosten</span><b>${card.attributes.cost}</b></div><div class="detail-field modal-info-legality"><span>Legalität</span><b>${escapeHtml(card.attributes.legality)}</b></div><div class="detail-field modal-info-set"><span>Set</span><b>${escapeHtml(v.set_name)}</b></div><div class="detail-field modal-info-rarity"><span>Seltenheit</span><b>${escapeHtml(v.rarity)}</b></div></div><a class="price-source-link modal-info-source" href="${escapeHtml(v.image_source_url)}" target="_blank" rel="noopener noreferrer"><span>▧</span><div><b>Bildquelle öffnen</b><small>${escapeHtml(v.image_source)}</small></div><span>→</span></a>`;
+  return modalRelationshipContent(card,v);
 }
 
 // Bug fix: setting overflow:hidden on body ALONE doesn't reliably lock page scroll -- confirmed
@@ -1770,10 +2109,14 @@ async function handleImportJsonFile(file){
 }
 
 function wireGlobalEvents(){
-  // Re-align the reflection mask cutout on resize/orientation-change while the card modal is
-  // open -- computed from real element rects (see alignReflectionMask), which shift with
-  // viewport width.
-  window.addEventListener('resize',()=>{if(state.modalCard)alignReflectionMask()});
+  // Re-align the complete stage geometry and reflection mask on viewport changes.
+  let modalGeometryFrame=0;
+  const scheduleModalGeometry=()=>{
+    cancelAnimationFrame(modalGeometryFrame);
+    modalGeometryFrame=requestAnimationFrame(()=>{if(state.modalCard)alignReflectionMask()});
+  };
+  window.addEventListener('resize',scheduleModalGeometry);
+  window.visualViewport?.addEventListener('resize',scheduleModalGeometry);
   // Parallax toolkit -- tilt-on-press + mouseover shine, matching the poke-holo.simey.me /
   // pokemon-cards-css reference interaction. Now wired to the card detail modal: the whole
   // stage card (.modal-card-frame-wrap) is a .card-tilt-zone, the card itself
@@ -1788,6 +2131,7 @@ function wireGlobalEvents(){
   // (keyed off .card-tilt-zone.is-dragging ...) reacts identically. Currently only the card
   // detail modal opts in; unused everywhere else the toolkit's classes aren't present.
   let cardTiltDragging=null;
+  let cardTiltPointerId=null;
   // Loaded once, lazily -- non-Lorcana sessions / browsers where the dynamic import fails never
   // pay for this (foilInteractionController stays null forever, every call site below no-ops,
   // same fallback-to-CSS path as "WebGL not supported" -- see 12).
@@ -1878,7 +2222,10 @@ function wireGlobalEvents(){
   const setCardTilt=(zone,clientX,clientY)=>{
     if(!$('.card-tilt',zone))return;
     const r=zone.getBoundingClientRect();
-    const px=((clientX-r.left)/r.width-0.5)*2, py=((clientY-r.top)/r.height-0.5)*2;
+    // Pointer capture intentionally keeps reporting coordinates beyond the card while a drag
+    // is active. Clamp those normalized values so `max` remains an actual angular limit.
+    const px=Math.max(-1,Math.min(1,((clientX-r.left)/r.width-0.5)*2));
+    const py=Math.max(-1,Math.min(1,((clientY-r.top)/r.height-0.5)*2));
     const max=14; // deg -- a real tilt like the reference, not a token wiggle
     zone.style.setProperty('--tilt-y',`${(px*max).toFixed(1)}deg`);
     zone.style.setProperty('--tilt-x',`${(-py*max).toFixed(1)}deg`);
@@ -1890,8 +2237,14 @@ function wireGlobalEvents(){
   };
   document.addEventListener('pointerdown',e=>{
     const zone=e.target.closest('.card-tilt-zone'); if(!zone)return;
+    if(cardTiltDragging&&cardTiltPointerId!==e.pointerId)return;
     cardTiltDragging=zone;
+    cardTiltPointerId=e.pointerId;
     zone.classList.add('is-dragging');
+    // Keep the complete gesture on the stationary tilt zone. The rotated card can move out
+    // from underneath the pointer while it is being tilted; without capture that produces a
+    // pointerout and the old handler snapped the card back to zero mid-drag.
+    try{zone.setPointerCapture(e.pointerId)}catch{}
     setCardTilt(zone,e.clientX,e.clientY);
     // Touch/pen press has no hover state to trigger WebGL from otherwise -- this is its entry
     // point, same reasoning the parked CSS reveal used.
@@ -1908,7 +2261,7 @@ function wireGlobalEvents(){
     startWebglHover(zone,e.clientX,e.clientY);
   });
   document.addEventListener('pointermove',e=>{
-    if(cardTiltDragging){
+    if(cardTiltDragging&&e.pointerId===cardTiltPointerId){
       setCardTilt(cardTiltDragging,e.clientX,e.clientY);
       foilInteractionController?.updatePointer(e.clientX,e.clientY);
       return;
@@ -1918,7 +2271,7 @@ function wireGlobalEvents(){
     foilInteractionController?.updatePointer(e.clientX,e.clientY);
   });
   document.addEventListener('pointerup',e=>{
-    if(!cardTiltDragging)return;
+    if(!cardTiltDragging||e.pointerId!==cardTiltPointerId)return;
     cardTiltDragging.classList.remove('is-dragging');
     resetCardTilt(cardTiltDragging);
     // Mouse release: the pointer is still hovering (releasing a button doesn't move the
@@ -1927,6 +2280,16 @@ function wireGlobalEvents(){
     // end it immediately along with the tilt.
     if(e.pointerType!=='mouse')stopWebglHover(cardTiltDragging);
     cardTiltDragging=null;
+    cardTiltPointerId=null;
+  });
+  document.addEventListener('pointercancel',e=>{
+    if(!cardTiltDragging||e.pointerId!==cardTiltPointerId)return;
+    const zone=cardTiltDragging;
+    zone.classList.remove('is-dragging');
+    resetCardTilt(zone);
+    stopWebglHover(zone);
+    cardTiltDragging=null;
+    cardTiltPointerId=null;
   });
   // pointerout (bubbles), not pointerleave (doesn't) -- delegation needs the bubbling version.
   // relatedTarget check confirms the pointer actually left the zone, not just moved to a child
@@ -1934,7 +2297,9 @@ function wireGlobalEvents(){
   document.addEventListener('pointerout',e=>{
     const zone=e.target.closest('.card-tilt-zone'); if(!zone)return;
     if(zone.contains(e.relatedTarget))return;
-    if(cardTiltDragging===zone){zone.classList.remove('is-dragging');cardTiltDragging=null}
+    // Pointer capture deliberately keeps an active drag alive even when the visual card has
+    // tilted away from the cursor. Cleanup belongs to pointerup/pointercancel above.
+    if(cardTiltDragging===zone&&e.pointerId===cardTiltPointerId)return;
     resetCardTilt(zone);
     stopWebglHover(zone);
   });
@@ -1946,6 +2311,9 @@ function wireGlobalEvents(){
   $('#user-popup').addEventListener('click',e=>{if(e.target.closest('.nav-item')){$('#user-popup').classList.add('hidden');$('#user-avatar').setAttribute('aria-expanded','false')}});
   // Delegated so it keeps working for toolbar filter popups that get rebuilt on every
   // re-render (renderSet/renderAllCards replace #content wholesale on each filter change).
+  document.addEventListener('deckledger-filter-toggle',event=>{
+    if(event.detail?.key)state.mobileFiltersOpen[event.detail.key]=Boolean(event.detail.open);
+  });
   document.addEventListener('click',e=>{
     const toggle=e.target.closest('[data-filter-toggle]');
     if(toggle){const popup=document.getElementById(toggle.dataset.filterToggle);if(!popup)return;const hidden=popup.classList.toggle('hidden');toggle.setAttribute('aria-expanded',String(!hidden));return}
@@ -1986,7 +2354,7 @@ function wireGlobalEvents(){
 }
 
 async function init(){
-  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');document.body.classList.toggle('mobile-light',settings.mobileThemeAppearance==='light');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');document.body.classList.toggle('mobile-light',settings.mobileThemeAppearance==='light');wireGlobalEvents();await refreshWatchCount();document.body.dataset.route='dashboard';renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
 updateOfflineIndicator();

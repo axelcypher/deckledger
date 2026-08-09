@@ -120,11 +120,16 @@ def migrate_hololive_virtual_pools(connection: sqlite3.Connection) -> dict[str, 
 
     for source_id, target_id in mapping.items():
         connection.execute(
-            """INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes)
-               SELECT user_id,?,condition,quantity,notes FROM collection_entries WHERE variant_id=?
-               ON CONFLICT(user_id,variant_id,condition) DO UPDATE SET
+            """INSERT INTO collection_entries
+                 (user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at)
+               SELECT user_id,?,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at
+               FROM collection_entries WHERE variant_id=?
+               ON CONFLICT(user_id,variant_id,condition,is_graded,grade_label) DO UPDATE SET
                  quantity=collection_entries.quantity+excluded.quantity,
-                 notes=COALESCE(collection_entries.notes,excluded.notes)""",
+                 notes=COALESCE(collection_entries.notes,excluded.notes),
+                 price_override=COALESCE(collection_entries.price_override,excluded.price_override),
+                 created_at=MIN(collection_entries.created_at,excluded.created_at),
+                 last_added_at=MAX(collection_entries.last_added_at,excluded.last_added_at)""",
             (target_id, source_id),
         )
         connection.execute("DELETE FROM collection_entries WHERE variant_id=?", (source_id,))

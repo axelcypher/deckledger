@@ -11,16 +11,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=106">
-  <link rel="stylesheet" href="{{ url_for('static', filename='foil-effects.css') }}?v=20">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-theme.css') }}?v=59">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-pages.css') }}?v=19">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=109">
+  <link rel="stylesheet" href="{{ url_for('static', filename='foil-effects.css') }}?v=21">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-theme.css') }}?v=98">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-pages.css') }}?v=45">
+  <link rel="stylesheet" href="{{ url_for('static', filename='responsive-theme.css') }}?v=12">
+  <link rel="stylesheet" href="{{ url_for('static', filename='stat-pill.css') }}?v=3">
 </head>
 <body class="dark">
-  <!-- Card-reflection mask: the fade gradient (its own visibility) with the plate's front
-       edge (id="glass_side") cut out of it, via real SVG-native layering inside one <mask> --
-       not CSS mask-composite, which doesn't functionally apply subtract/destination-out in
-       this browser despite accepting the syntax. filter:brightness(0) forces glass_side to
+  <!-- Card-reflection plate mask: a solid white visibility field with the plate's front edge
+       (id="glass_side") cut out in black. The soft fade is a separate mask on the moving
+       reflection image; keeping this SVG mask on its stationary parent prevents parallax from
+       moving the plate cutout. filter:brightness(0) forces glass_side to
        pure black (0 luminance = hidden) regardless of its own internal coloring, which is what
        actually punches the hole -- SVG mask visibility is luminance x alpha, and glass_side's
        own artwork is light-colored (high luminance), which would make that area MORE visible,
@@ -42,11 +44,6 @@
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
       {{ glass_plate_inline|safe }}
-      <linearGradient id="mt-reflection-fade" x1="0" y1="1" x2="0" y2="0">
-        <stop offset="0" stop-color="#fff" stop-opacity=".18"/>
-        <stop offset="0.4" stop-color="#fff" stop-opacity="0"/>
-        <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-      </linearGradient>
       <!-- maskContentUnits="userSpaceOnUse" (pixel-based), NOT objectBoundingBox (0-1
            fractional) -- confirmed via a dozen isolated A/B tests that glass_side's <use>
            paints ZERO pixels (correct getBoundingClientRect, but nothing rasterized) specifically
@@ -59,7 +56,7 @@
            <g> transform are set in real pixels by JS (alignReflectionMask in app.js), since
            userSpaceOnUse here means "the reflection element's own pixel box". -->
       <mask id="mt-reflection-mask" maskUnits="objectBoundingBox" maskContentUnits="userSpaceOnUse">
-        <rect id="mt-reflection-fade-rect" x="0" y="0" width="0" height="0" fill="url(#mt-reflection-fade)"/>
+        <rect id="mt-reflection-fade-rect" x="0" y="0" width="0" height="0" fill="#fff"/>
         <g id="mt-reflection-cutout-wrap">
           <use href="#glass_side" style="filter:brightness(0)"/>
         </g>
@@ -79,10 +76,10 @@
       </button>
       <button id="sidebar-collapse" class="sidebar-collapse" title="Seitenleiste einklappen">‹</button>
       <nav class="main-nav" aria-label="Hauptnavigation">
-        <button class="nav-item active" data-route="dashboard"><span class="nav-icon">⌂</span><span>Übersicht</span></button>
-        <button class="nav-item" data-route="collection"><span class="nav-icon">▦</span><span>Sammlung</span></button>
-        <button class="nav-item" data-route="watchlist"><span class="nav-icon">♡</span><span>Watchlists</span><span id="watch-count" class="count-badge">0</span></button>
-        <button class="nav-item" data-route="decks"><span class="nav-icon">▱</span><span>Deckbuilder</span></button>
+        <button class="nav-item active" data-route="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg></span><span>Übersicht</span></button>
+        <button class="nav-item" data-route="collection"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="12" height="16" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V7"/></svg></span><span>Sammlung</span></button>
+        <button class="nav-item" data-route="watchlist"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg></span><span>Watchlists</span><span id="watch-count" class="count-badge">0</span></button>
+        <button class="nav-item" data-route="decks"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M8.5 8h6M8.5 12h6"/></svg></span><span>Deckbuilder</span></button>
       </nav>
       <div class="sidebar-spacer"></div>
       <div id="edit-panel" class="edit-panel">
@@ -104,6 +101,7 @@
 
     <header class="topbar">
       <button id="mobile-menu" class="icon-button mobile-only">☰</button>
+      <h1 class="mobile-topbar-title">Collection</h1>
       <div id="global-game-picker" class="global-game-picker" title="TCG auswählen">
         <span id="global-game-icon" class="global-game-icon" style="--tcg-icon:url('/static/tcg-icons/generic.svg?v=2')" aria-hidden="true"></span>
         <select id="global-game-filter" class="global-game-filter" aria-label="Aktives TCG"></select>
@@ -202,6 +200,8 @@
   <div id="toast-stack" class="toast-stack"></div>
   <button type="button" id="back-to-top" class="back-to-top hidden" aria-label="Nach oben springen">↑</button>
   <div id="offline-indicator" class="offline-indicator hidden"></div>
-  <script src="{{ url_for('static', filename='app.js') }}?v=146"></script>
+  <script src="{{ url_for('static', filename='filter-panel.js') }}?v=1"></script>
+  <script src="{{ url_for('static', filename='stat-pill.js') }}?v=1"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=187"></script>
 </body>
 </html>

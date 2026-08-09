@@ -48,7 +48,7 @@
        the title+price sit), so the stage's floor blends seamlessly into the info panel
        instead of reading as a separate tinted box. That's just --bg -- no separate color to
        invent or keep in sync. */
-    --mt-stage-plate: #05070a; --mt-stage-top: #232b1c; --mt-stage-outer: var(--bg);
+    --mt-stage-plate: #05070a; --mt-stage-top: #0e120d; --mt-stage-outer: var(--bg);
     background: var(--bg);
   }
   /* Light sub-variant: same shapes/type/structure, cream+white palette instead
@@ -64,7 +64,7 @@
                  radial-gradient(ellipse 56% 40% at 50% 54%, rgba(255,255,255,.95), transparent 60%),
                  radial-gradient(ellipse 58% 14% at 50% 90%, rgba(60,45,20,.16), transparent 75%);
     --mt-tab-track: #e5ddc9;
-    --mt-stage-plate: #cdc3ab; --mt-stage-top: #f7f3ea; --mt-stage-outer: var(--bg);
+    --mt-stage-plate: #cdc3ab; --mt-stage-top: #ede8de; --mt-stage-outer: var(--bg);
   }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
@@ -128,7 +128,7 @@
 
   /* ---- Buttons / inputs, broadly ---- */
   body.dark.mobile-modern .primary-button { background: var(--brand); color: #0e130d; border-radius: var(--mt-radius-full); font-weight: 700; }
-  body.dark.mobile-modern .secondary-button { background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--mt-radius-full); }
+  body.dark.mobile-modern .secondary-button { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); border-radius: var(--mt-radius-full); }
   body.dark.mobile-modern .card-tile { border-radius: var(--mt-radius-md); }
   body.dark.mobile-modern .card-tile .card-info { color: var(--ink); }
 
@@ -146,6 +146,14 @@
      backdrop left for the blur to affect in the first place -- pure side-effect removal. */
   body.dark.mobile-modern .overlay { backdrop-filter: none; -webkit-backdrop-filter: none; }
   body.dark.mobile-modern .card-dialog { background: var(--bg); }
+  /* The 60px control header above .card-stage used to expose --bg while the stage begins with
+     --mt-stage-top, producing a thin hard seam between two nearly-identical tones. Paint that
+     header from the same stage-top color so the transition is continuous. Opaque modal-side
+     content below the stage keeps its own --bg surface. */
+  body.dark.mobile-modern .card-modal-layout {
+    padding-top: 60px;
+    background: linear-gradient(rgba(0,0,0,.1),rgba(0,0,0,.1)),var(--mt-stage-top);
+  }
   body.dark.mobile-modern .card-stage {
     /* height/min-height override the classic-mobile rule's 49vh/390px (app.css) -- shrinking
        the stage moves the platform (bottom:10%, percentage-based) proportionally closer to
@@ -153,8 +161,17 @@
        it -- .card-stage's own padding no longer does that, since every child inside is now
        position:absolute and positioned off percentages of the full padding box (inset:0 /
        bottom:X% / top:X%), not off in-flow layout that padding would shrink. */
-    position: relative; padding: 64px 40px 36px; overflow: visible; margin-top: 60px;
-    height: 44vh; min-height: 340px;
+    position: relative; padding: 64px 40px 36px; overflow: visible; margin-top: 0;
+    /* The card scales from stage width while the old 340px minimum only considered height.
+       On wide/short viewports that let the card grow upward past the intended top clearance.
+       This linear minimum follows the same 65%-width, 5:7 card ratio and the responsive plate
+       contact point, preserving roughly 24px above the card. */
+    height: 44vh; min-height: max(340px, calc(105.5vw - 52px));
+  }
+  /* At ~604px the card reaches its 340px width cap. Beyond that point only the plate keeps
+     growing, so use the capped-card branch instead of continuing the first linear formula. */
+  @media (min-width: 604px) {
+    body.dark.mobile-modern .card-stage { min-height: max(340px, calc(532px + 8.7vw)); }
   }
   /* Two-zone background, per detailed feedback:
      Zone 1 (--mt-stage-plate -> --mt-stage-top): a vertical gradient that's dark AT the
@@ -176,7 +193,9 @@
      zone 1's gradient shows straight through. */
   body.dark.mobile-modern .stage-backdrop {
     display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none;
-    background: linear-gradient(to top, var(--mt-stage-plate), var(--mt-stage-top) 85%);
+    background:
+      linear-gradient(to top,rgba(0,0,0,.05),rgba(0,0,0,.1)),
+      linear-gradient(to top,var(--mt-stage-plate),var(--mt-stage-top) 85%);
   }
   /* Correction: zone 2's edge used to land exactly ON the plate's own vertices (same 81%/
      85.5% numbers as .card-stage::after), so it visually ran straight into the plate's own
@@ -184,11 +203,14 @@
      the plate's own shape -- just moved) so zone 2 sits a few px BELOW the glass surface
      instead of touching it. */
   body.dark.mobile-modern .stage-backdrop::before {
-    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(14.5% - 6px);
+    content: ""; position: absolute; left: 0; right: 0;
+    top: var(--plate-edge-center-y, calc(85.5% + 6px)); bottom: 0;
     background: var(--mt-stage-outer);
   }
   body.dark.mobile-modern .stage-backdrop::after {
-    content: ""; position: absolute; left: 0; top: calc(81% + 6px); width: 100%; height: 9%;
+    content: ""; position: absolute; left: 0;
+    top: var(--plate-edge-top-y, calc(81% + 6px)); width: 100%;
+    height: var(--plate-edge-height, 9%);
     border-radius: 50%; background: var(--mt-stage-outer);
   }
   body.dark.mobile-modern .card-stage::before {
@@ -234,23 +256,12 @@
   body.dark.mobile-modern .stage-platform-svg {
     display: block; position: static; width: 100%; height: auto;
   }
-  /* Minimal theme-color tint -- feedback: the asset is pure white/neutral by itself, wanted a
-     slight color instead. mask-image clips this overlay to the SAME image's own alpha shape
-     (so the tint only touches the visible glass pixels, not a rectangular box around it);
-     mix-blend-mode:color applies the overlay's hue/saturation while preserving the underlying
-     image's own luminosity (its highlights/shading stay intact, just recolored) instead of
-     flattening it into a solid tinted silhouette. Low opacity on the wrapper element itself
-     keeps it to a hint, not a wash. */
+  /* Warm glass tint. The alpha mask confines it to the plate asset; low-opacity multiply also
+     affects its near-white highlights, unlike color/soft-light blending which left the coldest
+     white pixels effectively unchanged. */
   body.dark.mobile-modern .stage-platform-wrap::after {
     content: ""; position: absolute; inset: 0; z-index: 1;
-    /* Bug fix: mix-blend-mode:color keeps the backdrop's own luminosity and only replaces
-       hue/saturation -- on this asset's mostly near-white pixels (maximum luminosity), that
-       mathematically renders back to ~white regardless of the tint color, since HSL at 100%
-       lightness is white no matter the hue. Confirmed the mask/background were applying
-       correctly (computed style showed both set right) -- this was a blend-mode math issue,
-       not a broken mask. soft-light actually darkens/tints bright pixels instead of leaving
-       them untouched, so it's visible on the white parts of the asset too. */
-    background: var(--brand); mix-blend-mode: soft-light; opacity: .6;
+    background: #d8b97b; mix-blend-mode: multiply; opacity: .26;
     mask-image: url(/glass-plate.svg); mask-size: 100% 100%; mask-repeat: no-repeat;
     -webkit-mask-image: url(/glass-plate.svg); -webkit-mask-size: 100% 100%; -webkit-mask-repeat: no-repeat;
   }
@@ -264,11 +275,10 @@
      These still need a host element to hang the two ::before/::after flares off of --
      .card-stage::after is itself a pseudo-element and can't have pseudo-elements of its own
      (no ::after::before in CSS), so a real DOM node is unavoidable for this part specifically.
-     The difference from the old .stage-platform-rim: THIS element has no background, no
-     border, no box-shadow, no fill of its own -- it is not a disc, not a second plate, purely
-     an invisible positioning anchor sized/placed to exactly match the plate (same 92% width,
-     same left:50%/translateX centering, same bottom:10%/height:9%) so the two flares land at
-     the plate's real edges and mid-height instead of a separately-guessed position. */
+     The difference from the old .stage-platform-rim: THIS element has no background, border,
+     box-shadow or fill of its own. Its pixel geometry is copied from the rendered plate by
+     alignReflectionMask(), so the flares remain attached to that asset instead of following
+     separate stage-relative percentages. */
   body.dark.mobile-modern .stage-flare-anchor {
     /* Bug fix: z-index on a child pseudo-element only orders it within ITS OWN parent's local
        stacking context -- it doesn't reach past the parent to compete with siblings outside
@@ -281,41 +291,66 @@
        their area squarely over the plate, where this was actually visible as "gone". Fixed by
        raising the anchor's own z-index to 2, matching what its children were already using
        locally. */
-    display: block; position: absolute; left: 50%; bottom: 10%; width: 92%; height: 9%;
-    transform: translateX(-50%); z-index: 2; pointer-events: none;
+    display: block; position: absolute;
+    left: var(--plate-left, 4%); top: var(--plate-top, 81%);
+    width: var(--plate-width, 92%); height: var(--plate-height, 13%);
+    z-index: 2; pointer-events: none;
   }
+  /* Directional spotlight bloom behind each ray burst. Its source stays at the flare point,
+     while JS derives the angle and length from that source to the card's upper midpoint.
+     Keeping the transform origin at 80% lets the glow continue below the source as well as
+     travel diagonally inward/upward. Brightness remains capped at 80%. */
   body.dark.mobile-modern .stage-flare-anchor::before,
   body.dark.mobile-modern .stage-flare-anchor::after {
-    /* z-index 2, above the plate's z-index 1 -- flares paint OVER the plate, not clipped by
-       it, matching "über die Platte, als auch den Hintergrund" from the reference.
-       Bug fix: confirmed via a red-opaque diagnostic override that z-index/stacking was
-       already correct -- these DO paint above the background. What actually read as "behind
-       the gradient" was mix-blend-mode:screen combined with low alpha: white-via-screen
-       blends so smoothly with whatever's behind it that it stops reading as a distinct layer
-       floating in front, and instead looks like a brighter patch OF the background/embedded
-       in it. Switched to normal blending at higher, opaque-enough alpha so it unambiguously
-       paints as its own layer on top, not a blended-away tint. */
-    content: ""; position: absolute; top: 50%; width: 130px; height: 210px;
-    /* -58% instead of -50%: shifts the whole glow up an extra 8% of its own (tall) height
-       beyond centered on the anchor point, on top of the gradient's own off-center focal
-       point below -- two small biases stacked instead of one big one, so it reads as "mostly
-       centered but favoring up" rather than visibly relocated. */
-    transform: translate(-50%, -58%); z-index: 2; pointer-events: none;
-    /* Feedback: read as dimmed/darkened rather than a proper glare -- core wasn't fully
-       opaque (topped out at .9) and fell off too quickly (transparent by 70%), so against the
-       stage's own darker backdrop it never reached a true "hot" bright point. Fully opaque
-       core, slower falloff.
-       Feedback (radiate more up than down): switched the circle to an ellipse, taller than
-       wide, with its focal point ("at 50% 40%") above the box's own center -- the glow now
-       extends further before fading on the upward side than the downward one, instead of an
-       equal radius in every direction. */
-    background: radial-gradient(ellipse 68px 130px at 50% 40%, rgba(255,255,255,1) 0%,
-      rgba(255,255,255,.85) 18%, rgba(255,255,255,.4) 38%, rgba(255,255,255,.08) 58%, transparent 74%);
+    content: ""; position: absolute; top: calc(var(--flare-edge-local-y, 26%) - 5px);
+    width: var(--spotlight-width, 190px); height: var(--spotlight-height, 420px);
+    z-index: 1;
+    background: radial-gradient(ellipse 62% 88% at var(--spotlight-source-x) 80%,
+      rgba(255,255,255,.8) 0%, rgba(255,255,255,.52) 12%,
+      rgba(255,255,255,.23) 32%, rgba(255,255,255,.08) 58%, transparent 80%);
+    filter: blur(4px); pointer-events: none;
   }
-  /* Moved inward once (12/88 -> 7/93), then back toward the card by 3% per follow-up
-     feedback -- net 10/90. */
-  body.dark.mobile-modern .stage-flare-anchor::before { left: 10%; }
-  body.dark.mobile-modern .stage-flare-anchor::after { left: 90%; }
+  body.dark.mobile-modern .stage-flare-anchor::before {
+    --spotlight-source-x: 30%; left: 10%; transform-origin: 30% 80%;
+    transform: translate(-30%,-80%) rotate(var(--spotlight-left-angle, 28deg));
+  }
+  body.dark.mobile-modern .stage-flare-anchor::after {
+    --spotlight-source-x: 70%; left: 90%; transform-origin: 70% 80%;
+    transform: translate(-70%,-80%) rotate(var(--spotlight-right-angle, -28deg));
+  }
+  /* Lens-flare bursts: a compact hot core plus deliberately irregular rays. Each ray has its
+     own angle, length, opacity and occasional thickness (markup in renderCardModal), avoiding
+     the mechanical symmetry of a repeating conic gradient. Horizontally they remain inset at
+     10/90% of the plate; their vertical position is calculated against the visible upper edge
+     of stage-backdrop::after at those exact x coordinates. */
+  body.dark.mobile-modern .stage-flare {
+    position: absolute; top: calc(var(--flare-edge-local-y, 26%) - 5px); width: 1px; height: 1px; z-index: 2;
+    mix-blend-mode: screen; pointer-events: none;
+  }
+  body.dark.mobile-modern .stage-flare.left { left: 10%; }
+  body.dark.mobile-modern .stage-flare.right { left: 90%; }
+  body.dark.mobile-modern .stage-flare::before {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 112px; height: 112px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.95) 0 3%, rgba(255,255,255,.58) 8%,
+      rgba(255,255,255,.2) 28%, rgba(255,255,255,.05) 52%, transparent 72%);
+    filter: blur(1.5px);
+  }
+  body.dark.mobile-modern .stage-flare::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(circle, #fff 0 8%, rgba(255,255,255,.96) 16%,
+      rgba(255,255,255,.45) 38%, transparent 72%);
+    box-shadow: 0 0 8px 2px rgba(255,255,255,.55), 0 0 22px 5px rgba(255,255,255,.22);
+  }
+  body.dark.mobile-modern .stage-flare i {
+    position: absolute; display: block; left: 0; top: 0;
+    width: var(--ray-length,90px); height: var(--ray-size,1px); transform-origin: 0 50%;
+    transform: translateY(-50%) rotate(var(--ray-angle,0deg)); border-radius: 999px;
+    background: linear-gradient(90deg, rgba(255,255,255,var(--ray-alpha,.45)) 0%,
+      rgba(255,255,255,.16) 36%, transparent 100%);
+    filter: blur(.45px); opacity: .9;
+  }
   /* The two Strahler read as angled inward, converging somewhere above the card -- this is
      that convergence point: a soft, bright, purely radial glow (no direction/streaks of its
      own, it's just where the two light sources notionally overlap), positioned above the
@@ -350,27 +385,27 @@
      the card within the whole padded stage box -- with no relation to where the platform
      actually sits, it landed the card's own bottom edge at the platform's FRONT vertex
      (bottom:10%, its nearest-to-viewer point) instead of centered on the platform. Now
-     positioned directly off the platform's own known vertical center (bottom:10%+height:9%/2
-     = 14.5% from the stage's bottom -- the same value used for the background edge's peak
-     height above), independent of the grid entirely.
+     positioned directly from the rendered platform contact line supplied by JS, independent
+     of the grid and of the stage's changing aspect ratio.
      Bug fix: width:70% here does NOT mean the same 70% as before. A percentage width on a
      position:relative grid item resolves against the CONTENT box of its containing block
      (padding excluded -- 310px, i.e. the stage's 390px minus its own 40px+40px side
      padding). A percentage width on a position:absolute element resolves against the
      PADDING box instead (padding included -- the full 390px). Same "70%" text, two
      different bases 40px apart per side -- switching to absolute here silently inflated the
-     card from 217px to 273px and pushed it up off the top of the stage. calc() below
-     manually subtracts that 80px of padding back out first so the result matches what
-     width:70% actually meant before (310*0.7=217px), regardless of positioning scheme. */
+     card from 217px to 273px and pushed it up off the top of the stage. calc() below manually
+     subtracts that 80px of padding back out first; 65% then applies the requested modest size
+     reduction against the original 70% sizing, regardless of positioning scheme. */
   body.dark.mobile-modern .modal-card-frame-wrap {
-    display: block; position: absolute; left: 50%; bottom: 14.5%; z-index: 2;
-    transform: translateX(-50%);
-    width: min(340px, calc((100% - 80px) * 0.7)); max-height: 540px; aspect-ratio: 5/7;
+    display: block; position: absolute; left: 50%;
+    top: var(--plate-contact-y, 85.5%); bottom: auto; z-index: 2;
+    transform: translate(-50%, -100%);
+    width: min(340px, calc((100% - 80px) * 0.65)); max-height: 540px; aspect-ratio: 5/7;
   }
   body.dark.mobile-modern .modal-card-frame {
     /* Corner radius reduced 60% from the original 20px, per feedback. */
     position: relative; width: 100%; height: 100%; max-height: none; aspect-ratio: auto;
-    border-radius: 8px;
+    border-radius: 8px; box-shadow: none;
   }
   /* Foil/Prismatic/Aurora effects moved out to static/foil-effects.css -- loaded
      unconditionally (all themes, all devices), not scoped to mobile-modern here anymore. */
@@ -385,56 +420,28 @@
     transform: translate(-50%, 50%); z-index: 1; pointer-events: none;
     background: radial-gradient(circle, rgba(255,255,255,.3), transparent 70%);
   }
-  /* New: a soft glow sitting BEHIND the card, sized a bit larger than it on every side, so the
-     opaque card occludes its own middle and only the "spill" past the card's silhouette shows
-     -- reads as the card being backlit, wrapped in a glowing mist, rather than a glow painted
-     on top of it. z-index:-1 is relative to .modal-card-frame-wrap's OWN stacking context (it
-     already establishes one via position+z-index), so this sits behind .modal-card-frame
-     (z-index:auto, i.e. the normal painting level) without needing to compete with the rest of
-     the stage. Width/height overhang differs (138%/126%) because the card itself isn't square
-     (5:7) -- picked so the actual pixel overhang reads as roughly even on all four sides
-     rather than a bigger gap top/bottom than left/right. */
+  /* Backside reflection glow replacing the classic dark card shadow. Two soft white lobes rise
+     from the lower side edges facing the spotlights; the opaque card hides their center so only
+     reflected spill remains around the silhouette. No dark pixels are painted by this layer. */
   body.dark.mobile-modern .modal-card-frame-wrap::before {
     content: ""; position: absolute; left: 50%; top: 50%; z-index: -1; pointer-events: none;
-    width: 138%; height: 126%; transform: translate(-50%, -50%);
-    background: radial-gradient(ellipse 50% 50% at 50% 50%, rgba(255,255,255,.55),
-      rgba(255,255,255,.24) 45%, rgba(255,255,255,.08) 65%, transparent 80%);
-    filter: blur(2px);
+    width: 150%; height: 136%; transform: translate(-50%, -50%);
+    background:
+      radial-gradient(ellipse 44% 68% at 18% 78%, rgba(255,255,255,.54),
+        rgba(255,255,255,.24) 34%, rgba(255,255,255,.08) 58%, transparent 76%),
+      radial-gradient(ellipse 44% 68% at 82% 78%, rgba(255,255,255,.54),
+        rgba(255,255,255,.24) 34%, rgba(255,255,255,.08) 58%, transparent 76%),
+      radial-gradient(ellipse 52% 54% at 50% 72%, rgba(255,255,255,.18),
+        rgba(255,255,255,.06) 48%, transparent 78%);
+    filter: blur(6px);
   }
-  /* Actual mirrored reflection of the card, not a shine -- -webkit-box-reflect parsed but
-     never actually painted anything in testing, so this is a real flipped <img> (same src)
-     instead, positioned directly below the card via top:100% of the wrap's own box
-     (percentage-based, so it lines up regardless of the card's rendered size). A sibling of
-     .modal-card-frame now, not a child of it -- see the wrap comment above for why it has to
-     live outside the frame's own clipped box.
-     Bug: this used to be height:100% (full card height) with the mask only fading out by
-     55% of THAT height -- on a ~304px-tall card there's only ~40px of stage floor left below
-     it before the modal's content section starts, so the reflection was rendering most of
-     its visible length past the stage boundary, bleeding over the title/price/tabs text
-     below instead of reading as a floor reflection. Confirmed by measuring the actual stage
-     vs. card-frame rects, not by eyeballing. Shrunk to a height that fits the real remaining
-     floor space, with the mask fully transparent well before the box's own bottom edge so
-     there's no visible hard cutoff either. */
-  body.dark.mobile-modern .modal-card-reflection {
-    /* Bug fix: transform-origin:top pivots scaleY(-1) around the box's own top edge, which
-       mirrors its content *upward* past that edge -- i.e. back into the card above, not down
-       into the box's own [top:100%, +height] region. Default origin (center) mirrors the
-       content within its own box bounds instead, which is what's actually wanted here.
-       Bug fix (both properties below): transform applies to the WHOLE painted element --
-       content, object-position crop AND mask-image alike -- as a last compositing step. That
-       flips their local top/bottom along with the visible pixels, so anything authored in
-       plain "top means top" terms ends up backwards on screen:
-       - object-position was "top", keeping the SOURCE image's own top portion in view. After
-         the flip that portion lands at the reflection's visual BOTTOM (furthest from the
-         card) instead of right at the seam. Needs "bottom" -- the source image's bottom (the
-         card's own footer/edge, i.e. what's actually adjacent to the seam) -- so that after
-         the flip it's the part that ends up at the visual TOP, against the card.
-       - the mask was "to bottom" (opaque at local-top, transparent by 45% down). After the
-         flip, local-top (opaque) lands at the visual BOTTOM and local-bottom (transparent)
-         lands at the visual TOP -- exactly backwards: invisible right at the seam, a hard
-         visible cutoff at the far edge instead of a fade. "to top" puts opaque at local-
-         bottom / transparent at local-top, which is what ends up correct post-flip: crisp
-         right at the seam, faded out by the far edge. */
+  /* Actual mirrored card art, not a shine. A stage-sized stationary host owns the glass-side
+     exclusion; nested perspective and mirror layers reproduce the card's projected plane and
+     reflect it around the resting contact line. */
+  body.dark.mobile-modern .modal-card-reflection-mask {
+    /* This is deliberately a separate, untransformed mask host. Previously the SVG cutout
+       lived on the reflected image itself, so CSS rotated the cutout away from the stationary
+       plate during parallax. The image now tilts as a child while this box stays put. */
     /* Correction: match the reference's effect specifically -- there it's barely a hint, no
        legible card content, closer to a soft light-fade than an actual mirror. Peak mask
        opacity dropped from .75 to .18 and the fade shortened (transparent by 30% instead of
@@ -443,44 +450,63 @@
        Pulled back down slightly (30%->40%) so a faint hint of it still peeks out from under
        the two new plate-edge shadows above, instead of having fully faded out before reaching
        them -- kept minimal, not a return to the original 45%.
-       Architecture correction: the fade used to be a plain CSS gradient mask, and the plate's
-       front edge (id="glass_side") was meant to be excluded from THIS SAME layer via a second
-       mask-image layer + mask-composite:subtract -- confirmed broken in this Chromium build
-       (accepts/parses the value, does not functionally composite; verified with isolated,
-       CORS-clean, same-origin test pages). A separate shifted "refraction" layer was built to
-       work around that, which was the wrong fix -- there is only ever meant to be ONE
-       reflection, with the exclusion baked directly into it. Correct fix: the fade gradient
-       moved into an SVG <mask> (index.html, #mt-reflection-mask) which also draws glass_side
-       (via <use href="/glass-plate.svg#glass_side">, referencing the REAL unmodified file so
-       its own clip-path defs resolve, forced to solid black via filter:brightness(0) for
-       clean luminance masking) layered on top using plain SVG paint order -- normal rendering,
-       not the broken CSS compositing feature. Position/scale of that cutout is computed and
-       set by JS every render (see alignReflectionMask in app.js), since the plate and this
-       element are independently positioned. */
+       Chromium does not reliably apply mask-composite here, so the responsibilities remain
+       nested instead: this stationary SVG luminance mask paints a white field and punches out
+       glass_side in black; the transformed child owns only the soft fade. Position/scale of
+       the fixed cutout is computed by alignReflectionMask() from the rendered plate. */
+    /* JS expands this stationary host to the complete stage. The old 28%-high box started at
+       the resting card edge and therefore imposed a horizontal cutoff on a tilted reflection.
+       Stage-sized bounds let the reflected top edge become a real perspective wedge while the
+       SVG mask removes only glass_side. Values here are a no-JS fallback until alignment runs. */
     display: block; position: absolute; top: 100%; left: 0; width: 100%; height: 28%;
+    z-index: -1;
+    -webkit-mask-image: url(#mt-reflection-mask); mask-image: url(#mt-reflection-mask);
+    pointer-events: none;
+  }
+  body.dark.mobile-modern .modal-card-reflection-mirror,
+  body.dark.mobile-modern .modal-card-reflection-perspective {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+  /* Mirror the already-projected card around the glass contact line. Keeping this transform
+     outside the perspective layer produces the exact reflected quadrilateral, including the
+     wedge-shaped separation between two differently sloped lower edges. */
+  body.dark.mobile-modern .modal-card-reflection-mirror { transform: scaleY(-1); }
+  body.dark.mobile-modern .modal-card-reflection-perspective { perspective: 900px; }
+  body.dark.mobile-modern .modal-card-reflection {
+    /* Full card geometry is required to mirror the transformed plane exactly. The local fade
+       below exposes only the narrow strip adjoining the lower card edge. */
+    display: block; position: absolute; inset: auto; width: 100%; height: 100%;
     /* Parallax tilt (foil-effects.css .card-tilt-zone/.card-tilt, wired in app.js): the
        reflection sits outside .modal-card-frame (a sibling, per the comment above -- has to,
        since it lives past the frame's own clipped box), so it can't just inherit the card's
        rotate via being a descendant of it. It's still a descendant of the shared
-       .card-tilt-zone though, so it reads the SAME --tilt-x/--tilt-y the card uses, appended
-       after scaleY(-1) so the rotation is authored in the reflection's own (already-flipped)
-       local space -- i.e. it tilts the same visual direction the card above it does, not
-       mirrored-inverted, which is what actually reads as "the reflection is the same rigid
-       card, just seen from below" rather than a second independent object. Same transition
+       .card-tilt-zone though, so it reads the SAME --tilt-x/--tilt-y and applies the same
+       transform as the card. The parent mirror then reflects the complete projected result
+       across the glass line rather than guessing inverse Euler angles. The same transition
        (and the same is-dragging opt-out below) as .card-tilt so the two never drift out of
        sync during a drag. */
-    transform: scaleY(-1) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
     transition: transform .4s ease-out;
     transform-style: preserve-3d; will-change: transform;
     border-radius: 8px; object-fit: cover; object-position: bottom;
     filter: blur(2px);
-    -webkit-mask-image: url(#mt-reflection-mask); mask-image: url(#mt-reflection-mask);
+    /* The reflection fade moves naturally with the reflected image. The separate parent mask
+       handles only the screen-fixed glass-side cutout, so the two operations intersect without
+       relying on Chromium's broken mask-composite path. The old strip faded across 40% of a
+       28%-high crop; on this full-height source that is the same 11.2% from its lower edge. */
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,.18) 0%, transparent 11.2%);
+    mask-image: linear-gradient(to top, rgba(0,0,0,.18) 0%, transparent 11.2%);
     pointer-events: none;
   }
   body.dark.mobile-modern .card-tilt-zone.is-dragging .modal-card-reflection {
     transition: none;
   }
-  body.dark.mobile-modern .card-nav-button { z-index: 1; background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+  body.dark.mobile-modern .card-nav-button {
+    z-index: 3; width: 34px; height: 44px; padding: 0;
+    background: transparent; border: 0; border-radius: 0; box-shadow: none;
+    color: var(--muted); font-size: 28px; font-weight: 300;
+  }
+  body.dark.mobile-modern .card-nav-button:disabled { opacity: .18; }
   /* Cut for this theme: the top/bottom variant-nav hints (e.g. "alt art" printings). The
      bottom one specifically sat wedged between the platform surface and the stage's own
      lower edge, an awkward spot given the podium presentation -- and the whole up/down
@@ -501,11 +527,16 @@
   body.dark.mobile-modern .modal-quick-menu-wrap { display: block; position: fixed; top: calc(14px + env(safe-area-inset-top)); right: 14px; z-index: 30; }
   body.dark.mobile-modern .modal-quick-menu-wrap .modal-menu-button { position: static; }
   body.dark.mobile-modern .modal-quick-menu {
-    position: absolute; top: 42px; right: 0; min-width: 120px; padding: 8px; border-radius: var(--mt-radius-md);
+    position: absolute; top: 42px; right: 0; width: min(340px,calc(100vw - 28px)); max-height: calc(100vh - 78px);
+    overflow-y: auto; padding: 16px; border-radius: var(--mt-radius-md);
     background: var(--surface); border: 1px solid var(--line); box-shadow: var(--mt-shadow);
   }
   body.dark.mobile-modern .modal-quick-menu.hidden { display: none; }
   body.dark.mobile-modern .modal-quick-menu .language-switcher { display: flex; gap: 4px; }
+  body.dark.mobile-modern .modal-relationship-title {
+    margin-bottom: 14px; font-family: var(--font-display); font-size: 20px; font-weight: 600;
+  }
+  body.dark.mobile-modern .modal-relationship-popup .relationship:last-child { border-bottom: 0; }
   body.dark.mobile-modern .modal-head .language-switcher { display: none; } /* lives in the ⋯ menu instead, see above */
 
   body.dark.mobile-modern .modal-side { background: var(--bg); color: var(--ink); }
@@ -562,18 +593,18 @@
        mathematically <= --bg's own lightness (satisfies "not lighter than the page"), and half
        of the original 6% is visibly lighter than what was there before (satisfies "lighter than
        before"). Same rule works unmodified in both sub-themes, unlike a fixed hex would. */
-    margin: 14px 20px; padding: 4px; gap: 2px; border: 0; height: 40px;
-    border-radius: calc(40px * 0.4); background: rgba(0,0,0,.03);
+    margin: 14px 20px 6px; padding: 2px; gap: 2px; border: 0; height: 34px;
+    border-radius: calc(34px * 0.4); background: rgba(0,0,0,.03);
   }
   body.dark.mobile-modern .modal-tabs button {
-    height: 100%; border-radius: calc(40px * 0.4 - 4px); border-bottom: 0; padding: 0 4px; font-size: 9.5px; color: var(--muted);
+    height: 100%; border-radius: calc(34px * 0.4 - 2px); border-bottom: 0; padding: 0 4px; font-size: 9.5px; color: var(--muted);
   }
   /* Bug fix: the active pill used --surface, the SAME token the track just switched to above
      -- would've made the active pill invisible against its own track. It needs to match the
      page background instead (the complaint this was fixing in the first place: the active
      pill's own color didn't match the content underneath it). */
   body.dark.mobile-modern .modal-tabs button.active { background: var(--bg); color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,.15); }
-  body.dark.mobile-modern .modal-content { background: var(--bg); padding-bottom: 84px; } /* clears the fixed action bar */
+  body.dark.mobile-modern .modal-content { background: var(--bg); padding-top: 4px; padding-bottom: 84px; } /* clears the fixed action bar */
 
   /* Bottom action bar -- feedback: the watchlist heart belongs down here, not floating
      top-right (that spot is now the ⋯ menu). Background matches --bg (the page underneath, and
@@ -582,14 +613,68 @@
      separate slab. Scroll-lock bug behind "the bar scrolls with the page": see openOverlay/
      closeOverlay in app.js -- position:fixed itself was never broken. */
   body.dark.mobile-modern .modal-action-bar {
-    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; justify-content: flex-end;
-    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
-    background: var(--bg); border: 0;
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+    padding: 0 20px env(safe-area-inset-bottom); background: var(--bg); border: 0;
+    transform: translateY(min(58vh,520px));
+    transition: transform .3s cubic-bezier(.22,.8,.3,1),box-shadow .22s ease-out;
+  }
+  body.dark.mobile-modern .modal-action-bar.is-expanded {
+    transform: translateY(0); box-shadow: 0 -18px 42px rgba(0,0,0,.14);
+  }
+  body.dark.mobile-modern .modal-footer-actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 0;
   }
   body.dark.mobile-modern .modal-watch-bottom {
     width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%;
     background: var(--surface); border: 1px solid var(--line); color: var(--brand); font-size: 18px; cursor: pointer;
   }
+  body.dark.mobile-modern .modal-footer-quantity {
+    display: flex; flex: 1; align-items: center; height: 44px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: var(--mt-radius-full); background: var(--surface);
+  }
+  body.dark.mobile-modern .modal-footer-quantity-label {
+    display: grid; place-items: center; align-self: stretch; min-width: 72px; padding: 0 13px;
+    border-right: 1px solid var(--line); color: var(--muted); font-size: 10px; font-weight: 650;
+  }
+  body.dark.mobile-modern .modal-footer-quantity button {
+    width: 38px; height: 42px; padding: 0; border: 0; background: none;
+    color: var(--ink); font-size: 18px; cursor: pointer;
+  }
+  body.dark.mobile-modern .modal-footer-quantity b {
+    flex: 1; min-width: 28px; color: var(--ink); text-align: center; font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  body.dark.mobile-modern .modal-footer-quantity .modal-footer-advanced-toggle {
+    width: 34px; height: 30px; margin-left: 2px; padding: 0;
+    border-left: 1px solid var(--line); border-radius: 0; color: var(--muted);
+  }
+  body.dark.mobile-modern .modal-footer-advanced-toggle svg {
+    display: block; width: 16px; height: 16px; margin: auto; fill: none;
+    stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+    transition: transform .22s ease-out;
+  }
+  body.dark.mobile-modern .modal-footer-advanced-toggle[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+  }
+  /* DOM order is action row first, condition panel second. The panel always reserves its full
+     height; the collapsed bar is translated downward by exactly that height, leaving only the
+     action row visible. Removing that translation moves the row upward and reveals the counters
+     underneath it in one continuous, compositor-driven animation. */
+  body.dark.mobile-modern .modal-footer-advanced {
+    display: block; box-sizing: border-box; height: min(58vh,520px); max-height: min(58vh,520px);
+    overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 16px 0 8px; border: 0;
+    opacity: 1; transition: opacity .2s ease-out;
+  }
+  body.dark.mobile-modern .modal-action-bar:not(.is-expanded) .modal-footer-advanced {
+    overflow: hidden; opacity: 0; pointer-events: none;
+  }
+  /* Desktop/classic keeps these collection controls in the content. Mobile-modern owns them
+     in the fixed footer instead, avoiding two visible representations of the same quantity. */
+  body.dark.mobile-modern .modal-content .modal-quantity,
+  body.dark.mobile-modern .modal-content .advanced-toggle,
+  body.dark.mobile-modern .modal-content #advanced-panel { display: none; }
+  body.dark.mobile-modern .mobile-collection-controls { display: none; }
+  body.dark.mobile-modern .modal-footer-advanced > .detail-section-title:first-child { display: none; }
   body.dark.mobile-modern .detail-section-title { color: var(--muted); }
   /* Feedback: too clunky, and app.css's shared ".dark X" rules hardcode a near-black inset
      box-shadow as a border-replacement technique on this and several other elements below --
@@ -611,6 +696,29 @@
   body.dark.mobile-modern .variant-option .variant-thumb { width: 22px; height: 31px; }
   body.dark.mobile-modern .variant-option b { font-size: 9px; }
   body.dark.mobile-modern .variant-option small { font-size: 7.5px; }
+  body.dark.mobile-modern .variant-settings { margin: 0 0 14px; border-top: 0; }
+  body.dark.mobile-modern .variant-setting { border-bottom: 1px solid var(--line); }
+  body.dark.mobile-modern .variant-setting:last-child { border-bottom: 0; }
+  body.dark.mobile-modern .variant-setting-row {
+    display: grid; grid-template-columns: 1fr auto 14px; align-items: center; width: 100%; min-height: 34px;
+    padding: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; text-align: left;
+  }
+  body.dark.mobile-modern .variant-setting-row span { color: var(--muted); font-size: 9.5px; }
+  body.dark.mobile-modern .variant-setting-row b { font-size: 9.5px; font-weight: 500; }
+  body.dark.mobile-modern .variant-setting-row i {
+    color: var(--muted); font-size: 16px; font-style: normal; text-align: right;
+    transition: transform .2s ease-out;
+  }
+  body.dark.mobile-modern .variant-setting.open .variant-setting-row i { transform: rotate(90deg); }
+  body.dark.mobile-modern .variant-setting-options {
+    display: grid; grid-template-rows: 0fr; opacity: 0;
+    overflow: hidden;
+    transition: grid-template-rows .22s ease-out,opacity .16s ease-out;
+  }
+  body.dark.mobile-modern .variant-setting.open .variant-setting-options { grid-template-rows: 1fr; opacity: 1; }
+  body.dark.mobile-modern .variant-setting-options-inner { min-height: 0; overflow: hidden; }
+  body.dark.mobile-modern .variant-setting .variant-selector { margin: 0; padding: 4px 0 10px; }
+  body.dark.mobile-modern .variant-setting .language-switcher { flex-wrap: wrap; margin: 0; padding: 4px 0 10px; }
   body.dark.mobile-modern .modal-quantity {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--mt-radius-full); padding: 8px 8px 8px 20px; box-shadow: none;
   }
@@ -623,9 +731,50 @@
   body.dark.mobile-modern .detail-field { background: var(--surface); border: 1px solid var(--line); border-radius: var(--mt-radius-md); }
   body.dark.mobile-modern .detail-field span { color: var(--muted); }
   body.dark.mobile-modern .detail-field b { color: var(--ink); }
-  body.dark.mobile-modern .rules-text { color: var(--muted); }
+  body.dark.mobile-modern .modal-rules-section { margin: 0 0 14px; }
+  body.dark.mobile-modern .rules-text { margin: 0; color: var(--ink); font-size: 10.5px; line-height: 1.65; }
+  body.dark.mobile-modern .rules-keyword {
+    display: block; width: max-content; max-width: calc(100% + 25px); margin: 0 0 8px -25px;
+    padding: 5px 14px 5px 25px; border-radius: 0 var(--mt-radius-full) var(--mt-radius-full) 0;
+    background: rgba(0,0,0,.03); color: var(--ink); font-size: 9px; line-height: 18px;
+    font-weight: 800; letter-spacing: .055em;
+  }
+  body.dark.mobile-modern .rules-keyword:not(:first-child) { margin-top: 14px; }
+  body.dark.mobile-modern .modal-info-grid {
+    display: grid; grid-template-columns: 1fr; gap: 0; margin-top: 4px; border-top: 1px solid var(--line);
+  }
+  body.dark.mobile-modern .modal-info-grid .detail-field {
+    display: flex; align-items: center; justify-content: space-between; min-height: 38px;
+    padding: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+    background: transparent; box-shadow: none;
+  }
+  body.dark.mobile-modern .modal-info-grid .detail-field span { font-size: 9.5px; }
+  body.dark.mobile-modern .modal-info-grid .detail-field b { margin: 0; font-size: 9.5px; font-weight: 500; text-align: right; }
+  body.dark.mobile-modern .modal-info-legality { border-bottom: 0; }
+  body.dark.mobile-modern .modal-info-set,
+  body.dark.mobile-modern .modal-info-rarity,
+  body.dark.mobile-modern .modal-info-source { display: none; }
   body.dark.mobile-modern .price-hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--mt-radius-lg); color: var(--ink); }
   body.dark.mobile-modern .price-hero span { color: var(--muted); }
+  body.dark.mobile-modern .modal-tabs + .modal-content .price-hero { display: none; }
+  body.dark.mobile-modern .market-metrics { margin-top: 0; }
+  body.dark.mobile-modern .market-source-link,
+  body.dark.mobile-modern .modal-info-source {
+    min-height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--mt-radius-full);
+    background: var(--surface); color: var(--ink); box-shadow: none;
+  }
+  body.dark.mobile-modern .market-source-link:hover,
+  body.dark.mobile-modern .modal-info-source:hover { border-color: var(--line); background: var(--surface-2); }
+  body.dark.mobile-modern .market-source-link { justify-content: center; }
+  body.dark.mobile-modern .market-source-link > span:first-child,
+  body.dark.mobile-modern .market-source-link small { display: none; }
+  body.dark.mobile-modern .market-source-link div { flex: 0 1 auto; text-align: center; }
+  body.dark.mobile-modern .market-source-link b,
+  body.dark.mobile-modern .modal-info-source b { font-size: 9.5px; }
+  body.dark.mobile-modern .price-refresh {
+    height: 42px; border: 0; border-radius: var(--mt-radius-full); background: var(--brand);
+    color: var(--bg); font-size: 10px; font-weight: 750; box-shadow: 0 7px 18px rgba(31,58,46,.13);
+  }
   /* Both redundant with the heart button already in the bottom action bar -- see feedback. */
   body.dark.mobile-modern .watchlist-picker { display: none; }
   /* Sprachversion/Sammlungswert/Datenquelle row -- per feedback, cut entirely (not just
@@ -636,14 +785,53 @@
      .variant-option/.modal-quantity above, just never touched yet because the panel starts
      collapsed. Confirmed via the light sub-theme specifically (feedback: dark elements while
      already in the light theme). */
+  body.dark.mobile-modern .condition-rows,
+  body.dark.mobile-modern .graded-rows { gap: 0; margin-bottom: 18px; }
   body.dark.mobile-modern .condition-row,
   body.dark.mobile-modern .graded-row {
-    background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: none; border-radius: var(--mt-radius-md);
+    min-height: 48px; padding: 5px 4px; border: 0; border-bottom: 1px solid var(--line);
+    border-radius: 0; background: transparent; color: var(--ink); box-shadow: none;
+    font-size: 11px;
   }
+  body.dark.mobile-modern .condition-row:first-child,
+  body.dark.mobile-modern .graded-row:first-child { border-top: 0; }
+  body.dark.mobile-modern .condition-row:last-child,
+  body.dark.mobile-modern .graded-row:last-child { border-bottom: 0; }
   body.dark.mobile-modern .condition-row .controls,
-  body.dark.mobile-modern .graded-row .controls { border-color: var(--line); }
+  body.dark.mobile-modern .graded-row .controls {
+    display: grid; grid-template-columns: repeat(3,1fr); width: 132px; height: 36px;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: transparent; box-shadow: 0 1px 3px rgba(24,31,25,.03);
+  }
   body.dark.mobile-modern .condition-row .controls button,
-  body.dark.mobile-modern .graded-row .controls button { background: var(--surface-2); color: var(--ink); }
+  body.dark.mobile-modern .graded-row .controls button {
+    width: auto; height: 34px; padding: 0; border: 0; background: transparent;
+    color: var(--ink); font-size: 16px;
+  }
+  body.dark.mobile-modern .condition-row .controls b,
+  body.dark.mobile-modern .graded-row .controls b {
+    display: grid; place-items: center; min-width: 0; height: 34px;
+    border-right: 1px solid var(--line); border-left: 1px solid var(--line);
+    color: var(--ink); font-size: 11px; font-weight: 500;
+  }
+  body.dark.mobile-modern .condition-row .controls button:disabled { opacity: .28; }
+  body.dark.mobile-modern .graded-row {
+    display: grid; grid-template-columns: minmax(0,1fr) 132px; gap: 5px 12px;
+  }
+  body.dark.mobile-modern .graded-row-label { align-self: center; }
+  body.dark.mobile-modern .graded-price-input {
+    grid-column: 1 / -1; justify-self: end; width: 132px; height: 30px;
+  }
+  body.dark.mobile-modern #footer-advanced-panel #add-graded-toggle {
+    display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 40px;
+    padding: 0 4px; border: 0; border-radius: 0;
+    background: transparent; color: var(--muted); box-shadow: none; font-size: 10px; text-align: left;
+  }
+  body.dark.mobile-modern #footer-advanced-panel #add-graded-toggle:hover { background: transparent; color: var(--ink); }
+  body.dark.mobile-modern #footer-advanced-panel #add-graded-toggle i {
+    display: grid; place-items: center; width: 28px; height: 28px; color: var(--ink);
+    font-size: 16px; font-style: normal; font-weight: 400;
+  }
   body.dark.mobile-modern .graded-price-input,
   body.dark.mobile-modern .graded-add-form input,
   body.dark.mobile-modern .graded-add-form select {
