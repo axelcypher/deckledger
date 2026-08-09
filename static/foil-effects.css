@@ -1,0 +1,347 @@
+/* Foil/Prismatic/Aurora card effects. Loaded unconditionally (all themes, all devices) --
+   see index.html; must come after app.css since the :before/:after suppression rule below has
+   the exact same selector+specificity as the unmasked version it's overriding, so it only wins
+   via later source order, not higher specificity.
+
+   RESET (starting over): every tier-specific visual (gradients, blend modes, animations,
+   sparkle) has been stripped. What's left is just the skeleton:
+   1. The 4 classes (finish-normal/finish-foil/finish-prismatic/finish-aurora), assigned in
+      app.js (finishPresentation()) -- untouched by this file.
+   2. The old unmasked whole-card sweep permanently suppressed (content:none below).
+   3. The per-card MASK applied across the board (app.py: /foil-mask/<id>.webp,
+      cached_foil_mask -- a luminance map of THIS card's own art) -- so which part of a card
+      WOULD receive an effect is already defined, even though no effect is drawn through it
+      yet. The three .foil-fx-a/b/c divs exist in the markup (app.js) and are pre-masked, empty
+      vessels waiting for content.
+   A parallax toolkit (tilt-on-press + mouseover shine, further down) is built and functional,
+   but deliberately not attached to any tier yet -- see that block's own comment. */
+
+/* Tier classification lives in app.js (finishPresentation()) -- untouched by this file, just
+   consumed via the finish-foil/finish-prismatic/finish-aurora classes it assigns. */
+.card-finish-frame.finish-foil:before,
+.card-finish-frame.finish-foil:after,
+.card-finish-frame.finish-prismatic:before,
+.card-finish-frame.finish-prismatic:after,
+.card-finish-frame.finish-aurora:before,
+.card-finish-frame.finish-aurora:after {
+  content: none;
+}
+/* The three fx divs are ALWAYS in the markup (every card-finish-frame usage), even for
+   finish-normal cards -- needed so the main grid's hover-cycle (cycles a card through its OTHER
+   finishes/languages, can land on a premium one) always has them ready to activate, without
+   having to inject/remove DOM nodes on every cycle tick. Given a real collection view can
+   render 500+ tiles at once (no pagination/virtualization) with a large fraction NOT foil, the
+   positioning-only base rule stays unscoped (free), but mask-image itself is scoped to the
+   three finish classes that actually use it -- confirmed via measurement that an earlier
+   unscoped version fired a wasted /foil-mask/ HTTP request for every single finish-normal tile
+   too (hundreds, on a full collection), not just the foil ones. */
+.foil-fx {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+}
+/* This is the "wende die Maske pauschal an" part -- applied to all three tiers already, ready
+   to mask whatever gets drawn into foil-fx-a/b/c next, even though right now they have no
+   background of their own so there's nothing visible for the mask to reveal or exclude yet. */
+.card-finish-frame.finish-foil .foil-fx,
+.card-finish-frame.finish-prismatic .foil-fx,
+.card-finish-frame.finish-aurora .foil-fx {
+  mask-image: var(--foil-mask); -webkit-mask-image: var(--foil-mask);
+  mask-size: 100% 100%; -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+}
+
+/* ---- Tier 1 (.finish-foil) + Tier 2 (.finish-prismatic) + Tier 3 (.finish-aurora, Enchanted/
+   Iconic/Epic/Signature) ----
+   Reference: an 8-stop rainbow bar (magenta, purple, blue, cyan, green, yellow, orange, red).
+   First attempt animated background-position on a repeating-linear-gradient, aiming for a
+   seamless loop by shifting exactly one repeat-period along the gradient's own 125deg axis
+   (verified correct via trig) -- but produced a hard cross-shaped seam in practice regardless
+   (confirmed even in full isolation, no mask/blend involved, and even after trying an
+   oversized background-size to give the tile room -- same seam either way). Root cause not
+   fully chased down (some Chromium-specific interaction between animated background-position
+   and repeating-linear-gradient's own internal tiling, distinct from the mask-composite bug
+   found earlier this session, but the same general lesson: don't trust a browser feature's
+   spec behavior for compositing without actually rendering and inspecting it).
+   Replaced with a fundamentally different, tile-free technique: a single (non-repeating)
+   linear-gradient sweeping the 8 colors once across the card, animated via filter:hue-rotate()
+   instead of background-position. This has NO tiling/positioning involved at all -- hue is
+   cyclic with an exact 360° period by definition, so hue-rotate(0deg) and hue-rotate(360deg)
+   are the literal same transform, not an approximation. Confirmed via pixel diff: a frame at
+   0deg vs. a frame at 360deg are byte-for-byte identical (0,0,0 max channel diff). Genuinely
+   seamless by construction, not by careful measurement -- and it's simpler (one gradient, one
+   filter, two keyframes) than the tile-math approach it replaced.
+   mix-blend-mode/opacity are a starting point (kept moderate given repeated earlier feedback
+   about intensity) -- easy to retune once this is actually visible on a real card.
+   Also carries the reflection layer's own sweep mask (131deg gradient band, animated via
+   mask-position -- see foil-fx-b below for the full rationale) so the rainbow fades in/out
+   through the SAME moving band instead of sitting at constant opacity across the whole card.
+   Reuses foil-fx-b's exact @keyframes reflectionSweep/duration/timing-function/iteration-count
+   (comma-appended onto the `animation` shorthand alongside tier3RainbowLoop -- CSS allows
+   multiple independent animations on one element as long as each drives different properties,
+   which these do: filter vs. mask-position) rather than a second copy, since two elements
+   animating identical keyframes/timing from the same render start stay in lockstep for free --
+   no JS synchronization needed. Same tradeoff as foil-fx-b: this mask-image overrides the
+   generic --foil-mask (per-card black-region exclusion) at equal selector specificity via
+   later source order, so foil-fx-a loses that exclusion here too -- consistent with, not a new
+   instance of, the simplification already accepted for the reflection layer below. */
+.card-finish-frame.finish-foil .foil-fx-a,
+.card-finish-frame.finish-prismatic .foil-fx-a,
+.card-finish-frame.finish-aurora .foil-fx-a {
+  background: linear-gradient(125deg,
+    #d6399b, #7b3fd6, #3355d9, #4fd0e0, #3ecb6a, #e8e23c, #f0973c, #e6392f);
+  mask-image: linear-gradient(131deg, transparent 0%, transparent 35%, #fff 50%, transparent 65%, transparent 100%);
+  -webkit-mask-image: linear-gradient(131deg, transparent 0%, transparent 35%, #fff 50%, transparent 65%, transparent 100%);
+  mask-size: 300% 300%; -webkit-mask-size: 300% 300%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+  animation: tier3RainbowLoop 16s linear infinite, reflectionSweep 6s ease-in-out infinite;
+}
+/* color-dodge on all three tiers now -- brightens the backdrop through the rainbow's own
+   luminance instead of tinting (color) or darkening (multiply, the very-short-lived Tier 1
+   choice before this). Opacity split kept as-is (tier 1 quieter than 2/3, unchanged by this
+   edit, only the blend mode moved). */
+.card-finish-frame.finish-prismatic .foil-fx-a,
+.card-finish-frame.finish-aurora .foil-fx-a {
+  mix-blend-mode: color-dodge; opacity: .6;
+}
+/* Tier 1 stays at the lower .4 opacity -- weaker/subtler than tiers 2-3. Also runs at double
+   speed (8s vs. the shared 16s) -- overriding just animation-duration here (same selector
+   specificity as the shared rule above, later in source order = wins), leaving
+   name/timing-function/iteration-count from the shared `animation` shorthand untouched. Two
+   comma-separated values, matching the two animations in the shared rule's order: 8s for
+   tier3RainbowLoop (the actual ask -- twice the shared 16s), 6s for reflectionSweep (its own
+   unchanged, shared-with-foil-fx-b pace -- a bare `animation-duration:8s` would otherwise apply
+   to BOTH animations via CSS's list-repeat rule for shorthand-list properties, silently
+   speeding up the sweep too). */
+.card-finish-frame.finish-foil .foil-fx-a {
+  mix-blend-mode: color-dodge; opacity: .4;
+  animation-duration: 8s, 6s;
+}
+@keyframes tier3RainbowLoop {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(360deg); }
+}
+
+/* Reflection overlay (public/foil_base_reflection.png, served via /foil-base-reflection.png --
+   same "public/ needs a dedicated route, never duplicated into static/" pattern as
+   glass-plate.svg) -- sits on TOP of the rainbow layer above (later in the foil-fx-a/b/c DOM
+   order = later paint = on top, same z-index). A static white-on-transparent diagonal-streak
+   PNG (300x420, same 5:7 ratio as the card, so background-size:100% 100% maps it 1:1 with no
+   cropping) -- its own visibility sweeps via an animated mask gradient at 131deg, not a moving
+   background-position on the PNG itself.
+   Learned from the rainbow-layer seam bug: do NOT use a repeating gradient + animated
+   position/size combo here, even with generous sizing -- that combination broke regardless of
+   how it was tuned. This mask is a single (non-repeating) soft band with mask-repeat:no-repeat
+   -- nothing to tile, so there's no seam to produce in the first place. The loop is seamless
+   because BOTH endpoints of the sweep sit fully outside the element (the visible white band is
+   off-canvas at 0% and again at 100%), so restarting the animation snaps between two states
+   that already look identical (nothing visible) rather than needing exact-period math.
+   Simplification: this mask does NOT additionally combine with --foil-mask (the per-card
+   black-exclusion) -- CSS mask-composite is confirmed broken in this browser (see the card-
+   reflection mask work earlier), and properly combining two independent masks needs a nested
+   element, which felt like overreach for what was asked here. Straightforward follow-up if
+   wanted later. */
+.card-finish-frame.finish-foil .foil-fx-b,
+.card-finish-frame.finish-prismatic .foil-fx-b,
+.card-finish-frame.finish-aurora .foil-fx-b {
+  background-image: url(/foil-base-reflection.png);
+  background-size: 100% 100%;
+  mask-image: linear-gradient(131deg, transparent 0%, transparent 35%, #fff 50%, transparent 65%, transparent 100%);
+  -webkit-mask-image: linear-gradient(131deg, transparent 0%, transparent 35%, #fff 50%, transparent 65%, transparent 100%);
+  mask-size: 300% 300%; -webkit-mask-size: 300% 300%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+  animation: reflectionSweep 6s ease-in-out infinite;
+  /* No explicit blend mode -- stays at the default (normal). A color-dodge was tried here
+     briefly but that request was actually meant for the rainbow layer above, not this one;
+     reverted. */
+}
+@keyframes reflectionSweep {
+  0% { mask-position: -300% -300%; -webkit-mask-position: -300% -300%; }
+  100% { mask-position: 300% 300%; -webkit-mask-position: 300% 300%; }
+}
+
+/* ---- Parallax-driven holo reveal -- 1:1 port of poke-holo.simey.me's "Trainer Gallery Holo" ----
+   Reference: https://poke-holo.simey.me/#⚓-trainer-gallery-holo -- read directly from
+   css/cards/trainer-gallery-holo.css + css/cards/base.css + the bundled JS, cross-checked
+   against the reference's OWN written description on the live page ("a large color dodge
+   linear gradient, and a hard-light radial gradient on top, at the cursor position, to give
+   the shimmer") and screenshotted directly for the hover behaviour. Their construction, three
+   separate pieces, all pure CSS gradients -- NO image assets anywhere in this effect:
+   1. .card__shine -- repeating-linear-gradient(-22deg, 7 HSL stops, 5% apart), background-size
+      300%/400%, mix-blend-mode:color-dodge, background-position driven by pointer (remapped
+      into a narrow 33-67% vertical band), filter:brightness() scaling with distance-from-center.
+      Large/full-card by the reference's own description -- NOT geometrically confined to the
+      cursor itself.
+   2. .card__shine:after -- a second, independent radial-gradient "hot spot" (white core ->
+      dark magenta -> dark grey), mix-blend-mode:hard-light, centered near the pointer (offset
+      formula halves the pointer's pull: `pointer*0.5+25%`) -- THIS is the piece that's actually
+      local to the cursor.
+   3. .card__glare -- a THIRD, separate element: radial-gradient circle (white core -> dark
+      grey ring) exactly AT the pointer, mix-blend-mode:soft-light -- also local.
+   Fix for "blendet hart ein und aus... schon beim mouseenter": the previous version swapped
+   foil-fx-a/foil-fx-b's background/mask/animation outright the instant a drag started -- an
+   instant style-recalc with nothing to interpolate (background-image can't cross-fade), AND
+   only triggered by an actual press, while the glare (.card-shine) was already correctly
+   hover-only. Both bugs, fixed the same way: the reveal now lives on its OWN elements
+   (foil-fx-c = shine, its ::after = hot spot) that are ALWAYS present with their reference
+   background/filter/blend-mode already set, sitting at opacity:0 and fading to 1 via a plain
+   transition when the shared .is-parallax-active class appears -- toggled by mouse hover
+   (pointerover/pointermove, no press needed, matching .card-shine's existing behaviour and the
+   reference's own hover-driven model) OR by an active drag (any pointer type, since touch has
+   no hover to fall back on). foil-fx-a/foil-fx-b (our own idle rainbow + reflection) fade the
+   OTHER way (1->0) on the same trigger/transition, so the whole thing reads as one smooth
+   cross-fade in either direction instead of two independent hard cuts. Because this is a pure
+   opacity fade and NOT an animation swap, foil-fx-a/b's own animations never stop or reset --
+   they keep running invisibly underneath and reappear exactly where they'd naturally be,
+   which also quietly removes the earlier "restart from frame 0 on release" simplification.
+   All --tg-* custom properties computed once per pointer move in setParallaxReveal (app.js),
+   porting the reference JS's own remap math (their `bt()` helper, their pointer-from-center
+   formula) -- see app.js for the exact numbers.
+   Same specificity (3 classes) as the base per-tier rules above, so the fade-out rule for
+   foil-fx-a/b has to sit LATER in the file to win via source order, not selector weight. */
+.card-finish-frame.finish-foil .foil-fx-a,
+.card-finish-frame.finish-prismatic .foil-fx-a,
+.card-finish-frame.finish-aurora .foil-fx-a,
+.card-finish-frame.finish-foil .foil-fx-b,
+.card-finish-frame.finish-prismatic .foil-fx-b,
+.card-finish-frame.finish-aurora .foil-fx-b {
+  transition: opacity .3s ease-out;
+}
+.card-tilt-zone.is-parallax-active .foil-fx-a,
+.card-tilt-zone.is-parallax-active .foil-fx-b {
+  opacity: 0;
+}
+/* WebGL interactive layer's own crossfade trigger (FoilInteractionController.js) -- same
+   fade-out, same transition, DIFFERENT class than is-parallax-active above: that one drives the
+   (currently parked) CSS reveal, this one drives the real WebGL canvas. Only ever added once
+   LorcanaFoilRenderer.prepare() has actually resolved true for the hovered card -- see
+   startWebglHover() in app.js -- so a WebGL failure/no-match never touches this class at all and
+   foil-fx-a/b simply keep running their untouched idle loop (12: "bleibt der bisherige CSS-Foil
+   aktiv"). */
+.card-tilt-zone.is-webgl-active .foil-fx-a,
+.card-tilt-zone.is-webgl-active .foil-fx-b {
+  opacity: 0;
+}
+.foil-fx-c {
+  opacity: 0;
+  transition: opacity .3s ease-out;
+}
+.card-tilt-zone.is-parallax-active .foil-fx-c {
+  opacity: 1;
+}
+.card-finish-frame.finish-foil .foil-fx-c,
+.card-finish-frame.finish-prismatic .foil-fx-c,
+.card-finish-frame.finish-aurora .foil-fx-c {
+  background-image: repeating-linear-gradient(-22deg,
+    hsla(283, 49%, 60%, .75) 5%,
+    hsla(2, 74%, 59%, .75) 10%,
+    hsla(53, 67%, 53%, .75) 15%,
+    hsla(93, 56%, 52%, .75) 20%,
+    hsla(176, 38%, 50%, .75) 25%,
+    hsla(228, 100%, 77%, .75) 30%,
+    hsla(283, 49%, 61%, .75) 35%
+  );
+  background-size: 300% 400%;
+  background-position: 0% var(--tg-y, 50%);
+  mix-blend-mode: color-dodge;
+  filter: brightness(calc(var(--tg-from-center, 0) * 0.3 + 0.5)) contrast(2.3) saturate(1);
+}
+/* ::after is a pseudo-element of foil-fx-c, not a separate div -- no 5th layer needed. It has
+   NO opacity of its own: fading its host (foil-fx-c, 0<->1 above) automatically fades this too,
+   since a pseudo-element paints as part of its host's subtree. mask-image is NOT an inherited
+   property though, so unlike foil-fx-c itself (masked via the shared .foil-fx rule above by
+   matching its own class), this pseudo needs --foil-mask applied explicitly. */
+.card-finish-frame.finish-foil .foil-fx-c::after,
+.card-finish-frame.finish-prismatic .foil-fx-c::after,
+.card-finish-frame.finish-aurora .foil-fx-c::after {
+  content: "";
+  position: absolute; inset: 0;
+  mask-image: var(--foil-mask); -webkit-mask-image: var(--foil-mask);
+  mask-size: 100% 100%; -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+  background-image: radial-gradient(farthest-corner ellipse at var(--tg-spot-x, 25%) var(--tg-spot-y, 25%),
+    hsl(0, 0%, 100%) 5%,
+    hsla(300, 100%, 11%, .6) 40%,
+    hsl(0, 0%, 22%) 120%
+  );
+  background-position: center center;
+  background-size: 400% 500%;
+  mix-blend-mode: hard-light;
+  filter: brightness(calc(var(--tg-from-center, 0) * 0.2 + 0.4)) contrast(.85) saturate(1.1);
+}
+
+/* ---- Parallax toolkit: tilt-on-press + mouseover shine ---- *
+   Matches the interaction style from the poke-holo.simey.me / pokemon-cards-css reference:
+   - Tilt: the card rotates in 3D following the pointer while actively pressed/dragged. Pointer
+     events (not mouseover) on purpose -- "das Bewegen der Karte beim Anklicken" needs to work
+     on touch too, which has no hover state to drive a tilt from.
+   - Shine: a soft light streak that tracks the cursor, MOUSE-ONLY (checks e.pointerType) --
+     this one really is "der Mouseover Shine-Effekt" specifically, not a touch equivalent.
+   Wired up in the card detail modal (app.js renderCardModal): .modal-card-frame-wrap is the
+   .card-tilt-zone, .modal-card-frame is the .card-tilt element. --tilt-x/--tilt-y are written
+   onto the ZONE (see wireGlobalEvents), not onto .card-tilt directly -- custom properties
+   inherit to descendants by default, so any other element inside the same zone that wants to
+   react to the tilt (e.g. the modal's floor reflection, .modal-card-reflection in
+   mobile-theme.css) just reads the same var() without the JS needing a second target. Same
+   deal for the "no transition while dragging" state below: .is-dragging toggles on the zone,
+   every descendant's own rule keys off that. */
+.card-tilt-zone {
+  perspective: 900px;
+}
+/* <img> is natively draggable by default -- pressing and moving the mouse over one starts the
+   browser's own drag-the-image-out gesture instead of ordinary mousemove/mouseup, which starves
+   the tilt of its move/up events entirely (confirmed: without this, a real press-drag froze
+   mid-tilt and never reset on release, since pointerup never fired once the native drag took
+   over). draggable="false" on the <img> itself (app.js) plus this CSS belt-and-suspenders
+   (Safari/older engines look at -webkit-user-drag, not just the attribute) for every image
+   living inside a tilt zone -- the card art and its floor reflection alike. */
+.card-tilt-zone img {
+  -webkit-user-drag: none; user-drag: none; -webkit-touch-callout: none;
+}
+.card-tilt {
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform .4s ease-out;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+/* No transition while actively pressed -- 1:1 tracking with the pointer instead of lagging
+   behind it; the transition above takes back over on release, springing back to resting. */
+.card-tilt-zone.is-dragging .card-tilt {
+  transition: none;
+}
+/* .card__glare 1:1 (base.css) -- farthest-corner CIRCLE (not ellipse, unlike the shine's own
+   :after spot above) exactly at the pointer, white core fading through a dark grey ring,
+   mix-blend-mode:soft-light. Color stops and blend mode now match the reference exactly --
+   this used to be a plain white-to-transparent radial with mix-blend-mode:overlay, an earlier
+   approximation from before the reference source was actually read. */
+.card-shine {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: radial-gradient(farthest-corner circle at var(--shine-x, 50%) var(--shine-y, 50%),
+    hsla(0, 0%, 100%, 1) 10%, hsla(0, 0%, 100%, .6) 35%, hsla(180, 11%, 35%, 1) 60%);
+  opacity: var(--shine-opacity, 0);
+  transition: opacity .3s ease-out;
+  mix-blend-mode: soft-light;
+}
+
+/* ---- Official Ravensburger foil layers (Lorcana only) -- structural scaffolding ----
+   Source of the masks: app.py's /foil-layer-mask/<variant_id>/<kind>.jpg (proxied + disk-cached
+   from Ravensburger's own catalog API -- see ravensburger_foil.py), wired onto these nodes by
+   hydrateOfficialFoilLayers() in app.js once /api/foil-layer-meta/<variant_id> resolves.
+   Deliberately no background/color/blend-mode here yet -- "die eigentlichen Effekte machen wir
+   dann in einem eigenen Schritt". This is ONLY the structural half: exact same size+position as
+   the card art (position:absolute, inset:0, 100%/100%, matching the brief's own spec verbatim),
+   masked via --official-mask as a plain alpha mask (mask-image, NOT the effect itself -- it only
+   defines WHERE a future effect may show through, same "mask ≠ effect" split as --foil-mask
+   elsewhere in this file). With no background painted onto these elements, having a mask
+   applied changes nothing visible yet -- the existing generic foil-fx-a/b/c effect underneath
+   is completely unaffected, exactly matching "Karten ohne Maske funktionieren weiterhin wie
+   bisher" for the (today: universal) case of "no real content behind the official mask yet"
+   too, not just "no official mask at all".
+   --hot-foil-color (top layers only) is threaded through as a plain custom property, unused by
+   any actual paint yet -- available for the deferred effect step without needing another pass
+   through app.js's hydration code once that step starts. */
+.official-foil-layer,
+.official-foil-top-layer {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
+  mask-image: var(--official-mask, none); -webkit-mask-image: var(--official-mask, none);
+  mask-size: 100% 100%; -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+}

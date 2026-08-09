@@ -2,7 +2,8 @@ const state = {
   boot: null, route: 'dashboard', game: null, set: null, cards: [],
   edit: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
   filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
-  activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135,
+  modalFoilLayerMeta: null, modalFoilLayerMetaVariantId: null,
+  activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
   collapsedSetGroups: {},
   cardFilters: {rarity:'', rarities:[], costs:[], colors:[], inkwell:'', finish:'normal', foilMode:''},
   collectionFilters: {q:'',set_id:'',language:'all',rarity:'',finish:'',mode:'all',sort:'number'},
@@ -17,6 +18,10 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'
 const currencyMoney = (value,currency='EUR') => new Intl.NumberFormat('de-DE',{style:'currency',currency}).format(Number(value)||0);
 const money = value => currencyMoney(value,'EUR');
 const price = value => value == null ? 'Kein Preis verfügbar' : money(value);
+// Symbol-before-number variant for the mobile card modal specifically (de-DE's
+// Intl.NumberFormat currency style always puts the symbol after; this only reformats
+// the one modal display, not the shared price()/money() used everywhere else).
+const priceSymbolFirst = value => value == null ? 'Kein Preis verfügbar' : '€' + new Intl.NumberFormat('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0);
 const nativePrice = variant => variant.price_native==null||!variant.price_native_currency ? null : currencyMoney(variant.price_native,variant.price_native_currency);
 const maxPrice = items => { const values=items.map(x=>x.price).filter(x=>x!=null); return values.length?Math.max(...values):null; };
 const deckCostLabel = (value,unpriced=0) => `${money(value)}${unpriced?` · ${unpriced}× ohne Preis`:''}`;
@@ -27,11 +32,19 @@ const releaseDate = item => {
   return `${date(values[0])} – ${date(values.at(-1))}`;
 };
 const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=3${size==='thumb'?'&size=thumb':''}`;
+// Luminance mask derived server-side from THIS card's own art (app.py: /foil-mask/<id>.webp,
+// cached_foil_mask) -- used to confine the mobile card-modal's foil/prismatic/aurora shimmer
+// to the card's own non-black regions instead of washing over the whole rectangle.
+const foilMaskUrl = variantId => `/foil-mask/${encodeURIComponent(variantId)}.webp?v=1`;
 function finishPresentation(variant={}){
   const finish=String(variant.finish||'').trim();
   const descriptor=`${finish} ${variant.variant_code||''} ${variant.rarity||''}`.toLowerCase();
   const gameId=String(variant.game_id||state.activeGameId||'').toLowerCase();
-  const premiumNamed=/manga|enchanted|iconic|epic|signature|signed/.test(descriptor);
+  // "verzaubert" = German "Enchanted" (Lorcana ships EN+DE in this dataset) -- without it, a
+  // DE-language Enchanted print (rarity="Verzaubert") fell through to the parallel/is_parallel
+  // check below and got classified as finish-prismatic (Tier 2) instead of finish-aurora
+  // (Tier 3), even though it's the exact same card/rarity as its EN counterpart.
+  const premiumNamed=/manga|enchanted|verzaubert|iconic|epic|signature|signed/.test(descriptor);
   const premiumCode=/(?:^|[\s_-])(our|osr|sec|sp|ur|sy)(?:$|[\s_-])/i.test(descriptor);
   if(premiumNamed||premiumCode){
     return {effect:'finish-aurora'};
@@ -51,7 +64,90 @@ function finishPresentation(variant={}){
 }
 function finishThumb(variant,src,alt='',className=''){
   const visual=finishPresentation(variant);
-  return `<span class="card-finish-frame finish-thumb ${visual.effect} ${className}"><img loading="lazy" src="${src}" alt="${escapeHtml(alt)}"></span>`;
+  // Callers pass differently-shaped variant objects (.id from physicalVariants, .variant_id
+  // from search results) -- same fallback pattern already used at every artUrl() call site.
+  const maskUrl=foilMaskUrl(variant.id||variant.variant_id);
+  return `<span class="card-finish-frame finish-thumb ${visual.effect} ${className}" style="--foil-mask:url('${maskUrl}')"><img loading="lazy" src="${src}" alt="${escapeHtml(alt)}"><div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div></span>`;
+}
+
+// ---- Official Ravensburger foil layers (Lorcana only) ----
+// A progressive enhancement layered ON TOP of the existing generic foil-fx system above, never
+// a replacement for it -- see app.py's /api/foil-layer-meta + foil-effects.css's own comment
+// block for the full pipeline (matching key, caching, routes). Registries below are
+// deliberately just presence-markers for now: "die eigentlichen Effekte machen wir dann in
+// einem eigenen Schritt" -- this step wires the real official masks + type/color metadata
+// through end-to-end and gives every foil_type/foil_top_layer a resolvable preset slot,
+// without yet defining what each one actually looks like. An unknown/future type (a new set
+// could ship one any day) falls back to the shared __default__ preset instead of throwing.
+const FOIL_EFFECTS = {
+  Silver: {}, Lava: {}, Satin: {}, Glitter: {}, VerticalWave: {}, Tempest: {},
+  FreeForm1: {}, FreeForm2: {}, SeaWave: {}, Lore: {}, Magma: {}, RainbowPillars: {}, CalendarWave: {},
+  __default__: {},
+};
+// Kept as its OWN registry, not merged into FOIL_EFFECTS -- a top layer (hot foil) is a
+// separate rendered layer stacked on top of the base foil effect, never a substitute for one
+// (a card can carry a foil_type AND a foil_top_layer at once -- e.g. Magma + ChromeRainbowHotFoil
+// on The Madrigal Family). MatteHotFoil isn't in the original brief but IS a real value in the
+// live feed (confirmed against the actual API response) -- listed explicitly rather than
+// silently relying on the fallback for something that isn't actually unknown.
+const FOIL_TOP_LAYER_EFFECTS = {
+  HighGloss: {}, RainbowHotFoil: {}, MetallicHotFoil: {}, SnowHotFoil: {}, ChromeRainbowHotFoil: {}, MatteHotFoil: {},
+  __default__: {},
+};
+const foilEffectPreset = type => FOIL_EFFECTS[type] || FOIL_EFFECTS.__default__;
+const foilTopLayerPreset = type => FOIL_TOP_LAYER_EFFECTS[type] || FOIL_TOP_LAYER_EFFECTS.__default__;
+
+// FoilLayer / FoilTopLayer(xN) -- the official-mask counterpart to foil-fx-a/b/c. Its own
+// encapsulated markup+hydration pair, kept separate from the existing card-finish-frame
+// rendering rather than folded into it ("bestehende Card-Komponente möglichst nicht umbauen").
+// Always rendered as inert, empty <div>s (no mask-image, no background) -- hydrateOfficial-
+// FoilLayers() below fills in style values on nodes that already exist rather than the DOM
+// structure changing shape once data arrives. Left permanently empty (CSS: no mask set = no
+// visual effect) for the normal case of anything without an official match -- non-Lorcana
+// games, non-foil finishes, or Lorcana cards/printings Ravensburger's own feed doesn't cover.
+function officialFoilLayerMarkup(){
+  return `<div class="official-foil-layer" aria-hidden="true"></div>`+
+    `<div class="official-foil-top-layer" aria-hidden="true"></div>`+
+    `<div class="official-foil-top-layer secondary" aria-hidden="true"></div>`;
+}
+// Fetches /api/foil-layer-meta/<variantId> and, if real data comes back, wires the official
+// mask URLs + type/color parameters onto the three officialFoilLayerMarkup() nodes inside
+// `container`. Silently does nothing on any failure/absence (network hiccup, non-Lorcana card,
+// no official match for this printing) -- the existing generic foil-fx effect already works
+// completely on its own; this only ever adds to it, never gates on it.
+async function hydrateOfficialFoilLayers(variantId, container){
+  // Reset up front (not just on success) -- a stale meta object from whichever card was
+  // hovered/open previously must never survive into a WebGL attach() for THIS card if this
+  // fetch fails or comes back empty; see foilInputForModal()'s own variantId re-check too.
+  state.modalFoilLayerMeta=null; state.modalFoilLayerMetaVariantId=variantId;
+  const base=$('.official-foil-layer',container);
+  const top=$('.official-foil-top-layer:not(.secondary)',container);
+  const top2=$('.official-foil-top-layer.secondary',container);
+  if(!base&&!top&&!top2)return;
+  let data;
+  try{
+    data=await (await fetch(`/api/foil-layer-meta/${encodeURIComponent(variantId)}`)).json();
+  }catch{
+    return;
+  }
+  if(!data||!data.available)return;
+  // The WebGL interactive layer (FoilInteractionController) reuses this same fetch instead of
+  // re-requesting it on every hover -- see foilInputForModal() in wireGlobalEvents.
+  state.modalFoilLayerMeta=data;
+  if(base&&data.mask_url){
+    base.style.setProperty('--official-mask',`url('${data.mask_url}')`);
+    base.dataset.foilType=data.foil_type||'';
+    base.classList.add('is-active');
+  }
+  const wireTopLayer=(el,maskUrl,color)=>{
+    if(!el||!maskUrl)return;
+    el.style.setProperty('--official-mask',`url('${maskUrl}')`);
+    if(color)el.style.setProperty('--hot-foil-color',color);
+    el.dataset.foilTopLayer=data.foil_top_layer||'';
+    el.classList.add('is-active');
+  };
+  wireTopLayer(top,data.top_layer_mask_url,data.hot_foil_color);
+  wireTopLayer(top2,data.second_top_layer_mask_url,data.second_hot_foil_color);
 }
 const variantName = variant => {
   const label = variant.game_id==='lorcana' ? lorcanaFinishLabel(variant.finish,variant.rarity) : variant.finish;
@@ -104,7 +200,24 @@ function toast(message, actionLabel, action) {
 
 function setNav(route) {
   $$('.nav-item[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
+  $$('.mt-tab[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
+  $$('.mobile-profile-button[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
 }
+
+function setEditMode(enabled,announce=false){
+  state.edit=Boolean(enabled);
+  document.body.classList.toggle('editing',state.edit);
+  $('#edit-panel')?.classList.toggle('on',state.edit);
+  $('#edit-toggle')?.setAttribute('aria-checked',String(state.edit));
+  const mobileToggle=$('#mobile-edit-toggle');
+  mobileToggle?.classList.toggle('active',state.edit);
+  mobileToggle?.setAttribute('aria-pressed',String(state.edit));
+  mobileToggle?.setAttribute('aria-label',state.edit?'Edit Mode deaktivieren':'Edit Mode aktivieren');
+  mobileToggle?.setAttribute('title',state.edit?'Edit Mode deaktivieren':'Edit Mode aktivieren');
+  if(announce)toast(state.edit?'Edit Mode aktiviert':'Edit Mode beendet');
+}
+
+function toggleEditMode(){setEditMode(!state.edit,true)}
 
 function setActiveGame(gameId, persist=true) {
   const previousGameId=state.activeGameId;
@@ -112,6 +225,9 @@ function setActiveGame(gameId, persist=true) {
   const isInitial=!previousGameId;
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
+  const iconName={'one-piece':'one-piece',lorcana:'lorcana',hololive:'hololive'}[gameId]||'generic';
+  if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=2')`);
+  if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
   state.watchlistId=null; state.deckId=null;
   if(changed||isInitial){
     // Settings shows languages[0] as each game's assumed default even before
@@ -130,7 +246,7 @@ function setActiveGame(gameId, persist=true) {
 }
 
 function routeTo(route, data) {
-  hideDeckImagePreview();closeDeckAddPopup();clearTimeout(state.homeBannerTimer);
+  hideDeckImagePreview();closeDeckAddPopup();setDeckCatalogOpen(false);clearTimeout(state.homeBannerTimer);
   state.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
   if(route==='dashboard') renderDashboard();
   if(route==='game') renderGame(data || state.game?.id);
@@ -142,6 +258,18 @@ function routeTo(route, data) {
   if(route==='settings') renderSettings();
   if(route==='admin') renderAdmin();
   $('.sidebar').classList.remove('open');
+}
+
+function setDeckCatalogOpen(open){
+  state.deckCatalogOpen=Boolean(open);
+  const mobileCatalog=window.matchMedia('(max-width:760px)').matches;
+  const catalog=$('.deck-catalog');
+  document.body.classList.toggle('deck-catalog-visible',state.deckCatalogOpen);
+  catalog?.classList.toggle('is-open',state.deckCatalogOpen);
+  $('.deck-catalog-backdrop')?.classList.toggle('is-open',state.deckCatalogOpen);
+  catalog?.setAttribute('aria-hidden',String(mobileCatalog&&!state.deckCatalogOpen));
+  catalog?.toggleAttribute('inert',mobileCatalog&&!state.deckCatalogOpen);
+  $('#deck-catalog-open')?.setAttribute('aria-expanded',String(state.deckCatalogOpen));
 }
 
 function initials(name){return name.split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase()}
@@ -199,6 +327,12 @@ function renderDashboard(){
         <div class="hero-copy"><h1>Willkommen zurück, ${escapeHtml(state.boot.user.display_name.split(' ')[0])}.</h1><p>Deine Sammlung wächst. Hier siehst du ihren aktuellen Stand über alle Spiele hinweg.</p></div>
         <div class="hero-summary"><div><b>${money(totalValue)}</b><span>Gesamtwert</span></div><div><b>${copies}</b><span>Karten</span></div><div><b>${unique}</b><span>Varianten</span></div></div>
       </div>
+      <nav class="dashboard-quick-nav" aria-label="Schnellzugriff">
+        <button type="button" data-dashboard-route="collection"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="12" height="16" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2V7"/></svg><span>Sammlung</span></button>
+        <button type="button" data-dashboard-route="game"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg><span>Sets</span></button>
+        <button type="button" data-dashboard-route="decks"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13"/></svg><span>Decks</span></button>
+        <button type="button" data-dashboard-route="watchlist"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg><span>Watchlist</span></button>
+      </nav>
       <section id="home-banner" class="home-banner hidden">
         <div class="home-banner-head"><span class="eyebrow" id="home-banner-label">NEU &amp; ANGESAGT</span></div>
         <div class="home-banner-viewport"><div class="home-banner-track" id="home-banner-track"></div></div>
@@ -215,6 +349,7 @@ function renderDashboard(){
       </button>`).join('')}</section>
   </div>`;
   $$('[data-game]',content).forEach(el=>el.onclick=()=>{setActiveGame(el.dataset.game);routeTo('game',el.dataset.game)});
+  $$('[data-dashboard-route]',content).forEach(el=>el.onclick=()=>{const route=el.dataset.dashboardRoute;routeTo(route,route==='game'?state.activeGameId:undefined)});
   const bannerTrack=$('#home-banner-track');
   bannerTrack.addEventListener('mouseenter',()=>clearTimeout(state.homeBannerTimer));
   bannerTrack.addEventListener('mouseleave',()=>{
@@ -281,8 +416,14 @@ async function loadHomeBanner(){
 }
 
 function renderSettings(){
-  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[];
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],excludedGames=banner.excludedGames||[],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic',mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
+    <section class="settings-section">
+      <h2>Mobile Ansicht</h2>
+      <p class="muted">Gilt nur auf schmalen Bildschirmen (Handy) -- am Desktop ändert sich nichts.</p>
+      <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Neu (Beta)</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
+      ${mobileTheme==='modern'?`<div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>`:''}
+    </section>
     <section class="settings-section">
       <h2>Standardsprache je Spiel</h2>
       <p class="muted">Wird als Vorauswahl in Sammlung, Deckbuilder und Import verwendet.</p>
@@ -299,6 +440,22 @@ function renderSettings(){
       <div class="settings-checklist">${games.map(g=>`<label class="checkbox-row"><input type="checkbox" data-banner-exclude="${g.id}" ${excludedGames.includes(g.id)?'checked':''}> ${escapeHtml(g.name)}</label>`).join('')}</div>
       <p class="muted settings-hint">Standardmäßig rotiert das Banner endlos zwischen allen nicht ausgeschlossenen TCGs. Sind mehrere Kartenlisten aktiv, wechselt es zusätzlich zwischen ihnen.</p>
     </section>`;
+  $$('[data-mobile-theme]',content).forEach(b=>b.onclick=async()=>{
+    const value=b.dataset.mobileTheme;
+    await post('/api/settings',{mobileTheme:value});
+    state.boot.settings.mobileTheme=value;
+    document.body.classList.toggle('mobile-modern',value!=='classic');
+    renderSettings();
+    toast('Mobile Ansicht gespeichert');
+  });
+  $$('[data-mobile-appearance]',content).forEach(b=>b.onclick=async()=>{
+    const value=b.dataset.mobileAppearance;
+    await post('/api/settings',{mobileThemeAppearance:value});
+    state.boot.settings.mobileThemeAppearance=value;
+    document.body.classList.toggle('mobile-light',value==='light');
+    renderSettings();
+    toast('Darstellung gespeichert');
+  });
   $$('[data-lang-game]',content).forEach(select=>select.onchange=async e=>{
     const updated={...(state.boot.settings.defaultLanguages||{}),[select.dataset.langGame]:e.target.value};
     await post('/api/settings',{defaultLanguages:updated});
@@ -585,11 +742,11 @@ async function renderSet(setId, preserve=false){
       <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${st.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${st.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${st.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${st.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${st.owned} / ${st.missing}</b></div><div class="compact-stat value"><span>Setwert</span><b>${money(st.value)}</b></div></div>
     </section>
     <div class="card-toolbar-sticky">
-      <div class="op-catalog-filterbar">
+      <div class="op-catalog-filterbar catalog-filter-mobile">
         ${setSwitcherPopup('set',setOptions,s.id,`${s.code} ${setAbbreviation(s.name)}`)}
         ${isLorcana?lorcanaCardFilterBar(f,'set'):isOnePiece?opCardFilterBar(f,'set',data.rarities):isHololive?hololiveCardFilterBar(f,'set',data.rarities):''}
         ${isLorcana||isOnePiece||isHololive?'':`<select id="rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
-        <div class="toolbar-filter-anchor">
+        <div class="toolbar-filter-anchor catalog-settings-control">
           <button type="button" class="icon-button" data-filter-toggle="set-view-popup" aria-expanded="false" aria-label="Ansicht" title="Ansicht">⚙</button>
           <div class="toolbar-filter-popup hidden" id="set-view-popup">
             <label>Sprache<select id="language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${s.languages.map(l=>`<option value="${l}" ${state.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
@@ -631,12 +788,12 @@ async function renderAllCards(gameId,preserve=false){
       <div class="compact-stats"><div class="compact-stat"><span>Base</span><b>${stats.base}%</b></div><div class="compact-stat"><span>Foil</span><b>${stats.foil}%</b></div><div class="compact-stat"><span>Master</span><b>${stats.master}%</b></div><div class="compact-stat"><span>Playset</span><b>${stats.playset}%</b></div><div class="compact-stat"><span>Besitz / Fehlt</span><b>${stats.owned} / ${stats.missing}</b></div><div class="compact-stat value"><span>Gesamtwert</span><b>${money(stats.value)}</b></div></div>
     </section>
     <div class="card-toolbar-sticky">
-      <div class="op-catalog-filterbar">
+      <div class="op-catalog-filterbar catalog-filter-mobile">
         <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
         ${setSwitcherPopup('all',setOptions,'__all__','Alle Karten')}
         ${isLorcana?lorcanaCardFilterBar(f,'all'):isOnePiece?opCardFilterBar(f,'all',data.rarities):isHololive?hololiveCardFilterBar(f,'all',data.rarities):''}
         ${isLorcana||isOnePiece||isHololive?'':`<select id="all-rarity-filter" class="select-control"><option value="">Alle Seltenheiten</option>${data.rarities.map(r=>`<option value="${escapeHtml(r)}" ${f.rarity===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select>`}
-        <div class="toolbar-filter-anchor">
+        <div class="toolbar-filter-anchor catalog-settings-control">
           <button type="button" class="icon-button" data-filter-toggle="all-view-popup" aria-expanded="false" aria-label="Ansicht" title="Ansicht">⚙</button>
           <div class="toolbar-filter-popup hidden" id="all-view-popup">
             <label>Sprache<select id="all-language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${game.languages.map(language=>`<option value="${language}" ${state.language===language?'selected':''}>${language}</option>`).join('')}</select></label>
@@ -713,7 +870,7 @@ function cardTile(card,foilDisplayActive=false){
     :(card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓</span>`:'');
   const playsetHtml=ribbons?`<div class="playset-ribbons">${ribbons}</div>`:'';
   return `<article class="card-tile ${card.quantity?'owned':'missing'}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
-    <div class="card-image-wrap card-finish-frame ${visual.effect}">${imageHtml}<button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
+    <div class="card-image-wrap card-finish-frame ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.variant_id)}')">${imageHtml}<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
     ${playsetHtml}
     <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${languageVariants.slice(0,3).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
@@ -738,6 +895,10 @@ function bindCardEvents(watchlistId=null){
         frontEl.classList.replace('front','back');
         backEl.classList.replace('back','front');
         frame.className=`card-image-wrap card-finish-frame ${finishPresentation(variant).effect}`;
+        // className reassignment above only touches the class attribute -- the .foil-fx child
+        // divs (and their listeners, none here) survive untouched. Only the mask URL itself
+        // needs updating, since cycling can switch to a variant with different card art.
+        frame.style.setProperty('--foil-mask',`url('${foilMaskUrl(variant.variant_id)}')`);
         if(priceEl)priceEl.textContent=price(variant.price);
         [frontEl,backEl]=[backEl,frontEl];
       };
@@ -748,6 +909,7 @@ function bindCardEvents(watchlistId=null){
         frontEl.classList.add('front');frontEl.classList.remove('back');
         backEl.classList.add('back');backEl.classList.remove('front');
         frame.className=`card-image-wrap card-finish-frame ${finishPresentation(variant).effect}`;
+        frame.style.setProperty('--foil-mask',`url('${foilMaskUrl(variant.variant_id)}')`);
         if(priceEl)priceEl.textContent=price(variant.price);
       };
       tile.addEventListener('mouseenter',()=>{cycleIndex=0;cycleTimer=setInterval(advance,1800)});
@@ -1009,21 +1171,50 @@ async function renderWatchlist(preserve=false){
   bindBrowserFilters('watch',()=>renderWatchlist(true));
 }
 
+function collectionRarityOptions(gameId,language){
+  if(gameId==='one-piece')return ['C','UC','R','SR','SEC','L','P','DON!!','SP CARD','TR'];
+  if(gameId==='hololive')return ['C','U','R','RR','SR','S','OSR','OC','SY','P','HR'];
+  if(gameId==='lorcana'){
+    const de=['Gewöhnlich','Ungewöhnlich','Selten','Episch','Legendär','Mythisch','Verzaubert','Ikonisch','Speziell'];
+    const en=['Common','Uncommon','Rare','Super Rare','Legendary','Epic','Enchanted','Iconic','Special'];
+    return language==='DE'?de:language==='EN'?en:[...de,...en];
+  }
+  return ['Common','Uncommon','Rare','Super Rare','Legendary','Secret Rare'];
+}
+
 async function renderCollection(preserve=false){
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Sammlung wird zusammengestellt …</p></div>';
   const game=state.boot.games.find(g=>g.id===state.activeGameId),f=state.collectionFilters,params=new URLSearchParams({game_id:state.activeGameId,...f}),data=await api(`/api/collection?${params}`);state.cards=data.cards;
+  const currentSet=data.sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · SAMMLUNG</span><h1>Meine Karten</h1><p>Durchsuchbare Variantenansicht mit denselben Werkzeugen wie im Set-Katalog.</p></div><div class="page-head-actions"><button class="secondary-button" id="collection-export">Exportieren</button></div></div>
     <div class="browser-summary"><div><span>VARIANTEN</span><b>${data.stats.variants}</b></div><div><span>EXEMPLARE</span><b>${data.stats.copies}</b></div><div><span>MARKTWERT</span><b>${money(data.stats.value)}</b></div></div>
-    <div class="card-toolbar browser-toolbar"><div class="filter-search"><span>⌕</span><input id="collection-q" value="${escapeHtml(f.q)}" placeholder="Sammlung durchsuchen"></div><select id="collection-set" class="select-control"><option value="">Alle Sets</option>${data.sets.map(s=>`<option value="${s.id}" ${f.set_id===s.id?'selected':''}>${escapeHtml(s.code)} · ${escapeHtml(s.name)}</option>`).join('')}</select><select id="collection-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select><select id="collection-rarity" class="select-control"><option value="">Alle Seltenheiten</option>${['Common','Uncommon','Rare','Super Rare','Legendary','Secret Rare'].map(x=>`<option ${f.rarity===x?'selected':''}>${x}</option>`).join('')}</select><select id="collection-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select><select id="collection-mode" class="select-control"><option value="all">Alle Karten</option><option value="duplicates">Nur Duplikate</option><option value="watchlisted">Auf Watchlist</option></select><select id="collection-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="set">Set</option><option value="rarity">Seltenheit</option><option value="value">Wert</option><option value="quantity">Menge</option></select></div>
+    <div class="card-toolbar-sticky collection-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile collection-filter-mobile">
+      <div class="filter-search"><span>⌕</span><input id="collection-q" value="${escapeHtml(f.q)}" placeholder="Sammlung durchsuchen"></div>
+      ${setSwitcherPopup('collection',data.sets,f.set_id||'__all__',currentSet?`${currentSet.code} ${setAbbreviation(currentSet.name)}`:'Alle Sets')}
+      ${gameRarityPopup(rarityOptions,f,'collection')}
+      <div class="toolbar-filter-anchor catalog-settings-control">
+        <button type="button" class="icon-button" data-filter-toggle="collection-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
+        <div class="toolbar-filter-popup hidden" id="collection-view-popup">
+          <label>Sprache<select id="collection-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
+          <label>Ausführung<select id="collection-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
+          <label>Bestand<select id="collection-mode" class="select-control"><option value="all">Alle Karten</option><option value="duplicates">Nur Duplikate</option><option value="watchlisted">Auf Watchlist</option></select></label>
+          <label>Sortierung<select id="collection-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="set">Set</option><option value="rarity">Seltenheit</option><option value="value">Wert</option><option value="quantity">Menge</option></select></label>
+        </div>
+      </div>
+    </div></div>
     <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
-  $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};bindCardEvents();bindBrowserFilters('collection',()=>renderCollection(true));
+  $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};
+  $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderCollection(true)});
+  $$('[data-card-single-filter]',content).forEach(button=>button.onclick=()=>{const value=button.dataset.value;f.rarity=f.rarity===value?'':value;renderCollection(true)});
+  bindCardEvents();bindBrowserFilters('collection',()=>renderCollection(true));
+  $('#collection-language').onchange=event=>{f.language=event.target.value;f.rarity='';renderCollection(true)};
 }
 
 function bindBrowserFilters(prefix,render){
   const target=prefix==='watch'?state.watchFilters:state.collectionFilters;let timer;
   $(`#${prefix}-q`).oninput=e=>{clearTimeout(timer);target.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus(`#${prefix}-q`,render),250)};
   const mappings=prefix==='watch'?['set','language','finish','sort']:['set','language','rarity','finish','mode','sort'];
-  mappings.forEach(key=>$(`#${prefix}-${key}`).onchange=e=>{target[key==='set'?'set_id':key]=e.target.value;render()});
+  mappings.forEach(key=>{const control=$(`#${prefix}-${key}`);if(control)control.onchange=e=>{target[key==='set'?'set_id':key]=e.target.value;render()}});
 }
 
 let deckImagePreview=null;
@@ -1128,7 +1319,7 @@ function lorcanaFinishLabel(finish,rarity){
 function lorcanaRarityPopup(filters,prefix){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   const popupId=`${prefix}-rarity-popup`;
-  return `<div class="toolbar-filter-anchor">
+  return `<div class="toolbar-filter-anchor rarity-filter-anchor">
     <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
     <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
       ${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" data-card-filter="rarities" data-value="${key}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}
@@ -1149,7 +1340,7 @@ function lorcanaAnsichtExtras(filters){
 }
 function gameRarityPopup(rarityOptions,filters,prefix){
   const popupId=`${prefix}-rarity-popup`;
-  return `<div class="toolbar-filter-anchor">
+  return `<div class="toolbar-filter-anchor rarity-filter-anchor">
     <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
     <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
       ${rarityOptions.map(r=>`<button type="button" class="op-filter-chip ${filters.rarity===r?'active':''}" data-card-single-filter="rarity" data-value="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')}
@@ -1175,7 +1366,7 @@ function setAbbreviation(name){
 }
 function setSwitcherPopup(prefix,setOptions,currentSetId,currentLabel){
   const popupId=`${prefix}-set-popup`;
-  return `<div class="toolbar-filter-anchor">
+  return `<div class="toolbar-filter-anchor set-switch-control">
     <button type="button" class="secondary-button set-switch-trigger" data-filter-toggle="${popupId}" aria-expanded="false">${escapeHtml(currentLabel)} ▾</button>
     <div class="toolbar-filter-popup align-left set-switch-popup hidden" id="${popupId}">
       <button type="button" class="set-switch-option ${currentSetId==='__all__'?'active':''}" data-set-switch="__all__">Alle Karten</button>
@@ -1239,6 +1430,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Deckbuilder wird geladen …</p></div>';
   const game=state.boot.games.find(g=>g.id===state.activeGameId),[formats,decks]=await Promise.all([api(`/api/games/${state.activeGameId}/formats`),api(`/api/decks?game_id=${state.activeGameId}`)]);
   if(!state.deckId){
+    setDeckCatalogOpen(false);
     content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · OFFIZIELLE REGELPROFILE</span><h1>Deine Decks</h1><p>Wähle ein Deck oder beginne ein neues.</p></div><button class="primary-button" id="new-deck">＋ Neues Deck</button></div>${decks.length?`<section class="deck-overview-grid">${decks.map(deck=>deckOverviewCard(deck,game,formats)).join('')}<button class="deck-create-card" id="deck-create-tile"><span>＋</span><b>Neues Deck</b><small>${escapeHtml(formats[0]?.name||'Regelprofil wählen')}</small></button></section>`:`<div class="deck-empty"><span>▱</span><h2>Dein erstes ${escapeHtml(game.short_name)}-Deck</h2><p>Der Builder prüft Kartenzahl, Kopienlimits, Farben und Formatlegalität.</p><button class="primary-button" id="first-deck">Deck erstellen</button></div>`}`;
     $$('.deck-overview-card').forEach(button=>button.onclick=()=>{state.deckId=Number(button.dataset.deck);renderDeckbuilder()});
     $('#new-deck').onclick=()=>createDeck(formats[0]);$('#deck-create-tile')?.addEventListener('click',()=>createDeck(formats[0]));$('#first-deck')?.addEventListener('click',()=>createDeck(formats[0]));return;
@@ -1294,17 +1486,23 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   const viewTools=`<div class="op-filter-group catalog-view-tools"><span>Ansicht</span><div><div class="deck-view-toggle segmented" aria-label="Ansicht"><button data-deck-view="list" class="${state.deckView==='list'?'active':''}" title="Liste">☷</button><button data-deck-view="grid" class="${state.deckView==='grid'?'active':''}" title="Kacheln">▦</button></div><label class="catalog-zoom ${state.deckView==='grid'?'':'hidden'}"><input id="deck-zoom" type="range" min="105" max="190" step="5" value="${state.deckZoom}" aria-label="Kachelgröße"><output id="deck-zoom-value">${state.deckZoom}%</output></label></div></div>`;
   const languageControl=isOnePiece?'':`<select id="deck-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(language=>`<option value="${language}" ${f.language===language?'selected':''}>${language}</option>`).join('')}</select>`;
   const gameFilters=isOnePiece?opFilterPanel(f):isLorcana?lorcanaFilterPanel(f):isHololive?hololiveFilterPanel(f):'';
-  const filters=`<div class="op-catalog-controls"><div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="${isOnePiece?'Englische Karten':'Karten'} suchen"></div>${languageControl}<select id="deck-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="cost">Kosten</option><option value="rarity">Seltenheit</option></select><div class="toolbar-spacer"></div>${viewTools}</div>${gameFilters?`<div class="op-catalog-filterbar">${gameFilters}</div>`:''}`;
+  const filters=`<div class="op-catalog-controls"><div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="${isOnePiece?'Englische Karten':'Karten'} suchen"></div>${languageControl}<select id="deck-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="cost">Kosten</option><option value="rarity">Seltenheit</option></select><div class="toolbar-spacer"></div>${viewTools}</div>${gameFilters?`<div class="op-catalog-filterbar deck-game-filterbar">${gameFilters}</div>`:''}`;
   content.innerHTML=`<div class="deck-shell deck-shell-editor" style="--deck-card-size:${state.deckZoom}px;--catalog-card-size:${state.deckZoom}px">
-    <section class="deck-editor"><header class="deck-editor-head"><button class="compact-back-button" id="deck-overview-back" title="Alle Decks" aria-label="Alle Decks">←</button><div class="deck-title-field"><input id="deck-name" value="${escapeHtml(detail.deck.name)}" aria-label="Deckname"></div><select id="deck-format" class="select-control">${formats.map(x=>`<option value="${x.id}" ${x.id===detail.deck.format_id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select><a href="${escapeHtml(validation.rules_url)}" target="_blank" rel="noopener">Regeln ↗</a><button id="deck-import-open" class="icon-button" title="Deckliste importieren">↧</button><button id="delete-deck" class="icon-button" title="Deck löschen">⌫</button></header>
+    <section class="deck-editor"><header class="deck-editor-head"><button class="compact-back-button" id="deck-overview-back" title="Alle Decks" aria-label="Alle Decks">←</button><div class="deck-title-field"><input id="deck-name" value="${escapeHtml(detail.deck.name)}" aria-label="Deckname"></div><select id="deck-format" class="select-control">${formats.map(x=>`<option value="${x.id}" ${x.id===detail.deck.format_id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select><a class="deck-rules-button" href="${escapeHtml(validation.rules_url)}" target="_blank" rel="noopener"><span>Regeln</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"/><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a><button id="deck-actions-open" class="icon-button deck-header-menu-button" title="Deckaktionen" aria-label="Deckaktionen öffnen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg></button></header>
+      <button type="button" class="deck-catalog-open-button" id="deck-catalog-open" aria-controls="deck-card-catalog" aria-expanded="${state.deckCatalogOpen}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="12" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M11 9v6M8 12h6"/></svg><span><b>Karten hinzufügen</b><small>${catalog.pagination.total} Basiskarten durchsuchen</small></span><i>›</i></button>
       ${deckWorkspace}
     </section>
-    <aside class="deck-catalog"><div class="deck-catalog-title"><div><b>Kartenkatalog</b><span>${catalog.pagination.total} Basiskarten · ${isOnePiece?'EN':f.language==='all'?'alle Sprachen':f.language}</span></div></div>${filters}<div class="catalog-card-list ${state.deckView==='grid'?'catalog-card-grid-list':''}">${catalog.cards.map(c=>deckCatalogCard(c,profile,deckQuantities)).join('')}<div class="deck-catalog-sentinel">${catalog.pagination.has_more?'Weitere Karten werden geladen …':'Alle Treffer geladen'}</div></div></aside></div>`;
+    <button type="button" class="deck-catalog-backdrop ${state.deckCatalogOpen?'is-open':''}" aria-label="Kartenkatalog schließen"></button>
+    <aside id="deck-card-catalog" class="deck-catalog ${state.deckCatalogOpen?'is-open':''}"><div class="deck-catalog-title"><div><b>Kartenkatalog</b><span>${catalog.pagination.total} Basiskarten · ${isOnePiece?'EN':f.language==='all'?'alle Sprachen':f.language}</span></div><button type="button" class="deck-catalog-close" id="deck-catalog-close" aria-label="Kartenkatalog schließen">×</button></div>${filters}<div class="catalog-card-list ${state.deckView==='grid'?'catalog-card-grid-list':''}">${catalog.cards.map(c=>deckCatalogCard(c,profile,deckQuantities)).join('')}<div class="deck-catalog-sentinel">${catalog.pagination.has_more?'Weitere Karten werden geladen …':'Alle Treffer geladen'}</div></div></aside></div>`;
+  setDeckCatalogOpen(state.deckCatalogOpen);
   bindDeckImagePreviews();
   const catalogList=$('.catalog-card-list'),sentinel=$('.deck-catalog-sentinel');
   const catalogSnapshot=()=>({scrollTop:catalogList.scrollTop,loadedCount:catalog.cards.length});
   if(catalogPosition)requestAnimationFrame(()=>{catalogList.scrollTop=Math.max(0,Number(catalogPosition.scrollTop)||0)});
-  $('#deck-overview-back').onclick=()=>{state.deckId=null;renderDeckbuilder()};
+  $('#deck-catalog-open').onclick=()=>setDeckCatalogOpen(true);
+  $('#deck-catalog-close').onclick=()=>setDeckCatalogOpen(false);
+  $('.deck-catalog-backdrop').onclick=()=>setDeckCatalogOpen(false);
+  $('#deck-overview-back').onclick=()=>{setDeckCatalogOpen(false);state.deckId=null;renderDeckbuilder()};
   $$('[data-deck-view]').forEach(button=>button.onclick=()=>{state.deckView=button.dataset.deckView;renderDeckbuilder(true)});
   $('#deck-zoom')?.addEventListener('input',event=>{state.deckZoom=Number(event.target.value);const shell=$('.deck-shell-editor');shell.style.setProperty('--deck-card-size',`${state.deckZoom}px`);shell.style.setProperty('--catalog-card-size',`${state.deckZoom}px`);$('#deck-zoom-value').textContent=`${state.deckZoom}%`});
   $$('.zone-tabs button').forEach(b=>b.onclick=()=>{state.deckZone=b.dataset.zone;renderDeckbuilder(true)});
@@ -1333,8 +1531,19 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   };
   if(catalog.pagination.has_more&&'IntersectionObserver'in window){state.deckCatalogObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))loadMoreCatalog()},{root:catalogList,rootMargin:'240px'});state.deckCatalogObserver.observe(sentinel)}
   $('#deck-name').onchange=e=>saveDeckMeta(e.target.value,$('#deck-format').value,detail.deck.notes||'');$('#deck-format').onchange=e=>saveDeckMeta($('#deck-name').value,e.target.value,detail.deck.notes||'');
-  $('#delete-deck').onclick=async()=>{if(!confirm(`Deck „${detail.deck.name}“ löschen?`))return;await api(`/api/decks/${state.deckId}`,{method:'DELETE'});state.deckId=null;renderDeckbuilder()};
-  $('#deck-import-open').onclick=()=>{$('#deck-import-preview').classList.remove('visible');$('#deck-import-preview').innerHTML='';$('#deck-apply-import').disabled=true;openOverlay('deck-import-modal')};
+  $('#deck-actions-open').onclick=()=>openOverlay('deck-transfer-modal');
+  $('#deck-delete-choice').onclick=async()=>{closeOverlay('deck-transfer-modal');if(!confirm(`Deck „${detail.deck.name}“ löschen?`))return;await api(`/api/decks/${state.deckId}`,{method:'DELETE'});setDeckCatalogOpen(false);state.deckId=null;renderDeckbuilder()};
+  $('#deck-transfer-import-choice').onclick=()=>{closeOverlay('deck-transfer-modal');$('#deck-import-preview').classList.remove('visible');$('#deck-import-preview').innerHTML='';$('#deck-apply-import').disabled=true;openOverlay('deck-import-modal')};
+  // hrefs set right before opening (not baked into the static template markup) since the target
+  // deck id is only known once a deck is actually open -- plain <a href download> links, same
+  // pattern as the collection export cards (#importexport-export-section), no extra JS fetch
+  // needed for the file download itself.
+  $('#deck-transfer-export-choice').onclick=()=>{
+    closeOverlay('deck-transfer-modal');
+    $('#deck-export-list').href=`/api/decks/${state.deckId}/export/list.txt`;
+    $('#deck-export-missing').href=`/api/decks/${state.deckId}/export/missing.txt`;
+    openOverlay('deck-export-modal');
+  };
   let timer;$('#deck-q').oninput=e=>{clearTimeout(timer);f.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deck-q',()=>renderDeckbuilder(true)),250)};
   $('#deck-sort').value=f.sort;$('#deck-sort').onchange=event=>{f.sort=event.target.value;renderDeckbuilder(true)};
   if(isOnePiece){
@@ -1362,9 +1571,29 @@ function renderCardModal(){
   const variantLabel=x=>`${x.set_code} · ${x.collector_number} · ${variantName(x)}`;
   const languages=[...new Set(card.variants.map(x=>x.language))];
   const visual=finishPresentation(v);
-  $('#card-dialog').innerHTML=`<div class="card-modal-layout"><section class="card-stage"><div class="variant-hint top">${idx>0?`<button data-variant-nav="-1">↑ ${escapeHtml(variantLabel(physicalVariants[idx-1]))}</button>`:''}</div><button class="card-nav-button prev" ${gridIdx<=0?'disabled':''} data-card-nav="-1">‹</button><div class="modal-card-frame card-finish-frame ${visual.effect}"><img class="modal-card-image" src="${artUrl(v.id,'full')}" alt="${escapeHtml(card.canonical_name)}"></div><button class="card-nav-button next" ${gridIdx<0||gridIdx>=state.cards.length-1?'disabled':''} data-card-nav="1">›</button><div class="variant-hint bottom">${idx<physicalVariants.length-1?`<button data-variant-nav="1">↓ ${escapeHtml(variantLabel(physicalVariants[idx+1]))}</button>`:''}</div></section>
-  <aside class="modal-side"><header class="modal-head"><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${escapeHtml(card.canonical_name)}</h2><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div><button class="close-button" data-close="card-modal">×</button></header><nav class="modal-tabs">${[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']].map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside></div>`;
+  // Card names are "<Titel> - <Untertitel>" (Lorcana convention) -- split so the two
+  // halves can be styled distinctly (mobile-modern: subtitle smaller + lighter). Safe
+  // on names with no " - " at all (titleSub stays empty) and on extra dashes further in
+  // the subtitle (only the FIRST " - " splits, the rest stays part of titleSub).
+  const [titleMain,...titleSubParts]=card.canonical_name.split(' - ');
+  const titleSub=titleSubParts.join(' - ');
+  const titleHtml=escapeHtml(titleMain);
+  // Feedback: the leading "- " read as if the subtitle belonged to the set-line below it
+  // rather than the title above -- dropped (CSS pulls the line closer to the title too).
+  const titleSubHtml=titleSub?`<span class="card-title-sub">${escapeHtml(titleSub)}</span>`:'';
+  $('#card-dialog').innerHTML=`<div class="card-modal-layout">
+    <button class="close-button" data-close="card-modal">×</button>
+    <div class="modal-quick-menu-wrap">
+      <button class="modal-menu-button" data-modal-menu-toggle aria-label="Menü" aria-expanded="false">⋯</button>
+      <div class="modal-quick-menu hidden" id="modal-quick-menu"><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></div>
+    </div>
+    <section class="card-stage"><div class="stage-backdrop"></div><div class="stage-platform-wrap"><img class="stage-platform-svg" src="/glass-plate.svg" alt="" aria-hidden="true"></div><div class="stage-flare-anchor"></div><div class="stage-flare-cross"></div><div class="variant-hint top">${idx>0?`<button data-variant-nav="-1">↑ ${escapeHtml(variantLabel(physicalVariants[idx-1]))}</button>`:''}</div><button class="card-nav-button prev" ${gridIdx<=0?'disabled':''} data-card-nav="-1">‹</button><div class="modal-card-frame-wrap card-tilt-zone"><div class="modal-card-frame card-finish-frame card-tilt ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.id)}')"><img class="modal-card-image" draggable="false" src="${artUrl(v.id,'full')}" alt="${escapeHtml(card.canonical_name)}">${visual.effect!=='finish-normal'?'<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><div class="card-shine" aria-hidden="true"></div>':''}${visual.effect!=='finish-normal'&&v.game_id==='lorcana'?officialFoilLayerMarkup():''}</div><img class="modal-card-reflection" src="${artUrl(v.id,'full')}" alt="" aria-hidden="true"></div><button class="card-nav-button next" ${gridIdx<0||gridIdx>=state.cards.length-1?'disabled':''} data-card-nav="1">›</button><div class="variant-hint bottom">${idx<physicalVariants.length-1?`<button data-variant-nav="1">↓ ${escapeHtml(variantLabel(physicalVariants[idx+1]))}</button>`:''}</div></section>
+    <aside class="modal-side"><header class="modal-head"><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${titleHtml}</h2><b class="modal-price">${priceSymbolFirst(v.price)}</b>${titleSubHtml}<span class="modal-set-line">${escapeHtml(v.set_name)}<b class="meta-sep">·</b>#${escapeHtml(v.collector_number)} / ${v.printed_card_count!=null?v.printed_card_count:'–'}</span><span class="modal-rarity-line">${escapeHtml(v.rarity)}<b class="meta-sep">·</b>${escapeHtml(variantName(v))}</span><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></header><nav class="modal-tabs">${[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']].map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside>
+    <div class="modal-action-bar"><button class="modal-watch-bottom" data-modal-quick-watch aria-label="Watchlist umschalten">${v.watchlisted?'♥':'♡'}</button></div>
+  </div>`;
   $('[data-close="card-modal"]').onclick=()=>closeOverlay('card-modal');
+  $('[data-modal-menu-toggle]')?.addEventListener('click',e=>{const menu=$('#modal-quick-menu');const open=menu.classList.toggle('hidden');e.currentTarget.setAttribute('aria-expanded',String(!open))});
+  $('[data-modal-quick-watch]').onclick=async()=>{const listId=Number(state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt')};
   $$('[data-tab]',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalTab=b.dataset.tab;renderCardModal()});
   $$('[data-language]',$('#card-dialog')).forEach(b=>b.onclick=()=>{
     const candidates=card.variants.filter(x=>x.language===b.dataset.language);
@@ -1381,12 +1610,74 @@ function renderCardModal(){
   const refresh=$('#price-refresh',$('#card-dialog')); if(refresh)refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent='Preise werden geladen …';try{await post('/api/prices/sync',{});toast('Marktpreise aktualisiert');await openCard(card.id,v.id,true)}catch(error){toast(error.message||'Preisimport fehlgeschlagen');refresh.disabled=false;refresh.textContent='Preise aktualisieren'}};
   const advancedToggle=$('#advanced-toggle',$('#card-dialog'));
   if(advancedToggle){advancedToggle.onclick=toggleAdvancedPanel; if(advancedPanelExpanded)loadAdvancedPanel()}
+  alignReflectionMask();
+  // "wenn eine Karte geladen wird die foillayer dafür gezogen und gespeichert werden" -- fired
+  // once per modal render, only when the generic foil markup above was actually emitted (same
+  // Lorcana + non-normal-finish gate as officialFoilLayerMarkup()'s own condition, so this
+  // never fires a wasted request for a card that has no official-layer <div>s to hydrate).
+  if(visual.effect!=='finish-normal'&&v.game_id==='lorcana'){
+    hydrateOfficialFoilLayers(v.id,$('.modal-card-frame',$('#card-dialog')));
+  }
+  // .stage-platform-wrap's height is auto, sized off the plate <img>'s own natural aspect
+  // ratio -- not known until that image asynchronously finishes loading, so the call above
+  // (synchronous, right after this markup is inserted) can measure a wrong/collapsed rect.
+  // Re-running once it actually loads (or immediately via .complete if cached) guarantees at
+  // least one correct measurement.
+  const plateImg=$('.stage-platform-svg',$('#card-dialog'));
+  if(plateImg){ if(plateImg.complete)alignReflectionMask(); else plateImg.addEventListener('load',alignReflectionMask,{once:true}) }
+}
+
+// Positions the SVG mask cutout (index.html: #mt-reflection-mask / #mt-reflection-cutout-wrap)
+// that hides the card reflection specifically at the plate's front edge (id="glass_side",
+// inlined into index.html -- see glass_plate_inline_markup() in app.py). The mask's <rect> (the
+// fade) and the <g> wrapping glass_side both live in userSpaceOnUse pixel units, NOT
+// objectBoundingBox fractions -- confirmed via isolated testing that glass_side's <use> paints
+// zero pixels (correct geometry, nothing rasterized) when both its transform's scale factors are
+// simultaneously tiny fractions, which is exactly what compressing the native 500x79 shape into
+// a ~1-unit objectBoundingBox forces. So glass_side's native 500x79 coordinate space is instead
+// mapped into real screen pixels matching whatever size the plate actually occupies --
+// computed fresh from real getBoundingClientRect() rects every render, since the plate and the
+// reflection are two independently-positioned elements (the card wrapper's width caps at 340px
+// past a certain viewport size, which breaks any fixed
+// proportionality between them -- a hardcoded value only ever lines up at one exact width).
+function alignReflectionMask(){
+  const dialog=$('#card-dialog');
+  const plate=$('.stage-platform-wrap',dialog);
+  const refl=$('.modal-card-reflection',dialog);
+  const cutout=document.getElementById('mt-reflection-cutout-wrap');
+  const fadeRect=document.getElementById('mt-reflection-fade-rect');
+  if(!plate||!refl||!cutout||!fadeRect)return;
+  const p=plate.getBoundingClientRect(), r=refl.getBoundingClientRect();
+  if(!r.height||!p.height)return;
+  // Pixel (userSpaceOnUse), not 0-1 objectBoundingBox fractions -- confirmed via isolated
+  // testing that glass_side's <use> paints zero pixels when both its transform's scale factors
+  // are simultaneously tiny fractions (compressing the native 500x79 shape into a ~1-unit box
+  // forces exactly that). Real pixel-sized scale factors (order 0.6-0.8, matching the plate's
+  // actual on-screen size) avoid the failure zone. The mask's own coordinate system here is the
+  // reflection element's own pixel box, so the fade rect needs its size set to match too.
+  fadeRect.setAttribute('width',r.width);
+  fadeRect.setAttribute('height',r.height);
+  const pxX=p.x-r.x;
+  // This element is scaleY(-1)'d, so the mask flips along with it -- authoring a position in
+  // local/pre-flip coordinates means reflecting the target visual edges through the box's own
+  // local center first (same derivation used for the old CSS mask-position approach): local =
+  // own-size - visual.
+  const visualTop=p.y-r.y, visualBottom=(p.y+p.height)-r.y;
+  const localTop=r.height-visualTop, localBottom=r.height-visualBottom;
+  // localTop is where the plate's native Y=0 (top/back) lands once flipped into local space;
+  // it's the LARGER of the two (localBottom is native Y=79, the front edge). The Y-scale must
+  // be negative: native Y increasing (0 -> 79, back -> front) has to walk local-Y DOWNWARD
+  // (localTop -> localBottom) for the flip to land it right-side-up on screen. A positive
+  // scale from the smaller value mirrors the whole plate top-for-bottom inside the mask.
+  const pxY=Math.max(localTop,localBottom);
+  const scaleW=p.width/500, scaleH=-(p.height/79);
+  cutout.setAttribute('transform',`translate(${pxX} ${pxY}) scale(${scaleW} ${scaleH})`);
 }
 
 function modalTabContent(card,v){
   const physicalVariants=card.variants.filter(x=>x.language===v.language);
   const modalIsLorcana=v.game_id==='lorcana';
-  if(state.modalTab==='collection')return `<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div><div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div></div><div class="detail-section"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
+  if(state.modalTab==='collection')return `<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div><div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div></div><div class="detail-section"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid collection-info-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
   if(state.modalTab==='market'){
     const original=nativePrice(v);
     const conversion=original?` · ${escapeHtml(original)} in ${escapeHtml(v.price_native_currency)} · EZB ${date(v.price_exchange_date)}`:'';
@@ -1399,10 +1690,24 @@ function modalTabContent(card,v){
   return `<div class="detail-section-title">IDENTITÄT & DRUCKE</div><div class="relationship"><span>◇</span><div><b>Gameplay-Identität</b><small>${escapeHtml(card.canonical_name)} · sprachunabhängig</small></div></div><div class="relationship"><span>文</span><div><b>${new Set(card.variants.map(x=>x.language)).size} Sprachversionen</b><small>${[...new Set(card.variants.map(x=>x.language))].join(' · ')} · separat auswählbar</small></div></div><div class="relationship"><span>▤</span><div><b>${new Set(physicalVariants.map(x=>x.printing_id)).size} Drucke auf ${v.language}</b><small>Set- und Promo-Drucke dieser Sprache</small></div></div><div class="relationship"><span>✦</span><div><b>${physicalVariants.length} Ausführungen auf ${v.language}</b><small>${[...new Set(physicalVariants.map(x=>modalIsLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish))].join(' · ')}</small></div></div><div class="relationship"><span>↗</span><div><b>Physisches Set</b><small>${escapeHtml(v.set_name)} (${escapeHtml(v.set_code)})</small></div></div>`;
 }
 
-function openOverlay(id){$(`#${id}`).classList.remove('hidden');document.body.style.overflow='hidden';if(id==='global-search-open')return}
-function closeOverlay(id){$(`#${id}`).classList.add('hidden');document.body.style.overflow='';if(id==='card-modal'){state.modalCard=null}}
+// Bug fix: setting overflow:hidden on body ALONE doesn't reliably lock page scroll -- confirmed
+// via a same-origin test (window.scrollBy still moved window.scrollY with only body locked).
+// documentElement (<html>) is the actual scrolling element in some engines/configurations, so
+// both need the lock. Root cause of the mobile card-modal's fixed footer bar appearing to
+// "scroll with the page": the page underneath was still scrollable, and on real mobile browsers
+// that competing scroll (plus the address-bar show/hide it triggers) is what made the bar look
+// unanchored, even though position:fixed itself was working correctly the whole time.
+function openOverlay(id){$(`#${id}`).classList.remove('hidden');document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden';if(id==='global-search-open')return}
+function closeOverlay(id){$(`#${id}`).classList.add('hidden');document.documentElement.style.overflow='';document.body.style.overflow='';if(id==='card-modal'){state.modalCard=null}}
 
-async function refreshWatchCount(){if(!state.activeGameId)return;const lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);$('#watch-count').textContent=lists.reduce((a,l)=>a+l.count,0)}
+async function refreshWatchCount(){
+  if(!state.activeGameId)return;
+  const lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);
+  const count=lists.reduce((a,l)=>a+l.count,0);
+  $('#watch-count').textContent=count;
+  const mtBadge=$('#mt-watch-count');
+  if(mtBadge){mtBadge.textContent=count;mtBadge.classList.toggle('hidden',count===0)}
+}
 
 async function doSearch(q){
   const wrap=$('#search-results'); if(q.trim().length<2){wrap.innerHTML='<div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Suche nach Name, Set oder Sammlernummer.</span></div>';return}
@@ -1465,6 +1770,174 @@ async function handleImportJsonFile(file){
 }
 
 function wireGlobalEvents(){
+  // Re-align the reflection mask cutout on resize/orientation-change while the card modal is
+  // open -- computed from real element rects (see alignReflectionMask), which shift with
+  // viewport width.
+  window.addEventListener('resize',()=>{if(state.modalCard)alignReflectionMask()});
+  // Parallax toolkit -- tilt-on-press + mouseover shine, matching the poke-holo.simey.me /
+  // pokemon-cards-css reference interaction. Now wired to the card detail modal: the whole
+  // stage card (.modal-card-frame-wrap) is a .card-tilt-zone, the card itself
+  // (.modal-card-frame) is the .card-tilt element -- pressing+dragging it rotates it toward
+  // the pointer, matching "wenn die Karte angeklickt wird".
+  // --tilt-x/--tilt-y are set on the ZONE, not on .card-tilt directly, and read via var()
+  // inheritance by both .card-tilt (foil-effects.css) AND .modal-card-reflection
+  // (mobile-theme.css) -- CSS custom properties inherit to descendants by default, so one
+  // write keeps the card and its floor reflection perfectly in sync without the JS needing to
+  // know the reflection exists. Same reasoning for is-dragging: toggled on the zone itself, not
+  // on individual descendants, so every consumer's own "no transition while dragging" rule
+  // (keyed off .card-tilt-zone.is-dragging ...) reacts identically. Currently only the card
+  // detail modal opts in; unused everywhere else the toolkit's classes aren't present.
+  let cardTiltDragging=null;
+  // Loaded once, lazily -- non-Lorcana sessions / browsers where the dynamic import fails never
+  // pay for this (foilInteractionController stays null forever, every call site below no-ops,
+  // same fallback-to-CSS path as "WebGL not supported" -- see 12).
+  let foilInteractionController=null;
+  import('/static/lorcana-foil/FoilInteractionController.js').then(m=>{foilInteractionController=m.foilInteractionController}).catch(()=>{});
+  // Builds the LorcanaFoilInput for whichever card is currently in the modal, reusing the
+  // official-layer metadata hydrateOfficialFoilLayers() already fetched (not re-requested per
+  // hover). null covers every "nothing to attach WebGL to" case at once: non-Lorcana, no
+  // official match, meta not loaded yet, or the meta belongs to a card that's since been
+  // switched away from (a fast language/variant change mid-fetch) -- every case falls back to
+  // the plain CSS effect, never an error or a blank card (12).
+  const foilInputForModal=()=>{
+    const v=state.modalVariant;
+    if(!v||v.game_id!=='lorcana')return null;
+    const meta=state.modalFoilLayerMeta;
+    if(!meta||!meta.available||state.modalFoilLayerMetaVariantId!==v.id)return null;
+    return {
+      cardImageUrl: artUrl(v.id,'full'),
+      foilType: meta.foil_type||null,
+      foilMaskUrl: meta.mask_url||null,
+      topLayer: meta.foil_top_layer||null,
+      topLayerMaskUrl: meta.top_layer_mask_url||null,
+      secondTopLayerMaskUrl: meta.second_top_layer_mask_url||null,
+      hotFoilColor: meta.hot_foil_color||null,
+      secondHotFoilColor: meta.second_hot_foil_color||null,
+    };
+  };
+  // Crossfade (5): is-webgl-active fades foil-fx-a/b out via the exact same opacity transition
+  // they already have (foil-effects.css) while the canvas fades itself in -- only added once
+  // attach() actually resolves true, so a WebGL failure/no-match leaves the class off and the
+  // card simply keeps running its untouched idle CSS animation, satisfying "bleibt der bisherige
+  // CSS-Foil aktiv" (12) without any extra branching here.
+  const startWebglHover=(zone,clientX,clientY)=>{
+    if(!foilInteractionController)return;
+    const card=$('.card-tilt',zone); if(!card)return;
+    const input=foilInputForModal(); if(!input)return;
+    foilInteractionController.markPending(card);
+    foilInteractionController.attach(card,input).then(ok=>{
+      if(!ok)return;
+      zone.classList.add('is-webgl-active');
+      foilInteractionController.updatePointer(clientX,clientY);
+    });
+  };
+  const stopWebglHover=zone=>{
+    zone.classList.remove('is-webgl-active');
+    foilInteractionController?.fadeOutAndDetach();
+  };
+  // ---- PARKED per explicit instruction ("der aktuelle interaktive Effekt soll erstmal
+  // geparkt werden") -- the 1:1 Trainer-Gallery-Holo port (rainbow/hot-spot/glare reveal on
+  // foil-fx-c/.card-shine, driven by is-parallax-active) while the WebGL replacement above is
+  // evaluated. Nothing below is deleted -- setParallaxReveal, the foil-fx-c/.card-shine CSS
+  // (foil-effects.css) and the is-parallax-active rules are all still complete and correct, just
+  // not called from the live pointer wiring anymore (see startWebglHover/stopWebglHover above,
+  // which is what pointerdown/pointerover/pointermove/pointerup/pointerout actually call now).
+  // Re-enabling it later is: call setParallaxReveal(zone,...) again + toggle is-parallax-active
+  // where startWebglHover/stopWebglHover are called below.
+  // bt() is the reference's own remap/lerp helper (their bundled JS, minified as `bt`) --
+  // ported verbatim, not reinvented: linear-interpolate `v` from [inMin,inMax] into [outMin,outMax].
+  const tgRemap=(v,inMin,inMax,outMin,outMax)=>outMin+(v-inMin)/(inMax-inMin)*(outMax-outMin);
+  const setParallaxReveal=(zone,clientX,clientY)=>{
+    const r=zone.getBoundingClientRect();
+    // fx/fy are the pointer's position as 0-100 within the card, matching the reference's own
+    // --pointer-x/--pointer-y convention exactly.
+    const fx=(clientX-r.left)/r.width*100, fy=(clientY-r.top)/r.height*100;
+    // --tg-y: their `background.y = bt(pointerY, 0, 100, 33, 67)` -- narrow band, NOT the full
+    // 0-100 range, feeds .card__shine's own background-position (vertical only; the reference's
+    // horizontal background-position value is dead code there -- .card__shine has a single
+    // background-image layer, so only the first of its two comma-separated position values
+    // ever actually applies, per the CSS spec's layer-count truncation rule).
+    zone.style.setProperty('--tg-y',`${tgRemap(fy,0,100,33,67).toFixed(2)}%`);
+    // --tg-from-center: their exact formula, clamp(sqrt((y-50)^2+(x-50)^2)/50, 0, 1) -- feeds
+    // both shine layers' brightness(...) filters, unitless (used inside calc() as a raw number).
+    const fromCenter=Math.min(1,Math.max(0,Math.sqrt((fy-50)**2+(fx-50)**2)/50));
+    zone.style.setProperty('--tg-from-center',fromCenter.toFixed(3));
+    // --tg-spot-x/y: their `.card__shine:after` offset, `(pointer*0.5)+25` -- the hot-spot only
+    // travels the CENTRAL half of the card (25%-75%), not edge-to-edge.
+    zone.style.setProperty('--tg-spot-x',`${(fx*0.5+25).toFixed(2)}%`);
+    zone.style.setProperty('--tg-spot-y',`${(fy*0.5+25).toFixed(2)}%`);
+    // --shine-x/y (.card-shine = their .card__glare, a separate element): straight pointer
+    // position, no remap -- matches `radial-gradient(... at var(--pointer-x) var(--pointer-y))`.
+    const shine=$('.card-shine',zone);
+    if(shine){
+      shine.style.setProperty('--shine-x',`${fx.toFixed(2)}%`);
+      shine.style.setProperty('--shine-y',`${fy.toFixed(2)}%`);
+      shine.style.setProperty('--shine-opacity','1');
+    }
+  };
+  const setCardTilt=(zone,clientX,clientY)=>{
+    if(!$('.card-tilt',zone))return;
+    const r=zone.getBoundingClientRect();
+    const px=((clientX-r.left)/r.width-0.5)*2, py=((clientY-r.top)/r.height-0.5)*2;
+    const max=14; // deg -- a real tilt like the reference, not a token wiggle
+    zone.style.setProperty('--tilt-y',`${(px*max).toFixed(1)}deg`);
+    zone.style.setProperty('--tilt-x',`${(-py*max).toFixed(1)}deg`);
+    // setParallaxReveal(zone,clientX,clientY) -- PARKED, see the comment block above.
+  };
+  const resetCardTilt=zone=>{
+    if(!$('.card-tilt',zone))return;
+    zone.style.setProperty('--tilt-x','0deg'); zone.style.setProperty('--tilt-y','0deg');
+  };
+  document.addEventListener('pointerdown',e=>{
+    const zone=e.target.closest('.card-tilt-zone'); if(!zone)return;
+    cardTiltDragging=zone;
+    zone.classList.add('is-dragging');
+    setCardTilt(zone,e.clientX,e.clientY);
+    // Touch/pen press has no hover state to trigger WebGL from otherwise -- this is its entry
+    // point, same reasoning the parked CSS reveal used.
+    startWebglHover(zone,e.clientX,e.clientY);
+  });
+  // pointerover (bubbles), pairs with pointerout below -- fires once per fresh entry into the
+  // zone (relatedTarget check same as pointerout's), NOT on every move within it. Mouse only:
+  // matches .card-shine's pre-existing "der Mouseover Shine-Effekt" scoping -- touch has no
+  // hover to drive this from before an actual press.
+  document.addEventListener('pointerover',e=>{
+    if(e.pointerType!=='mouse')return;
+    const zone=e.target.closest('.card-tilt-zone'); if(!zone)return;
+    if(zone.contains(e.relatedTarget))return;
+    startWebglHover(zone,e.clientX,e.clientY);
+  });
+  document.addEventListener('pointermove',e=>{
+    if(cardTiltDragging){
+      setCardTilt(cardTiltDragging,e.clientX,e.clientY);
+      foilInteractionController?.updatePointer(e.clientX,e.clientY);
+      return;
+    }
+    if(e.pointerType!=='mouse')return;
+    const zone=e.target.closest('.card-tilt-zone'); if(!zone)return;
+    foilInteractionController?.updatePointer(e.clientX,e.clientY);
+  });
+  document.addEventListener('pointerup',e=>{
+    if(!cardTiltDragging)return;
+    cardTiltDragging.classList.remove('is-dragging');
+    resetCardTilt(cardTiltDragging);
+    // Mouse release: the pointer is still hovering (releasing a button doesn't move the
+    // cursor), so leave the WebGL layer running -- the hover handlers above keep driving it
+    // until the mouse actually leaves. Touch/pen has no hover to fall back to once lifted, so
+    // end it immediately along with the tilt.
+    if(e.pointerType!=='mouse')stopWebglHover(cardTiltDragging);
+    cardTiltDragging=null;
+  });
+  // pointerout (bubbles), not pointerleave (doesn't) -- delegation needs the bubbling version.
+  // relatedTarget check confirms the pointer actually left the zone, not just moved to a child
+  // element still inside it.
+  document.addEventListener('pointerout',e=>{
+    const zone=e.target.closest('.card-tilt-zone'); if(!zone)return;
+    if(zone.contains(e.relatedTarget))return;
+    if(cardTiltDragging===zone){zone.classList.remove('is-dragging');cardTiltDragging=null}
+    resetCardTilt(zone);
+    stopWebglHover(zone);
+  });
   $$('[data-route]').forEach(el=>el.onclick=()=>{if(el.dataset.route==='decks')state.deckId=null;routeTo(el.dataset.route)});
   $('#mobile-menu').onclick=()=>$('.sidebar').classList.toggle('open');
   $('#sidebar-collapse').onclick=()=>{document.body.classList.toggle('sidebar-collapsed');post('/api/settings',{sidebarCollapsed:document.body.classList.contains('sidebar-collapsed')})};
@@ -1481,9 +1954,11 @@ function wireGlobalEvents(){
   window.addEventListener('scroll',()=>$('#back-to-top').classList.toggle('hidden',window.scrollY<600),{passive:true});
   $('#back-to-top').onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
   $('#global-game-filter').onchange=e=>{setActiveGame(e.target.value);refreshWatchCount();if(['collection','watchlist','decks'].includes(state.route))routeTo(state.route);else routeTo('game',e.target.value)};
-  $('#edit-toggle').onclick=()=>{state.edit=!state.edit;document.body.classList.toggle('editing',state.edit);$('#edit-panel').classList.toggle('on',state.edit);$('#edit-toggle').setAttribute('aria-checked',String(state.edit));toast(state.edit?'Edit Mode aktiviert':'Edit Mode beendet')};
+  $('#edit-toggle').onclick=toggleEditMode;
+  $('#mobile-edit-toggle')?.addEventListener('click',toggleEditMode);
+  setEditMode(state.edit);
   const searchOpen=()=>{openOverlay('search-overlay');setTimeout(()=>$('#global-search-input').focus(),50)}; $('#global-search-open').onclick=searchOpen;
-  document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen()}if(e.key==='Escape')$$('.overlay:not(.hidden)').forEach(x=>closeOverlay(x.id));if(state.modalCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){const btn=e.key==='ArrowLeft'?'[data-card-nav="-1"]':e.key==='ArrowRight'?'[data-card-nav="1"]':e.key==='ArrowUp'?'[data-variant-nav="-1"]':'[data-variant-nav="1"]';$(btn,$('#card-dialog'))?.click()}});
+  document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen()}if(e.key==='Escape'){setDeckCatalogOpen(false);$$('.overlay:not(.hidden)').forEach(x=>closeOverlay(x.id))}if(state.modalCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){const btn=e.key==='ArrowLeft'?'[data-card-nav="-1"]':e.key==='ArrowRight'?'[data-card-nav="1"]':e.key==='ArrowUp'?'[data-variant-nav="-1"]':'[data-variant-nav="1"]';$(btn,$('#card-dialog'))?.click()}});
   let searchTimer;$('#global-search-input').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>doSearch(e.target.value),220)};
   $$('.overlay').forEach(o=>o.addEventListener('mousedown',e=>{if(e.target===o)closeOverlay(o.id)}));$$('[data-close]').forEach(b=>b.onclick=()=>closeOverlay(b.dataset.close));
   const syncImportLanguage=()=>{const gameId=$('#import-game').value;const game=state.boot.games.find(g=>g.id===gameId);const lang=state.boot.settings?.defaultLanguages?.[gameId]||game?.languages[0];if(lang)$('#import-language').value=lang};
@@ -1511,7 +1986,7 @@ function wireGlobalEvents(){
 }
 
 async function init(){
-  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');document.body.classList.toggle('mobile-light',settings.mobileThemeAppearance==='light');wireGlobalEvents();await refreshWatchCount();renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
 updateOfflineIndicator();
