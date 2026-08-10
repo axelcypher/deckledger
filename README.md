@@ -69,3 +69,22 @@ docker compose down
 ```
 
 `docker compose down` keeps the named data volume. Use a strong `SECRET_KEY` environment variable before exposing the application outside a local test environment.
+
+## Deployment repository update
+
+After a successful image publication from `main` or a `v*` tag, the container
+workflow can update an image variable in a tracked environment file in another
+repository. The written value is the immutable GHCR reference including its
+digest, for example `ghcr.io/axelcypher/deckledger@sha256:…`.
+
+Configure these GitHub repository variables in DeckLedger:
+
+- `DECKLEDGER_DEPLOY_REPOSITORY` (required): target in `owner/repository` form
+- `DECKLEDGER_DEPLOY_BRANCH` (optional, default `main`)
+- `DECKLEDGER_DEPLOY_ENV_FILE` (optional, default `.env`)
+- `DECKLEDGER_DEPLOY_IMAGE_KEY` (optional, default `DECKLEDGER_IMAGE`)
+
+Add `DECKLEDGER_DEPLOY_TOKEN` as a repository secret. It must be a fine-grained
+personal access token with read/write access to repository contents in the
+target repository. The deployment-update job stays disabled until
+`DECKLEDGER_DEPLOY_REPOSITORY` is configured.
