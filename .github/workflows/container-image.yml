@@ -24,7 +24,7 @@ jobs:
     name: Build container image
     runs-on: ubuntu-latest
     outputs:
-      published_image: ${{ steps.published_image.outputs.reference }}
+      published_tag: ${{ steps.published_tag.outputs.tag }}
     permissions:
       contents: read
       packages: write
@@ -56,7 +56,7 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha
+            type=raw,value=sha-${{ github.sha }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Build and push image
@@ -71,14 +71,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Export immutable image reference
-        id: published_image
+      - name: Export immutable image tag
+        id: published_tag
         if: github.event_name != 'pull_request'
-        env:
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          test -n "$IMAGE_DIGEST"
-          echo "reference=${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          test -n "$GITHUB_SHA"
+          echo "tag=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Attest published image
         if: github.event_name != 'pull_request'
@@ -89,7 +87,7 @@ jobs:
           push-to-registry: true
 
   update-deployment-repository:
-    name: Update deployment image reference
+    name: Update deployment image tag
     needs: build
     if: >-
       ${{
@@ -104,8 +102,8 @@ jobs:
       TARGET_REPOSITORY: ${{ vars.DECKLEDGER_DEPLOY_REPOSITORY }}
       TARGET_BRANCH: ${{ vars.DECKLEDGER_DEPLOY_BRANCH || 'main' }}
       TARGET_ENV_FILE: ${{ vars.DECKLEDGER_DEPLOY_ENV_FILE || '.env' }}
-      TARGET_IMAGE_KEY: ${{ vars.DECKLEDGER_DEPLOY_IMAGE_KEY || 'DECKLEDGER_IMAGE' }}
-      IMAGE_REFERENCE: ${{ needs.build.outputs.published_image }}
+      TARGET_IMAGE_KEY: ${{ vars.DECKLEDGER_DEPLOY_IMAGE_KEY || 'DECKLEDGER_IMAGE_VERSION' }}
+      IMAGE_TAG: ${{ needs.build.outputs.published_tag }}
 
     steps:
       - name: Check out deployment repository
@@ -138,7 +136,7 @@ jobs:
           fi
 
           temporary_file="$(mktemp)"
-          awk -v key="$TARGET_IMAGE_KEY" -v value="$IMAGE_REFERENCE" '
+          awk -v key="$TARGET_IMAGE_KEY" -v value="$IMAGE_TAG" '
             BEGIN { updated = 0 }
             $0 ~ "^" key "=" {
               if (!updated) print key "=" value
@@ -158,7 +156,7 @@ jobs:
         run: |
           git add -- "$TARGET_ENV_FILE"
           if git diff --cached --quiet; then
-            echo "Deployment repository already references $IMAGE_REFERENCE"
+            echo "Deployment repository already references image tag $IMAGE_TAG"
             exit 0
           fi
 

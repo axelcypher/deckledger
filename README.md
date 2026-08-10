@@ -74,15 +74,15 @@ docker compose down
 
 After a successful image publication from `main` or a `v*` tag, the container
 workflow can update an image variable in a tracked environment file in another
-repository. The written value is the immutable GHCR reference including its
-digest, for example `ghcr.io/axelcypher/deckledger@sha256:…`.
+repository. The written value is only the immutable image tag without registry
+or image name, for example `sha-99fc47d723e19fd5d0bfea747318416cfaec03eee`.
 
 Configure these GitHub repository variables in DeckLedger:
 
 - `DECKLEDGER_DEPLOY_REPOSITORY` (required): target in `owner/repository` form
 - `DECKLEDGER_DEPLOY_BRANCH` (optional, default `main`)
 - `DECKLEDGER_DEPLOY_ENV_FILE` (optional, default `.env`)
-- `DECKLEDGER_DEPLOY_IMAGE_KEY` (optional, default `DECKLEDGER_IMAGE`)
+- `DECKLEDGER_DEPLOY_IMAGE_KEY` (optional, default `DECKLEDGER_IMAGE_VERSION`)
 
 Add `DECKLEDGER_DEPLOY_TOKEN` as a repository secret. It must be a fine-grained
 personal access token with read/write access to repository contents in the
