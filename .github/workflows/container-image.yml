@@ -23,6 +23,8 @@ jobs:
   build:
     name: Build container image
     runs-on: ubuntu-latest
+    outputs:
+      published_image: ${{ steps.published_image.outputs.reference }}
     permissions:
       contents: read
       packages: write
@@ -69,6 +71,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Export immutable image reference
+        id: published_image
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          test -n "$IMAGE_DIGEST"
+          echo "reference=${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+
       - name: Attest published image
         if: github.event_name != 'pull_request'
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
@@ -76,3 +87,82 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  update-deployment-repository:
+    name: Update deployment image reference
+    needs: build
+    if: >-
+      ${{
+        github.event_name != 'pull_request' &&
+        vars.DECKLEDGER_DEPLOY_REPOSITORY != '' &&
+        (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v'))
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TARGET_REPOSITORY: ${{ vars.DECKLEDGER_DEPLOY_REPOSITORY }}
+      TARGET_BRANCH: ${{ vars.DECKLEDGER_DEPLOY_BRANCH || 'main' }}
+      TARGET_ENV_FILE: ${{ vars.DECKLEDGER_DEPLOY_ENV_FILE || '.env' }}
+      TARGET_IMAGE_KEY: ${{ vars.DECKLEDGER_DEPLOY_IMAGE_KEY || 'DECKLEDGER_IMAGE' }}
+      IMAGE_REFERENCE: ${{ needs.build.outputs.published_image }}
+
+    steps:
+      - name: Check out deployment repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ env.TARGET_REPOSITORY }}
+          ref: ${{ env.TARGET_BRANCH }}
+          token: ${{ secrets.DECKLEDGER_DEPLOY_TOKEN }}
+          path: deployment-repository
+
+      - name: Update DeckLedger image in environment file
+        working-directory: deployment-repository
+        shell: bash
+        run: |
+          if [[ ! "$TARGET_IMAGE_KEY" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "Invalid environment variable name: $TARGET_IMAGE_KEY" >&2
+            exit 1
+          fi
+
+          case "$TARGET_ENV_FILE" in
+            ""|/*|../*|*/../*|*/..)
+              echo "The environment file must be a safe repository-relative path." >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! -f "$TARGET_ENV_FILE" ]]; then
+            echo "Environment file not found: $TARGET_ENV_FILE" >&2
+            exit 1
+          fi
+
+          temporary_file="$(mktemp)"
+          awk -v key="$TARGET_IMAGE_KEY" -v value="$IMAGE_REFERENCE" '
+            BEGIN { updated = 0 }
+            $0 ~ "^" key "=" {
+              if (!updated) print key "=" value
+              updated = 1
+              next
+            }
+            { print }
+            END {
+              if (!updated) print key "=" value
+            }
+          ' "$TARGET_ENV_FILE" > "$temporary_file"
+          mv "$temporary_file" "$TARGET_ENV_FILE"
+
+      - name: Commit and push deployment update
+        working-directory: deployment-repository
+        shell: bash
+        run: |
+          git add -- "$TARGET_ENV_FILE"
+          if git diff --cached --quiet; then
+            echo "Deployment repository already references $IMAGE_REFERENCE"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: deploy DeckLedger ${GITHUB_SHA::12}"
+          git push origin "HEAD:$TARGET_BRANCH"
