@@ -22,7 +22,7 @@ Within one matched card, our own `finish` column (e.g. "Magma", "Silver",
 "Normal") is ALSO already identical to Ravensburger's `foil_type` values --
 lorcanajson's foilTypes field is itself sourced from the same enum -- so
 picking the right sub-variant is a direct string comparison, no fuzzy
-matching needed anywhere in this module.
+matching needed anywhere in this module...
 
 This module has zero Flask/DB dependency by design (matches the
 catalog_provider_contract.py convention elsewhere in this codebase) -- app.py
