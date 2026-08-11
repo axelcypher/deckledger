@@ -514,6 +514,16 @@ def init_database():
     watchlist_entry_columns = {row[1] for row in connection.execute("PRAGMA table_info(named_watchlist_entries)")}
     if "quantity" not in watchlist_entry_columns:
         connection.execute("ALTER TABLE named_watchlist_entries ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
+    if "source" not in watchlist_entry_columns:
+        # 'auto': created by reconcile_sale_list() for surplus stock (>4 owned copies) -- only
+        # entries tagged this way are ever silently added/removed again by that reconciliation.
+        # 'manual' (the default): everything added through the normal watchlist toggle/move --
+        # including a card moved onto the fixed sale list, or one added there despite not (yet)
+        # being surplus. Never touched by reconciliation.
+        connection.execute("ALTER TABLE named_watchlist_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+    watchlist_columns = {row[1] for row in connection.execute("PRAGMA table_info(named_watchlists)")}
+    if "is_sale_list" not in watchlist_columns:
+        connection.execute("ALTER TABLE named_watchlists ADD COLUMN is_sale_list INTEGER NOT NULL DEFAULT 0")
     for table in ("sets", "card_identities", "printings"):
         columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
         if "source_type" not in columns:
@@ -568,6 +578,11 @@ def init_database():
       SELECT nw.id,w.variant_id,w.created_at FROM watchlist_entries w
       JOIN variants v ON v.id=w.variant_id
       JOIN named_watchlists nw ON nw.user_id=w.user_id AND nw.game_id=v.game_id AND nw.is_default=1""")
+    # Fixed, per-game "Verkaufsliste" -- can't be renamed or deleted (see manage_watchlist),
+    # populated by reconcile_sale_list() with anything over a 4-copy playset plus whatever's
+    # been manually added to it. Same idempotent per-worker-restart seed as Merkliste above.
+    connection.execute("""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,is_sale_list,created_at)
+      SELECT u.id,g.id,'Verkaufsliste',0,1,? FROM users u CROSS JOIN games g""", (now_iso(),))
     connection.commit()
     connection.close()
 
@@ -1243,7 +1258,7 @@ def compare_set_release(a, b, direction="desc"):
 def card_rows(set_id, uid):
     return db().execute(
         f"""SELECT i.id identity_id,i.canonical_name,i.rules_text,i.card_type,i.attributes identity_attrs,
-            p.id printing_id,p.collector_number,p.language,p.rarity,p.set_id,
+            p.id printing_id,p.collector_number,p.language,p.rarity,p.set_id,p.attributes printing_attrs,
             v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.source_type,
             COALESCE(SUM(c.quantity),0) quantity,MAX(c.condition) condition,
             CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted,
@@ -1259,7 +1274,7 @@ def card_rows(set_id, uid):
 def game_card_rows(game_id, uid):
     return db().execute(
         f"""SELECT i.id identity_id,i.canonical_name,i.rules_text,i.card_type,i.attributes identity_attrs,
-            p.id printing_id,p.collector_number,p.language,p.rarity,p.set_id,
+            p.id printing_id,p.collector_number,p.language,p.rarity,p.set_id,p.attributes printing_attrs,
             v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.source_type,
             COALESCE(SUM(c.quantity),0) quantity,MAX(c.condition) condition,
             CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted,
@@ -1272,12 +1287,28 @@ def game_card_rows(game_id, uid):
     ).fetchall()
 
 
+def query_matches_row(query, row):
+    """Case-insensitive substring match used by every card search box -- canonical (English)
+    name, collector number, and (since a search box that only understands English names is
+    useless if you're looking at German/Japanese-localized cards) the printing's own localized
+    name and localized rules text, plus the English rules text as a bonus "search by card text"
+    field. `row` needs canonical_name/collector_number/rules_text and, when available,
+    printing_attrs (the raw printings.attributes JSON, which carries localizedName/
+    localizedRulesText) -- callers without that column just get the English-only fields."""
+    printing_attrs = jload(row.get("printing_attrs"), {})
+    fields = (
+        row.get("canonical_name"), row.get("collector_number"), row.get("rules_text"),
+        printing_attrs.get("localizedName"), printing_attrs.get("localizedRulesText"),
+    )
+    return any(query in str(field).lower() for field in fields if field)
+
+
 def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell="", finish="normal"):
     raw = [dict(row) for row in raw]
     if language != "combined":
         raw = [row for row in raw if row["language"] == language]
     if query:
-        raw = [row for row in raw if query in row["canonical_name"].lower() or query in row["collector_number"].lower()]
+        raw = [row for row in raw if query_matches_row(query, row)]
     identities = {}
     for row in raw:
         row["identity_attrs"] = jload(row["identity_attrs"], {})
@@ -1633,6 +1664,83 @@ def collection_entries_for_variant(variant_id):
     return jsonify([dict(row) for row in rows])
 
 
+@app.get("/api/variants/<variant_id>/price-history")
+@login_required
+def variant_price_history(variant_id):
+    """One point per calendar day (price_sync runs every 6h plus whenever someone hits "Preise
+    aktualisieren", so a given day usually has several raw observations) -- collapsed down with
+    the SAME provider-priority tiebreak latest_price_sql() uses for "the current price" (prefer
+    Cardmarket, else whichever provider was actually queried that day), so the chart's most
+    recent point always agrees with the price shown elsewhere on the card. window function over
+    a correlated subquery for the same reason latest_price_sql needs neither: this collapses ALL
+    rows for the day at once instead of once per row.
+    """
+    variant = db().execute("SELECT id FROM variants WHERE id=?", (variant_id,)).fetchone()
+    if not variant:
+        return jsonify({"error": "variant not found"}), 404
+    metric = request.args.get("metric", "trend")
+    if metric not in {"trend", "low", "avg30"}:
+        metric = "trend"
+    try:
+        days = min(365, max(7, int(request.args.get("days", 180))))
+    except (TypeError, ValueError):
+        days = 180
+    rows = db().execute(
+        """SELECT day, amount, currency FROM (
+             SELECT date(po.observed_at) day, po.amount, po.currency,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY date(po.observed_at)
+                      ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END, po.observed_at DESC
+                    ) rn
+             FROM price_observations po
+             WHERE po.variant_id=? AND po.metric=? AND po.observed_at >= datetime('now', ?)
+           ) WHERE rn=1 ORDER BY day""",
+        (variant_id, metric, f"-{days} days"),
+    ).fetchall()
+    points = [{"date": row["day"], "amount": row["amount"], "currency": row["currency"]} for row in rows]
+    return jsonify({"variant_id": variant_id, "metric": metric, "points": points})
+
+
+def reconcile_sale_list(list_id, uid, game_id):
+    """Keeps the fixed Verkaufsliste's auto-managed entries in sync with actual surplus stock
+    (more than 4 owned copies of a variant, summed across every condition/grading) every time
+    the list is actually viewed -- cheap enough to run on every GET, and far more robust than
+    hooking every one of the several places collection_entries.quantity can change (the main
+    quantity endpoint, collection import, import-undo, offline-sync replay, ...) individually.
+
+    Only touches its own 'auto' rows: adds one (at the current surplus count) for a newly-
+    surplus variant that doesn't already have ANY entry here (so it never clobbers a 'manual'
+    row for the same card), and removes an 'auto' row once its variant is no longer surplus at
+    all. An existing 'auto' row's quantity is deliberately left alone once created -- the surplus
+    count at creation time is just a sensible starting point, not something that should silently
+    overwrite a quantity the user has since adjusted (e.g. because they already sold some)."""
+    surplus_rows = db().execute(
+        """SELECT v.id variant_id, SUM(c.quantity) owned FROM collection_entries c
+           JOIN variants v ON v.id=c.variant_id WHERE c.user_id=? AND v.game_id=?
+           GROUP BY v.id HAVING SUM(c.quantity)>4""", (uid, game_id),
+    ).fetchall()
+    surplus_map = {row["variant_id"]: row["owned"] - 4 for row in surplus_rows}
+    existing_auto = db().execute(
+        "SELECT id,variant_id FROM named_watchlist_entries WHERE list_id=? AND source='auto'", (list_id,),
+    ).fetchall()
+    existing_auto_ids = {row["variant_id"] for row in existing_auto}
+    stamp = now_iso()
+    for variant_id, surplus in surplus_map.items():
+        if variant_id in existing_auto_ids:
+            continue
+        already = db().execute("SELECT 1 FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id, variant_id)).fetchone()
+        if already:
+            continue  # a manual entry already covers this card -- don't add a second, conflicting row
+        db().execute(
+            "INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,source,created_at) VALUES(?,?,?,?,?)",
+            (list_id, variant_id, surplus, "auto", stamp),
+        )
+    for row in existing_auto:
+        if row["variant_id"] not in surplus_map:
+            db().execute("DELETE FROM named_watchlist_entries WHERE id=?", (row["id"],))
+    db().commit()
+
+
 @app.post("/api/watchlist")
 @login_required
 def toggle_watchlist():
@@ -1744,7 +1852,9 @@ def manage_watchlist(list_id):
     if not row:return jsonify({"error":"watchlist not found"}),404
     if request.method=="DELETE":
         if row["is_default"]: return jsonify({"error":"Die Standardliste kann nicht gelöscht werden."}),400
+        if row["is_sale_list"]: return jsonify({"error":"Die Verkaufsliste kann nicht gelöscht werden."}),400
         db().execute("DELETE FROM named_watchlists WHERE id=?",(list_id,));db().commit();return jsonify({"deleted":True})
+    if row["is_sale_list"]: return jsonify({"error":"Die Verkaufsliste kann nicht umbenannt werden."}),400
     name=request.get_json(force=True).get("name","").strip()[:80]
     if not name:return jsonify({"error":"name required"}),400
     db().execute("UPDATE named_watchlists SET name=? WHERE id=?",(name,list_id));db().commit();return jsonify({"saved":True})
@@ -1755,6 +1865,7 @@ def manage_watchlist(list_id):
 def watchlist_cards(list_id):
     owned=db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?",(list_id,user_id())).fetchone()
     if not owned:return jsonify({"error":"watchlist not found"}),404
+    if owned["is_sale_list"]: reconcile_sale_list(list_id, user_id(), owned["game_id"])
     q=request.args.get("q","").strip(); language=request.args.get("language","all"); set_id=request.args.get("set_id",""); finish=request.args.get("finish",""); sort=request.args.get("sort","added")
     rarity=request.args.get("rarity","")
     selected_rarities=[value for value in request.args.get("rarities","").split(",") if value]
@@ -1762,9 +1873,9 @@ def watchlist_cards(list_id):
     selected_colors=[value for value in request.args.get("colors","").split(",") if value]
     inkwell=request.args.get("inkwell","")
     rows = db().execute(
-        f"""SELECT v.id variant_id,v.finish,i.id identity_id,i.canonical_name,p.collector_number,p.language,
-            p.rarity,i.card_type,i.attributes identity_attrs,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
-            COALESCE(SUM(c.quantity),0) quantity,nwe.quantity desired_quantity,nwe.created_at
+        f"""SELECT v.id variant_id,v.finish,i.id identity_id,i.canonical_name,i.rules_text,p.collector_number,p.language,
+            p.rarity,i.card_type,i.attributes identity_attrs,p.attributes printing_attrs,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
+            COALESCE(SUM(c.quantity),0) quantity,nwe.quantity desired_quantity,nwe.source entry_source,nwe.created_at
             FROM named_watchlist_entries nwe JOIN variants v ON v.id=nwe.variant_id JOIN printings p ON p.id=v.printing_id
             JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
             LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? WHERE nwe.list_id=? GROUP BY v.id""", (user_id(),list_id)
@@ -1775,7 +1886,7 @@ def watchlist_cards(list_id):
         if rarity and item["rarity"]!=rarity:continue
         if not matches_catalog_filters(item["game_id"],item["rarity"],item["identity_attrs"],selected_rarities,selected_costs,selected_colors,inkwell):continue
         result.append(item)
-    if q: result=[r for r in result if q.lower() in r["canonical_name"].lower() or q.lower() in r["collector_number"].lower()]
+    if q: result=[r for r in result if query_matches_row(q.lower(),r)]
     if language!="all":result=[r for r in result if r["language"]==language]
     if set_id:result=[r for r in result if r["set_id"]==set_id]
     if finish:result=[r for r in result if r["finish"]==finish]
@@ -1805,7 +1916,7 @@ def collection_browser():
     selected_colors=[value for value in request.args.get("colors","").split(",") if value]
     inkwell=request.args.get("inkwell","")
     rows=db().execute(f"""SELECT v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.source_type,p.id printing_id,
-      i.id identity_id,i.canonical_name,i.card_type,i.attributes identity_attrs,p.collector_number,p.language,p.rarity,
+      i.id identity_id,i.canonical_name,i.rules_text,i.card_type,i.attributes identity_attrs,p.collector_number,p.language,p.rarity,p.attributes printing_attrs,
       s.id set_id,s.name set_name,s.code set_code,s.release_date,g.accent,
       SUM(c.quantity) quantity,MAX(c.condition) condition,
       COALESCE(SUM(c.quantity*COALESCE({latest_price_sql('v')},0)),0) value,{latest_price_sql('v')} price,
@@ -1816,7 +1927,7 @@ def collection_browser():
     cards=[]
     for item in rows:
         r=dict(item);r["identity_attrs"]=jload(r["identity_attrs"],{})
-        if q and q not in r["canonical_name"].lower() and q not in r["collector_number"].lower():continue
+        if q and not query_matches_row(q,r):continue
         if set_id and r["set_id"]!=set_id:continue
         if language!="all" and r["language"]!=language:continue
         if rarity and r["rarity"]!=rarity:continue
@@ -1883,8 +1994,14 @@ def deck_catalog():
     if game_id == "lorcana":
         filters.append("lower(s.set_type)<>'quest'")
     if q:
-        filters.append("(lower(i.canonical_name) LIKE ? OR lower(p.collector_number) LIKE ?)")
-        values.extend((f"%{q}%", f"%{q}%"))
+        # Matches the English name, the localized (DE/JP/...) name and rules text for this
+        # printing, and the English rules text -- a search box that only understood the English
+        # canonical_name was useless while actually browsing German- or Japanese-language cards.
+        filters.append(
+            "(lower(i.canonical_name) LIKE ? OR lower(p.collector_number) LIKE ? OR lower(i.rules_text) LIKE ?"
+            " OR lower(json_extract(p.attributes,'$.localizedName')) LIKE ? OR lower(json_extract(p.attributes,'$.localizedRulesText')) LIKE ?)"
+        )
+        values.extend((f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"))
     if set_id:
         filters.append("p.set_id=?")
         values.append(set_id)
@@ -2337,7 +2454,9 @@ def global_search():
           CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted
           FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id
           JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=i.game_id
-          WHERE (? IS NULL OR g.id=?) AND (i.canonical_name LIKE ? OR p.collector_number LIKE ? OR s.name LIKE ?) LIMIT 24""", (user_id(),game_id,game_id,like,like,like)
+          WHERE (? IS NULL OR g.id=?) AND (i.canonical_name LIKE ? OR p.collector_number LIKE ? OR s.name LIKE ?
+            OR i.rules_text LIKE ? OR json_extract(p.attributes,'$.localizedName') LIKE ? OR json_extract(p.attributes,'$.localizedRulesText') LIKE ?)
+          LIMIT 24""", (user_id(),game_id,game_id,like,like,like,like,like,like)
     ).fetchall()
     return jsonify([dict(r) for r in rows])
 

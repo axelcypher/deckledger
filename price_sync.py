@@ -253,7 +253,19 @@ def map_lorcana(connection, products: list) -> tuple[list[dict], dict]:
         # Cardmarket appends V1/V2 to otherwise identical product slugs.  The
         # catalogue's stable product IDs are ordered in that same product order.
         if len(candidates) > 1 and not re.search(r"-V\d+$", urlsplit(attributes["priceUrl"]).path, re.I):
-            continue
+            # Our own catalogue has no concept of print run, only collector number -- but
+            # Ravensburger has, since mid-2025, reprinted some early/iconic cards (e.g. Prince
+            # Phillip - Dragonslayer, TFC #16), which Cardmarket then lists as a SECOND product
+            # under the same expansion+name rather than updating the original. Confirmed against
+            # every currently-ambiguous case (2026-08: 22 groups) that all of a group's
+            # candidates share one idMetacard -- Cardmarket's own "this is the same underlying
+            # card" signal -- so it's safe to fold them into a single price by taking the
+            # earliest-added (candidates is idProduct-sorted, which tracks dateAdded here) as
+            # canonical, same as the ordinary version=1 case below. A genuine name collision
+            # between two UNRELATED cards would show up as differing idMetacard values across
+            # candidates and is still left unmatched rather than guessed.
+            if len({candidate["idMetacard"] for candidate in candidates}) > 1:
+                continue
         product = candidates[version - 1]
         mappings.append({
             "variant_id": row["variant_id"], "game_id": "lorcana", "product": product,

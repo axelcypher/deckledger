@@ -240,7 +240,25 @@
   body.dark.mobile-modern .home-banner { grid-area:banner;padding:0;border:0; }
   body.dark.mobile-modern .home-banner-head { justify-content:flex-start; }
   body.dark.mobile-modern .home-banner-head .eyebrow { color:var(--ink);font:600 25px var(--font-display);text-transform:none;letter-spacing:0; }
-  body.dark.mobile-modern .home-banner-viewport { margin-inline:-14px;padding:20px 14px 28px;mask-image:linear-gradient(90deg,transparent,#000 34px,#000 100%);-webkit-mask-image:linear-gradient(90deg,transparent,#000 34px,#000 100%); }
+  body.dark.mobile-modern .home-banner-viewport {
+    position:relative;isolation:isolate;margin-inline:-14px;padding:20px 14px 28px;
+    mask-image:none;-webkit-mask-image:none;
+  }
+  body.dark.mobile-modern .home-banner-viewport::before,
+  body.dark.mobile-modern .home-banner-viewport::after {
+    content:"";position:absolute;z-index:3;top:12px;bottom:20px;width:28px;pointer-events:none;
+  }
+  body.dark.mobile-modern .home-banner-viewport::before {
+    left:0;
+    background:linear-gradient(90deg,var(--bg) 0 13px,color-mix(in srgb,var(--bg) 70%,var(--ink)) 13px 14px,color-mix(in srgb,var(--bg) 78%,white) 14px 15px,color-mix(in srgb,var(--bg) 92%,transparent) 15px 19px,transparent 25px);
+    filter:drop-shadow(4px 0 7px rgba(44,34,18,.1));
+  }
+  body.dark.mobile-modern .home-banner-viewport::after {
+    right:0;
+    background:linear-gradient(270deg,var(--bg) 0 13px,color-mix(in srgb,var(--bg) 70%,var(--ink)) 13px 14px,color-mix(in srgb,var(--bg) 78%,white) 14px 15px,color-mix(in srgb,var(--bg) 92%,transparent) 15px 19px,transparent 25px);
+    filter:drop-shadow(-4px 0 7px rgba(44,34,18,.1));
+  }
+  body.dark.mobile-modern .home-banner-track { position:relative;z-index:1; }
   body.dark.mobile-modern .banner-card { flex-basis:132px;width:132px; }
   body.dark.mobile-modern .banner-card-meta { display:block;padding:9px 2px 0; }
   body.dark.mobile-modern .banner-card-meta b,body.dark.mobile-modern .banner-card-meta span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
