@@ -18,6 +18,15 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # The JS-based actions here (docker/metadata-action, actions/checkout, actions/attest, ...)
+  # talk to api.github.com through Node's own bundled CA list, not the runner OS's trust store.
+  # On a runner sitting behind a TLS-inspecting proxy (e.g. a self-hosted runner in a network
+  # with its own internal/corporate root CA), that CA is usually already trusted at the OS level
+  # -- confirmed by `docker` itself working fine while only the Node-based steps fail with
+  # "self-signed certificate" -- but Node doesn't consult it unless told to. --use-system-ca
+  # (Node 22+; this workflow runs Node 24) closes that gap. Harmless on a genuine GitHub-hosted
+  # runner with no such proxy: it just adds the OS store, which has nothing extra to offer there.
+  NODE_OPTIONS: --use-system-ca
 
 jobs:
   build:
