@@ -227,7 +227,7 @@
     background:var(--mp-soft);
     box-shadow:var(--mp-shadow-soft),0 0 14px color-mix(in srgb,var(--mt-gold) 18%,transparent);
   }
-  body.dark.mobile-modern .content .hero-summary::before {
+  body.dark.mobile-modern .content .hero-summary:not(deckledger-stat-pill)::before {
     content:"";position:absolute;z-index:2;inset:0;padding:2px;pointer-events:none;border-radius:inherit;
     background-image:linear-gradient(125deg,transparent 18%,rgba(255,244,205,.38) 31%,#fffef5 43%,#fff 50%,#f4d58d 59%,transparent 78%);
     background-size:148px 100%;background-repeat:no-repeat;background-position:-160px 0;
@@ -489,6 +489,44 @@
   body.dark.mobile-modern .content .list-tabs button.active {
     border-color:color-mix(in srgb,var(--mt-gold) 38%,transparent);background:var(--mp-gold-soft);color:var(--ink);
   }
+  body.dark.mobile-modern .content .watch-bulkbar {
+    display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0 0 13px;padding:10px;
+    border:0;border-radius:var(--mt-radius-lg);background:var(--mp-soft);box-shadow:none;
+  }
+  body.dark.mobile-modern .content .watch-bulkbar-all { align-self:center;color:var(--ink);font-size:9px; }
+  body.dark.mobile-modern .content .watch-bulkbar-count { align-self:center;margin:0;color:var(--muted);font-size:8px;text-align:right; }
+  body.dark.mobile-modern .content .watch-bulkbar .select-control { grid-column:1/-1;width:100%;max-width:none;height:38px; }
+  body.dark.mobile-modern .content .watch-bulkbar :is(.secondary-button,.danger-button) { width:100%;min-height:36px;padding-inline:10px;font-size:8px; }
+  body.dark.mobile-modern .content .watch-bulkbar :is(button,select):disabled { opacity:.38; }
+  body.dark.mobile-modern .content .watch-selection-toggle.active { border-color:var(--mt-gold);background:var(--mp-gold-soft);color:var(--ink); }
+  body.dark.mobile-modern .content .watch-selection-mode .card-tile:hover::after { border-color:color-mix(in srgb,var(--mt-gold) 42%,transparent);background:color-mix(in srgb,var(--mt-gold) 4%,transparent); }
+  body.dark.mobile-modern .content .watch-selection-mode .card-tile.watch-selected::after { border-color:var(--mt-gold);background:color-mix(in srgb,var(--mt-gold) 10%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--mt-gold) 15%,transparent),0 10px 24px rgba(94,70,24,.15); }
+  body.dark.mobile-modern .content .watch-bulkbar-all input {
+    appearance:none;-webkit-appearance:none;display:grid;flex:0 0 auto;width:17px;height:17px;margin:0;place-items:center;
+    border:1px solid var(--line);border-radius:5px;background:var(--surface);cursor:pointer;
+  }
+  body.dark.mobile-modern .content .watch-bulkbar-all input::after {
+    content:"";width:8px;height:5px;transform:translateY(-1px) rotate(-45deg) scale(0);border-left:2px solid var(--bg);border-bottom:2px solid var(--bg);transition:transform .14s ease;
+  }
+  body.dark.mobile-modern .content .watch-bulkbar-all input:checked { border-color:var(--brand);background:var(--brand); }
+  body.dark.mobile-modern .content .watch-bulkbar-all input:checked::after { transform:translateY(-1px) rotate(-45deg) scale(1); }
+  body.dark.mobile-modern .content .watch-desired {
+    gap:2px;margin-top:7px;padding:3px;border:0;border-radius:var(--mt-radius-full);background:var(--mp-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mp-line) 70%,transparent);
+  }
+  body.dark.mobile-modern .content .watch-desired span { padding-left:7px;color:var(--muted);font-size:6px;letter-spacing:.08em; }
+  body.dark.mobile-modern .content .watch-desired button { width:27px;height:27px;border-radius:50%;background:var(--surface);color:var(--ink);font-size:13px; }
+  body.dark.mobile-modern .content .watch-desired button:hover { background:var(--surface-2); }
+  body.dark.mobile-modern .content .watch-desired b { min-width:20px;color:var(--ink);font-size:10px; }
+  body.dark.mobile-modern .content .watchlist-action-icon {
+    width:34px;height:34px;padding:0;border:1px solid color-mix(in srgb,var(--line) 80%,transparent);background:var(--surface);color:var(--muted);font-size:15px;box-shadow:0 5px 14px rgba(0,0,0,.16);backdrop-filter:blur(8px);
+  }
+  body.dark.mobile-modern .content .watchlist-action-icon.active {
+    border-color:color-mix(in srgb,var(--mt-gold) 34%,var(--line));background:color-mix(in srgb,var(--surface) 94%,var(--mt-gold));color:var(--mt-gold);
+  }
+  body.dark.mobile-modern .content .quantity-control:not(.foil),
+  body.dark.mobile-modern .content .quantity-control:not(.foil) :is(button,b) { color:#f7f3e9; }
+  body.dark.mobile-modern .content .quantity-control.foil,
+  body.dark.mobile-modern .content .quantity-control.foil :is(button,b) { color:#3a2604; }
 
   body.dark.mobile-modern .content .all-card-groups { gap:30px; }
   body.dark.mobile-modern .content .set-card-divider {
@@ -501,7 +539,9 @@
   body.dark.mobile-modern .content :is(.owned-pill,.variant-badge) {
     background:color-mix(in srgb,#102019 86%,transparent);color:#f6f0e5;box-shadow:0 3px 10px rgba(0,0,0,.15);
   }
-  body.dark.mobile-modern .content .watch-button { opacity:1; }
+  body.dark.mobile-modern .content .watch-button { opacity:0; }
+  body.dark.mobile-modern .content .card-tile:hover .watch-button,
+  body.dark.mobile-modern .content .watch-button:focus-visible { opacity:1; }
   body.dark.mobile-modern .content :is(.quantity-control,.quick-add) {
     border:1px solid rgba(255,255,255,.08);border-radius:var(--mt-radius-full);background:rgba(16,32,25,.91);box-shadow:0 5px 16px rgba(0,0,0,.22);
   }

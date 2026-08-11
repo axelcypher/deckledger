@@ -3,7 +3,7 @@ const state = {
   edit: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
   filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
   modalFoilLayerMeta: null, modalFoilLayerMetaVariantId: null,
-  activeGameId: null, watchlistId: null, activeWatchlists: [], deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
+  activeGameId: null, watchlistId: null, activeWatchlists: [], watchSelection: new Set(), watchSelectionMode: false, deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
   collapsedSetGroups: {},
   cardFilters: {rarity:'', rarities:[], costs:[], colors:[], inkwell:'', finish:'normal', foilMode:''},
   collectionFilters: {q:'',set_id:'',language:'all',rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'},
@@ -180,11 +180,23 @@ const api = async (url, options={}) => {
 };
 const post = (url,data) => api(url,{method:'POST',body:JSON.stringify(data)});
 
+// Debounced search inputs (collection/watchlist/deck-catalog/all-cards) all call this after
+// each pause in typing. renderFn() is async and can take a moment (network round-trip, full
+// re-render) -- type fast enough and a SECOND call can start for the same selector before the
+// first one's renderFn() has resolved. Whichever finishes last used to win unconditionally, so
+// an earlier (now-stale) call finishing after a newer one would re-apply its own, by-then-
+// outdated selectionRange on top of text the user had since kept typing -- felt like the
+// cursor randomly jumping backwards mid-word. The per-selector token below makes only the
+// most-recently-STARTED call for a given selector allowed to touch focus/selection afterwards.
+const reRenderTokens=new Map();
 async function reRenderPreservingFocus(selector,renderFn){
+  const myToken=(reRenderTokens.get(selector)||0)+1;
+  reRenderTokens.set(selector,myToken);
   const active=document.activeElement;
   const hadFocus=active&&active.matches&&active.matches(selector);
   const selStart=hadFocus?active.selectionStart:null,selEnd=hadFocus?active.selectionEnd:null;
   await renderFn();
+  if(reRenderTokens.get(selector)!==myToken)return;
   if(hadFocus){
     const el=$(selector);
     if(el){el.focus();if(selStart!=null)try{el.setSelectionRange(selStart,selEnd)}catch{}}
@@ -228,7 +240,7 @@ function setActiveGame(gameId, persist=true) {
   const iconName={'one-piece':'one-piece',lorcana:'lorcana',hololive:'hololive'}[gameId]||'generic';
   if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=2')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
-  state.watchlistId=null; state.deckId=null;
+  state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null;
   if(changed||isInitial){
     // Settings shows languages[0] as each game's assumed default even before
     // the user ever touches that dropdown (it's only actually saved once they
@@ -248,6 +260,7 @@ function setActiveGame(gameId, persist=true) {
 function routeTo(route, data) {
   hideDeckImagePreview();closeDeckAddPopup();setDeckCatalogOpen(false);clearTimeout(state.homeBannerTimer);
   state.mobileFiltersOpen={};
+  if(route!=='watchlist'){state.watchSelection.clear();state.watchSelectionMode=false}
   state.route=route; document.body.dataset.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
   if(route==='dashboard') renderDashboard();
   if(route==='game') renderGame(data || state.game?.id);
@@ -894,6 +907,10 @@ function lorcanaVariantBadges(languageVariants){
   }).join('');
 }
 
+function watchlistIcon(active=false){
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"${active?' fill="currentColor"':''}/></svg>`;
+}
+
 function cardTile(card,foilDisplayActive=false){
   const languageVariants=card.variants.filter(x=>x.language===card.language);
   // When the server switched the representative to the foil printing (foil filter engaged),
@@ -923,17 +940,37 @@ function cardTile(card,foilDisplayActive=false){
     :(card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓</span>`:'');
   const playsetHtml=ribbons?`<div class="playset-ribbons">${ribbons}</div>`:'';
   return `<article class="card-tile ${card.quantity?'owned':'missing'}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
-    <div class="card-image-wrap card-finish-frame ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.variant_id)}')">${imageHtml}<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><button class="watch-button ${card.watchlisted?'active':''}" title="Watchlist">${card.watchlisted?'♥':'♡'}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
+    <div class="card-image-wrap card-finish-frame ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.variant_id)}')">${imageHtml}<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><button class="watchlist-action watchlist-action-icon watch-button ${card.watchlisted?'active':''}" title="Watchlist" aria-label="${card.watchlisted?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen'}" aria-pressed="${Boolean(card.watchlisted)}">${watchlistIcon(card.watchlisted)}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
     ${playsetHtml}
     <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${languageVariants.slice(0,3).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
 
+// Keeps the heart icon in sync everywhere a card can be watchlist-toggled from. The card modal
+// fetches its own separate card object via /api/cards/<id> (not a reference into state.cards),
+// so toggling from there used to only re-render the modal itself -- the grid tile underneath,
+// and state.cards (which e.g. the "Auf Watchlist" collection filter reads), stayed stale until
+// a full re-render. This patches both, given whichever identity/variant id shape the caller has.
+function syncWatchlistIcon(identityId,variantId,active){
+  const gridCard=state.cards.find(c=>c.identity_id===identityId);
+  if(gridCard){
+    const variant=(gridCard.variants||[]).find(x=>(x.variant_id||x.id)===variantId);
+    if(variant)variant.watchlisted=active;
+    gridCard.watchlisted=(gridCard.variants||[]).some(x=>x.watchlisted);
+    active=gridCard.watchlisted;
+  }
+  const btn=$(`.card-tile[data-identity="${identityId}"] .watch-button`,content);
+  if(btn){btn.classList.toggle('active',active);btn.innerHTML=watchlistIcon(active);btn.setAttribute('aria-pressed',String(active));btn.setAttribute('aria-label',active?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen')}
+}
 function bindCardEvents(watchlistId=null){
   $$('.card-tile',content).forEach(tile=>{
     tile.tabIndex=0;tile.setAttribute('role','button');
     tile.onkeydown=event=>{if(event.target===tile&&(event.key==='Enter'||event.key===' ')){event.preventDefault();tile.click()}};
-    tile.onclick=e=>{if(e.target.closest('.watch-button,.quantity-control,.quick-add'))return;openCard(tile.dataset.identity,tile.dataset.variant)};
-    $('.watch-button',tile).onclick=async e=>{e.stopPropagation();const r=await post('/api/watchlist',{variant_id:tile.dataset.variant,...(watchlistId?{list_id:watchlistId}:{})});e.currentTarget.classList.toggle('active',r.active);e.currentTarget.textContent=r.active?'♥':'♡';toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt');refreshWatchCount();if(state.route==='watchlist')renderWatchlist(true)};
+    tile.onclick=e=>{
+      if(e.target.closest('.watch-button,.quantity-control,.quick-add,.watch-desired'))return;
+      if(state.route==='watchlist'&&state.watchSelectionMode){toggleWatchCardSelection(tile);return}
+      openCard(tile.dataset.identity,tile.dataset.variant);
+    };
+    $('.watch-button',tile).onclick=async e=>{e.stopPropagation();const r=await post('/api/watchlist',{variant_id:tile.dataset.variant,...(watchlistId?{list_id:watchlistId}:{})});syncWatchlistIcon(tile.dataset.identity,tile.dataset.variant,r.active);toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt');refreshWatchCount();if(state.route==='watchlist')renderWatchlist(true)};
     $$('.quantity-control',tile).forEach(row=>{const variantId=row.dataset.variant||tile.dataset.variant;$$('button',row).forEach(btn=>btn.onclick=e=>{e.stopPropagation();changeQuantity(variantId,Number(btn.dataset.delta))})});
     $$('.quick-add',tile).forEach(btn=>btn.onclick=e=>{e.stopPropagation();changeQuantity(btn.dataset.variant||tile.dataset.variant,1,true)});
     const cycle=cardCycleRegistry.get(tile.dataset.variant);
@@ -1229,14 +1266,22 @@ async function renderWatchlist(preserve=false){
   const f=state.watchFilters, params=new URLSearchParams(f), data=await api(`/api/watchlists/${state.watchlistId}/cards?${params}`), sets=await api(`/api/games/${state.activeGameId}/sets`);
   const currentSet=sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   state.cards=data.cards.map(r=>({...r,variants:[r],variant_count:1,owned_variants:r.quantity?1:0,watchlisted:true,value:r.quantity*r.price}));
+  // Selections don't survive a list switch (they're indices into a variant set that only makes
+  // sense within the list they were made on) -- drop anything that isn't in the current view.
+  const visibleVariantIds=new Set(state.cards.map(c=>c.variant_id));
+  [...state.watchSelection].forEach(id=>{if(!visibleVariantIds.has(id))state.watchSelection.delete(id)});
+  const otherLists=lists.filter(l=>l.id!==state.watchlistId);
+  // Marktwert = Preis × gewünschte Menge, nicht 1× pro Karte -- das ist die Summe, die es
+  // tatsächlich kosten würde, die Liste komplett zu erfüllen.
   const watchStats=statPill([
     {label:'Liste',value:escapeHtml(data.list.name)},
     {label:'Varianten',value:data.cards.length},
-    {label:'Marktwert',value:money(data.cards.reduce((a,c)=>a+c.price,0))},
+    {label:'Marktwert',value:money(data.cards.reduce((a,c)=>a+(c.price||0)*(c.desired_quantity||1),0))},
   ],{className:'browser-summary',columns:3,mobileColumns:3});
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · PREISBEOBACHTUNG</span><h1>Watchlists</h1><p>Getrennte Listen für Kaufziele, Deckprojekte und Preisalarme.</p></div><div class="page-head-actions"><button class="primary-button" id="new-watchlist">＋ Neue Watchlist</button></div></div>
     <div class="list-tabs">${lists.map(l=>`<button data-list="${l.id}" class="${l.id===state.watchlistId?'active':''}"><b>${escapeHtml(l.name)}</b><span>${l.count} · ${money(l.value)}</span></button>`).join('')}</div>
-    <div class="browser-summary-row">${watchStats}<div class="browser-summary-actions"><button class="secondary-button" id="rename-watchlist">Umbenennen</button>${data.list.is_default?'':`<button class="danger-button" id="delete-watchlist">Löschen</button>`}</div></div>
+    <div class="browser-summary-row">${watchStats}<div class="browser-summary-actions"><button class="secondary-button watch-selection-toggle ${state.watchSelectionMode?'active':''}" id="watch-selection-toggle" aria-pressed="${state.watchSelectionMode}"><span aria-hidden="true">${state.watchSelectionMode?'✓':'⌗'}</span>${state.watchSelectionMode?'Fertig':'Mehrfachauswahl'}</button><button class="secondary-button" id="rename-watchlist">Umbenennen</button>${data.list.is_default?'':`<button class="danger-button" id="delete-watchlist">Löschen</button>`}</div></div>
+    ${state.watchSelectionMode?`<div class="watch-bulkbar"><label class="watch-bulkbar-all"><input type="checkbox" id="watch-select-all" ${state.cards.length&&state.watchSelection.size===state.cards.length?'checked':''}> Alle auswählen</label><span class="watch-bulkbar-count" id="watch-bulkbar-count">${state.watchSelection.size?`${state.watchSelection.size} ausgewählt`:'Karten zum Auswählen anklicken'}</span><select id="watch-move-target" class="select-control" ${state.watchSelection.size&&otherLists.length?'':'disabled'}><option value="">Verschieben nach …</option>${otherLists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button" id="watch-move-btn" ${state.watchSelection.size&&otherLists.length?'':'disabled'}>Verschieben</button><button class="danger-button" id="watch-remove-btn" ${state.watchSelection.size?'':'disabled'}>Entfernen</button></div>`:''}
     <div class="card-toolbar-sticky watch-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile watch-filter-mobile">
       <div class="filter-search"><span>⌕</span><input id="watch-q" value="${escapeHtml(f.q)}" placeholder="Watchlist durchsuchen"></div>
       ${setSwitcherPopup('watch',sets,f.set_id||'__all__',currentSet?setFilterLabel(currentSet):'Alle Sets')}
@@ -1250,17 +1295,109 @@ async function renderWatchlist(preserve=false){
         </div>
       </div>
     </div></div>
-    <section class="card-grid" style="--card-size:${state.zoom}px">${state.cards.length?state.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten in dieser Ansicht</b><span>Passe die Filter an oder füge Karten hinzu.</span></div>'}</section>`;
+    <section class="card-grid ${state.watchSelectionMode?'watch-selection-mode':''}" style="--card-size:${state.zoom}px">${state.cards.length?state.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten in dieser Ansicht</b><span>Passe die Filter an oder füge Karten hinzu.</span></div>'}</section>`;
   mountFilterPanel('watchlist',['.watch-filter-shell'],'Watchlist filtern & sortieren');
   $('#watch-sort').value=f.sort;bindCardEvents(state.watchlistId);
-  $$('.list-tabs button').forEach(b=>b.onclick=()=>{state.watchlistId=Number(b.dataset.list);renderWatchlist(true)});
+  $$('.list-tabs button').forEach(b=>b.onclick=()=>{state.watchlistId=Number(b.dataset.list);state.watchSelection.clear();state.watchSelectionMode=false;renderWatchlist(true)});
   $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderWatchlist(true)});
   bindCatalogFilterControls(f,()=>renderWatchlist(true));
   $('#new-watchlist').onclick=async()=>{const name=prompt('Name der neuen Watchlist:','Deckprojekt');if(!name)return;const created=await post('/api/watchlists',{game_id:state.activeGameId,name});state.watchlistId=created.id;renderWatchlist(true);refreshWatchCount()};
+  $('#watch-selection-toggle').onclick=()=>{state.watchSelectionMode=!state.watchSelectionMode;if(!state.watchSelectionMode)state.watchSelection.clear();renderWatchlist(true)};
   $('#rename-watchlist').onclick=async()=>{const name=prompt('Neuer Name:',data.list.name);if(!name)return;await api(`/api/watchlists/${state.watchlistId}`,{method:'PATCH',body:JSON.stringify({name})});renderWatchlist(true)};
-  if($('#delete-watchlist'))$('#delete-watchlist').onclick=async()=>{if(!confirm('Diese Watchlist wirklich löschen?'))return;await api(`/api/watchlists/${state.watchlistId}`,{method:'DELETE'});state.watchlistId=null;renderWatchlist(true);refreshWatchCount()};
+  if($('#delete-watchlist'))$('#delete-watchlist').onclick=async()=>{if(!confirm('Diese Watchlist wirklich löschen?'))return;await api(`/api/watchlists/${state.watchlistId}`,{method:'DELETE'});state.watchlistId=null;state.watchSelection.clear();renderWatchlist(true);refreshWatchCount()};
   bindBrowserFilters('watch',()=>renderWatchlist(true));
   $('#watch-language').onchange=event=>{f.language=event.target.value;f.rarity='';f.rarities=[];renderWatchlist(true)};
+  bindWatchlistBulkActions();
+  enhanceWatchlistTiles();
+}
+
+// Multi-selection is an explicit mode. Cards themselves become the selection targets so the
+// artwork stays free of persistent checkboxes; these small DOM updates avoid a refetch for every
+// selected card.
+function syncWatchSelectionTiles(){
+  $$('.watch-selection-mode .card-tile',content).forEach(tile=>{
+    const selected=state.watchSelection.has(tile.dataset.variant);
+    const item=state.cards.find(card=>card.variant_id===tile.dataset.variant);
+    tile.classList.toggle('watch-selected',selected);
+    tile.setAttribute('aria-pressed',String(selected));
+    tile.setAttribute('aria-label',`${item?.canonical_name||'Karte'} ${selected?'ausgewählt':'auswählen'}`);
+  });
+}
+function toggleWatchCardSelection(tile){
+  const variantId=tile.dataset.variant;
+  if(state.watchSelection.has(variantId))state.watchSelection.delete(variantId);else state.watchSelection.add(variantId);
+  syncWatchSelectionTiles();
+  updateWatchBulkbar();
+}
+function updateWatchBulkbar(){
+  const bar=$('.watch-bulkbar',content); if(!bar)return;
+  const n=state.watchSelection.size,total=state.cards.length,hasTargets=$$('#watch-move-target option',bar).length>1;
+  $('#watch-bulkbar-count',bar).textContent=n?`${n} ausgewählt`:'Karten zum Auswählen anklicken';
+  $('#watch-move-target',bar).disabled=!n||!hasTargets;
+  $('#watch-move-btn',bar).disabled=!n||!hasTargets;
+  $('#watch-remove-btn',bar).disabled=!n;
+  const all=$('#watch-select-all',bar);
+  all.checked=n>0&&n===total;
+  all.indeterminate=n>0&&n<total;
+}
+function bindWatchlistBulkActions(){
+  const bar=$('.watch-bulkbar',content); if(!bar)return;
+  $('#watch-select-all',bar).onchange=e=>{
+    if(e.target.checked)state.cards.forEach(c=>state.watchSelection.add(c.variant_id));else state.watchSelection.clear();
+    syncWatchSelectionTiles();
+    updateWatchBulkbar();
+  };
+  $('#watch-move-btn',bar).onclick=async()=>{
+    const targetId=Number($('#watch-move-target',bar).value); if(!targetId)return;
+    const variantIds=[...state.watchSelection];
+    const r=await post(`/api/watchlists/${state.watchlistId}/entries/move`,{variant_ids:variantIds,target_list_id:targetId});
+    state.watchSelection.clear();state.watchSelectionMode=false;toast(`${r.moved} Karte${r.moved===1?'':'n'} verschoben`);
+    renderWatchlist(true);refreshWatchCount();
+  };
+  $('#watch-remove-btn',bar).onclick=async()=>{
+    const variantIds=[...state.watchSelection];
+    if(!confirm(`${variantIds.length} Karte${variantIds.length===1?'':'n'} von dieser Watchlist entfernen?`))return;
+    const r=await post(`/api/watchlists/${state.watchlistId}/entries/remove`,{variant_ids:variantIds});
+    state.watchSelection.clear();state.watchSelectionMode=false;toast(`${r.removed} Karte${r.removed===1?'':'n'} entfernt`);
+    renderWatchlist(true);refreshWatchCount();
+  };
+}
+function enhanceWatchlistTiles(){
+  $$('.card-tile',content).forEach(tile=>{
+    const item=state.cards.find(c=>c.variant_id===tile.dataset.variant); if(!item)return;
+    const info=$('.card-info',tile);
+    if(state.watchSelectionMode){
+      tile.classList.toggle('watch-selected',state.watchSelection.has(item.variant_id));
+      tile.setAttribute('aria-pressed',String(state.watchSelection.has(item.variant_id)));
+      tile.setAttribute('aria-label',`${item.canonical_name||'Karte'} ${state.watchSelection.has(item.variant_id)?'ausgewählt':'auswählen'}`);
+    }
+    info.insertAdjacentHTML('beforeend',`<div class="watch-desired" title="Gewünschte Anzahl Exemplare"><span>Gewünscht</span><button type="button" data-desired-delta="-1" aria-label="Weniger">−</button><b>${item.desired_quantity||1}</b><button type="button" data-desired-delta="1" aria-label="Mehr">＋</button></div>`);
+    $('.watch-desired',tile).onclick=e=>e.stopPropagation();
+    $$('.watch-desired [data-desired-delta]',tile).forEach(btn=>btn.onclick=()=>changeDesiredQuantity(item,Number(btn.dataset.desiredDelta),tile));
+  });
+}
+async function changeDesiredQuantity(item,delta,tile){
+  const el=$('.watch-desired b',tile),next=Math.max(1,Math.min(99,(item.desired_quantity||1)+delta));
+  if(next===item.desired_quantity)return;
+  const previous=item.desired_quantity;item.desired_quantity=next;el.textContent=String(next);
+  updateWatchTotals();
+  try{
+    await api(`/api/watchlists/${state.watchlistId}/entries/${encodeURIComponent(item.variant_id)}`,{method:'PATCH',body:JSON.stringify({quantity:next})});
+  }catch(error){
+    item.desired_quantity=previous;el.textContent=String(previous);
+    updateWatchTotals();
+    toast(error.message||'Menge konnte nicht gespeichert werden');
+  }
+}
+// Marktwert = Preis × gewünschte Menge -- patched locally (both the summary pill and the
+// current list's own list-tabs badge) so a quantity click doesn't need a full refetch to be
+// reflected, same reasoning as patchLocalQuantity above.
+function updateWatchTotals(){
+  const total=state.cards.reduce((a,c)=>a+(c.price||0)*(c.desired_quantity||1),0);
+  const marktwertLabel=$$('.browser-summary [data-stat] span',content).find(span=>span.textContent==='Marktwert');
+  if(marktwertLabel)marktwertLabel.nextElementSibling.textContent=money(total);
+  const activeTabSpan=$(`.list-tabs button[data-list="${state.watchlistId}"] span`,content);
+  if(activeTabSpan)activeTabSpan.textContent=`${state.cards.length} · ${money(total)}`;
 }
 
 function collectionRarityOptions(gameId,language){
@@ -1556,16 +1693,29 @@ function openDeckAddPopup(card,profile){
   $('#confirm-deck-add',modal).onclick=async event=>{event.currentTarget.disabled=true;const quantity=Number($('#deck-add-quantity',modal).value);try{const result=await post(`/api/decks/${state.deckId}/cards`,{variant_id:card.variant_id,zone:'auto',delta:quantity});closeDeckAddPopup();state.deckZone=result.zone;toast(`${quantity}× zu ${zone.name} hinzugefügt`);renderDeckbuilder(true)}catch(error){event.currentTarget.disabled=false;toast(error.message)}};
 }
 
+// renderDeckbuilder does several awaited round-trips before it ever touches the DOM. Typing
+// fast in the catalog search re-triggers it every ~250ms (the debounce in #deck-q below), and
+// if one call is still mid-flight when the next fires, both are racing to write content.innerHTML
+// and to restore focus/selection on the rebuilt #deck-q afterwards -- whichever happens to
+// resolve LAST wins, even if it was the OLDER (now-stale) request. That's what caused the
+// cursor to silently jump backwards mid-word: an earlier, slower render finishing after a newer
+// one and re-applying its now-outdated selectionRange on top of text the user had since kept
+// typing. Fixed with a generation token: every call grabs the current counter, and only the
+// call that's still the newest by the time it's ready to touch the DOM is allowed to.
+let deckRenderToken=0;
 async function renderDeckbuilder(preserve=false,catalogPosition=null){
+  const myDeckRenderToken=++deckRenderToken;
   state.deckCatalogObserver?.disconnect();state.deckCatalogObserver=null;
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Deckbuilder wird geladen …</p></div>';
   const game=state.boot.games.find(g=>g.id===state.activeGameId),[formats,decks]=await Promise.all([api(`/api/games/${state.activeGameId}/formats`),api(`/api/decks?game_id=${state.activeGameId}`)]);
   if(!state.deckId){
+    if(myDeckRenderToken!==deckRenderToken)return;
     setDeckCatalogOpen(false);
     content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · OFFIZIELLE REGELPROFILE</span><h1>Deine Decks</h1><p>Wähle ein Deck oder beginne ein neues.</p></div><button class="primary-button" id="new-deck">＋ Neues Deck</button></div>${decks.length?`<section class="deck-overview-grid">${decks.map(deck=>deckOverviewCard(deck,game,formats)).join('')}<button class="deck-create-card" id="deck-create-tile"><span>＋</span><b>Neues Deck</b><small>${escapeHtml(formats[0]?.name||'Regelprofil wählen')}</small></button></section>`:`<div class="deck-empty"><span>▱</span><h2>Dein erstes ${escapeHtml(game.short_name)}-Deck</h2><p>Der Builder prüft Kartenzahl, Kopienlimits, Farben und Formatlegalität.</p><button class="primary-button" id="first-deck">Deck erstellen</button></div>`}`;
     $$('.deck-overview-card').forEach(button=>button.onclick=()=>{state.deckId=Number(button.dataset.deck);renderDeckbuilder()});
     $('#new-deck').onclick=()=>createDeck(formats[0]);$('#deck-create-tile')?.addEventListener('click',()=>createDeck(formats[0]));$('#first-deck')?.addEventListener('click',()=>createDeck(formats[0]));return;
   }
+  if(myDeckRenderToken!==deckRenderToken)return;
   if(!decks.some(deck=>deck.id===state.deckId)){state.deckId=null;return renderDeckbuilder(true)}
   const f=state.deckFilters,isOnePiece=game.id==='one-piece',isLorcana=game.id==='lorcana',isHololive=game.id==='hololive';
   const initialCatalogLimit=Math.max(72,Math.min(20000,Number(catalogPosition?.loadedCount)||72));
@@ -1646,6 +1796,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     </div>
     <div class="deck-catalog-filter-row deck-catalog-filter-secondary">${deckSecondaryTypes}${sharedGameFilters}${deckAttributes}</div>
   </div>`;
+  if(myDeckRenderToken!==deckRenderToken)return;
   content.innerHTML=`<div class="deck-shell deck-shell-editor" style="--deck-card-size:${state.deckZoom}px;--catalog-card-size:${state.deckZoom}px">
     <section class="deck-editor"><header class="deck-editor-head"><button class="compact-back-button" id="deck-overview-back" title="Alle Decks" aria-label="Alle Decks">←</button><div class="deck-title-field"><input id="deck-name" value="${escapeHtml(detail.deck.name)}" aria-label="Deckname"></div><select id="deck-format" class="select-control">${formats.map(x=>`<option value="${x.id}" ${x.id===detail.deck.format_id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select><a class="deck-rules-button" href="${escapeHtml(validation.rules_url)}" target="_blank" rel="noopener"><span>Regeln</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"/><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a><button id="deck-actions-open" class="icon-button deck-header-menu-button" title="Deckaktionen" aria-label="Deckaktionen öffnen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg></button></header>
       <button type="button" class="deck-catalog-open-button" id="deck-catalog-open" aria-controls="deck-card-catalog" aria-expanded="${state.deckCatalogOpen}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="12" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M11 9v6M8 12h6"/></svg><span><b>Karten hinzufügen</b><small>${catalog.pagination.total} Basiskarten durchsuchen</small></span><i>›</i></button>
@@ -1807,7 +1958,7 @@ function renderCardModal(){
     </div>
     <section class="card-stage"><div class="stage-backdrop"></div><div class="stage-platform-wrap"><img class="stage-platform-svg" src="/glass-plate.svg" alt="" aria-hidden="true"></div><div class="stage-flare-anchor" aria-hidden="true"><span class="stage-flare left"><i style="--ray-angle:-166deg;--ray-length:72px;--ray-alpha:.42"></i><i style="--ray-angle:-132deg;--ray-length:118px;--ray-alpha:.58;--ray-size:1.5px"></i><i style="--ray-angle:-94deg;--ray-length:82px;--ray-alpha:.36"></i><i style="--ray-angle:-58deg;--ray-length:142px;--ray-alpha:.72;--ray-size:1.5px"></i><i style="--ray-angle:-19deg;--ray-length:96px;--ray-alpha:.48"></i><i style="--ray-angle:23deg;--ray-length:128px;--ray-alpha:.62;--ray-size:2px"></i><i style="--ray-angle:61deg;--ray-length:76px;--ray-alpha:.35"></i><i style="--ray-angle:108deg;--ray-length:112px;--ray-alpha:.5;--ray-size:1.5px"></i><i style="--ray-angle:147deg;--ray-length:88px;--ray-alpha:.4"></i></span><span class="stage-flare right"><i style="--ray-angle:-173deg;--ray-length:126px;--ray-alpha:.6;--ray-size:1.5px"></i><i style="--ray-angle:-139deg;--ray-length:78px;--ray-alpha:.38"></i><i style="--ray-angle:-103deg;--ray-length:138px;--ray-alpha:.68;--ray-size:2px"></i><i style="--ray-angle:-66deg;--ray-length:91px;--ray-alpha:.44"></i><i style="--ray-angle:-27deg;--ray-length:116px;--ray-alpha:.56;--ray-size:1.5px"></i><i style="--ray-angle:14deg;--ray-length:70px;--ray-alpha:.34"></i><i style="--ray-angle:49deg;--ray-length:146px;--ray-alpha:.72;--ray-size:1.5px"></i><i style="--ray-angle:96deg;--ray-length:84px;--ray-alpha:.42"></i><i style="--ray-angle:139deg;--ray-length:108px;--ray-alpha:.5;--ray-size:2px"></i></span></div><div class="stage-flare-cross"></div><div class="variant-hint top">${idx>0?`<button data-variant-nav="-1">↑ ${escapeHtml(variantLabel(physicalVariants[idx-1]))}</button>`:''}</div><button class="card-nav-button prev" ${gridIdx<=0?'disabled':''} data-card-nav="-1">‹</button><div class="modal-card-frame-wrap card-tilt-zone"><div class="modal-card-frame card-finish-frame card-tilt ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.id)}')"><img class="modal-card-image" draggable="false" src="${artUrl(v.id,'full')}" alt="${escapeHtml(card.canonical_name)}">${visual.effect!=='finish-normal'?'<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><div class="card-shine" aria-hidden="true"></div>':''}${visual.effect!=='finish-normal'&&v.game_id==='lorcana'?officialFoilLayerMarkup():''}</div><img class="modal-card-reflection" src="${artUrl(v.id,'full')}" alt="" aria-hidden="true"></div><button class="card-nav-button next" ${gridIdx<0||gridIdx>=state.cards.length-1?'disabled':''} data-card-nav="1">›</button><div class="variant-hint bottom">${idx<physicalVariants.length-1?`<button data-variant-nav="1">↓ ${escapeHtml(variantLabel(physicalVariants[idx+1]))}</button>`:''}</div></section>
     <aside class="modal-side"><header class="modal-head"><span class="eyebrow">${escapeHtml(v.set_code)} · ${escapeHtml(v.collector_number)}</span><h2>${titleHtml}</h2><b class="modal-price">${priceSymbolFirst(v.price)}</b>${titleSubHtml}<span class="modal-set-line">${escapeHtml(v.set_name)}<b class="meta-sep">·</b>#${escapeHtml(v.collector_number)} / ${v.printed_card_count!=null?v.printed_card_count:'–'}</span><span class="modal-rarity-line">${escapeHtml(v.rarity)}<b class="meta-sep">·</b>${escapeHtml(variantName(v))}</span><p>${escapeHtml(v.rarity)} · ${escapeHtml(variantName(v))}</p><div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div></header><nav class="modal-tabs">${modalTabs.map(([key,label])=>`<button data-tab="${key}" class="${state.modalTab===key?'active':''}">${label}</button>`).join('')}</nav><div class="modal-content">${modalTabContent(card,v)}</div></aside>
-    <div class="modal-action-bar ${advancedPanelExpanded?'is-expanded':''}"><div class="modal-footer-actions"><div class="modal-footer-quantity" aria-label="Menge"><span class="modal-footer-quantity-label">Owned</span><button type="button" class="modal-qty-btn" data-delta="-1" aria-label="Menge verringern">−</button><b>${v.quantity}</b><button type="button" class="modal-qty-btn" data-delta="1" aria-label="Menge erhöhen">＋</button><button type="button" class="modal-footer-advanced-toggle" id="footer-advanced-toggle" aria-expanded="${advancedPanelExpanded}" aria-label="${advancedPanelExpanded?'Zustände einklappen':'Zustände ausklappen'}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 10 4.5-4 4.5 4"/></svg></button></div><button class="modal-watch-bottom" data-modal-quick-watch aria-label="Watchlist umschalten">${v.watchlisted?'♥':'♡'}</button></div><div class="modal-footer-advanced advanced-panel" id="footer-advanced-panel"></div></div>
+    <div class="modal-action-bar ${advancedPanelExpanded?'is-expanded':''}"><div class="modal-footer-actions"><div class="modal-footer-quantity" aria-label="Menge"><span class="modal-footer-quantity-label">Owned</span><button type="button" class="modal-qty-btn" data-delta="-1" aria-label="Menge verringern">−</button><b>${v.quantity}</b><button type="button" class="modal-qty-btn" data-delta="1" aria-label="Menge erhöhen">＋</button><button type="button" class="modal-footer-advanced-toggle" id="footer-advanced-toggle" aria-expanded="${advancedPanelExpanded}" aria-label="${advancedPanelExpanded?'Zustände einklappen':'Zustände ausklappen'}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 10 4.5-4 4.5 4"/></svg></button></div><button class="watchlist-action watchlist-action-icon modal-watch-bottom ${v.watchlisted?'active':''}" data-modal-quick-watch aria-label="${v.watchlisted?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen'}" aria-pressed="${Boolean(v.watchlisted)}">${watchlistIcon(v.watchlisted)}</button></div><div class="modal-footer-advanced advanced-panel" id="footer-advanced-panel"></div></div>
   </div>`;
   // Keep the plate mask in a stationary coordinate system. The reflection image may rotate
   // inside it, but the mask host itself must never inherit that parallax transform.
@@ -1827,7 +1978,7 @@ function renderCardModal(){
   }
   $('[data-close="card-modal"]').onclick=()=>closeOverlay('card-modal');
   $('[data-modal-menu-toggle]')?.addEventListener('click',e=>{const menu=$('#modal-quick-menu');const open=menu.classList.toggle('hidden');e.currentTarget.setAttribute('aria-expanded',String(!open))});
-  $('[data-modal-quick-watch]').onclick=async()=>{const listId=Number(state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt')};
+  $('[data-modal-quick-watch]').onclick=async()=>{const listId=Number(state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;syncWatchlistIcon(card.id,v.id,r.active);renderCardModal();refreshWatchCount();toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt')};
   $$('[data-tab]',$('#card-dialog')).forEach(b=>b.onclick=()=>{state.modalTab=b.dataset.tab;renderCardModal()});
   $$('[data-language]',$('#card-dialog')).forEach(b=>b.onclick=()=>{
     const candidates=card.variants.filter(x=>x.language===b.dataset.language);
@@ -1852,7 +2003,7 @@ function renderCardModal(){
   $$('.variant-option',$('#card-dialog')).forEach(b=>b.onclick=()=>transitionModalVariant(card.variants.find(v=>v.id===b.dataset.variant)));
   $$('[data-card-nav]',$('#card-dialog')).forEach(b=>b.onclick=()=>{const target=state.cards[gridIdx+Number(b.dataset.cardNav)];if(target)openCard(target.identity_id,target.variant_id,true)});
   const qtyControls=$$('.modal-qty-btn',$('#card-dialog')); qtyControls.forEach(b=>b.onclick=()=>changeQuantity(v.id,Number(b.dataset.delta)));
-  const watch=$('.modal-watch',$('#card-dialog')); if(watch)watch.onclick=async()=>{const listId=Number($('#modal-watchlist')?.value||state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;renderCardModal();refreshWatchCount();toast(r.active?'Zur gewählten Watchlist hinzugefügt':'Von der gewählten Watchlist entfernt')};
+  const watch=$('.modal-watch',$('#card-dialog')); if(watch)watch.onclick=async()=>{const listId=Number($('#modal-watchlist')?.value||state.activeWatchlists[0]?.id);const r=await post('/api/watchlist',{variant_id:v.id,list_id:listId});v.watchlisted=r.active;syncWatchlistIcon(card.id,v.id,r.active);renderCardModal();refreshWatchCount();toast(r.active?'Zur gewählten Watchlist hinzugefügt':'Von der gewählten Watchlist entfernt')};
   const refresh=$('#price-refresh',$('#card-dialog')); if(refresh)refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent='Preise werden geladen …';try{await post('/api/prices/sync',{});toast('Marktpreise aktualisiert');await openCard(card.id,v.id,true)}catch(error){toast(error.message||'Preisimport fehlgeschlagen');refresh.disabled=false;refresh.textContent='Preise aktualisieren'}};
   const advancedToggles=$$('#advanced-toggle,#footer-advanced-toggle',$('#card-dialog'));
   advancedToggles.forEach(toggle=>toggle.onclick=toggleAdvancedPanel);
@@ -2015,7 +2166,7 @@ function modalTabContent(card,v){
     const desktopPicker=`<div class="desktop-variant-settings">${variantButtons}<div class="language-switcher desktop-language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${escapeHtml(language)}</button>`).join('')}</div></div>`;
     const modernTheme=document.body.classList.contains('mobile-modern');
     const picker=modernTheme?(window.innerWidth<=760?mobilePicker:desktopPicker):classicPicker;
-    return `${picker}<div class="detail-section mobile-collection-controls"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button modal-watch">♡ Watchlist umschalten</button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid collection-info-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
+    return `${picker}<div class="detail-section mobile-collection-controls"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button watchlist-action watchlist-action-wide modal-watch ${v.watchlisted?'active':''}" aria-pressed="${Boolean(v.watchlisted)}">${watchlistIcon(v.watchlisted)}<span>Watchlist</span></button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid collection-info-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
   }
   if(state.modalTab==='market'){
     const original=nativePrice(v);

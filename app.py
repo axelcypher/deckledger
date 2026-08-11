@@ -511,6 +511,9 @@ def init_database():
         connection.execute("ALTER TABLE games ADD COLUMN deck_ruleset TEXT")
     if "cardmarket_game_id" not in game_columns:
         connection.execute("ALTER TABLE games ADD COLUMN cardmarket_game_id INTEGER")
+    watchlist_entry_columns = {row[1] for row in connection.execute("PRAGMA table_info(named_watchlist_entries)")}
+    if "quantity" not in watchlist_entry_columns:
+        connection.execute("ALTER TABLE named_watchlist_entries ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
     for table in ("sets", "card_identities", "printings"):
         columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
         if "source_type" not in columns:
@@ -1647,9 +1650,71 @@ def toggle_watchlist():
     if existing:
         db().execute("DELETE FROM named_watchlist_entries WHERE id=?", (existing["id"],)); active = False
     else:
-        db().execute("INSERT INTO named_watchlist_entries(list_id,variant_id,created_at) VALUES(?,?,?)", (list_id,variant_id,now_iso())); active = True
+        db().execute("INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,?,?)", (list_id,variant_id,1,now_iso())); active = True
     db().commit()
     return jsonify({"active": active,"list_id":list_id})
+
+
+@app.patch("/api/watchlists/<int:list_id>/entries/<variant_id>")
+@login_required
+def update_watchlist_entry(list_id, variant_id):
+    """Sets the desired copy count for one watchlist entry (distinct from the owned quantity
+    shown elsewhere -- this is "wie viele Exemplare ich mir wünsche", not what's in the
+    collection). Clamped to 1..99, same ballpark as a Lorcana playset cap elsewhere in the app;
+    there's no real-world reason to want more."""
+    owned_list = db().execute("SELECT id FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
+    if not owned_list: return jsonify({"error":"watchlist not found"}), 404
+    payload = request.get_json(force=True)
+    try: quantity = max(1, min(99, int(payload.get("quantity", 1))))
+    except (TypeError, ValueError): return jsonify({"error":"quantity must be a number"}), 400
+    cur = db().execute("UPDATE named_watchlist_entries SET quantity=? WHERE list_id=? AND variant_id=?", (quantity,list_id,variant_id))
+    if not cur.rowcount: return jsonify({"error":"entry not found"}), 404
+    db().commit()
+    return jsonify({"saved": True, "quantity": quantity})
+
+
+@app.post("/api/watchlists/<int:list_id>/entries/move")
+@login_required
+def move_watchlist_entries(list_id):
+    """Bulk-moves selected variants from `list_id` to `target_list_id` (both must belong to the
+    current user and the same game -- the UI only ever offers same-game lists, this is just the
+    server-side guarantee). A variant already present on the target list is left as-is there
+    (its existing desired quantity wins) and simply removed from the source list, rather than
+    guessing how to merge two different desired counts."""
+    source = db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
+    if not source: return jsonify({"error":"watchlist not found"}), 404
+    payload = request.get_json(force=True)
+    target_list_id = payload.get("target_list_id")
+    variant_ids = [v for v in (payload.get("variant_ids") or []) if v]
+    target = db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?", (target_list_id,user_id())).fetchone()
+    if not target: return jsonify({"error":"target watchlist not found"}), 404
+    if target["game_id"] != source["game_id"]: return jsonify({"error":"Zielliste gehört zu einem anderen Spiel."}), 400
+    if not variant_ids: return jsonify({"error":"no variants selected"}), 400
+    moved = 0
+    for variant_id in variant_ids:
+        entry = db().execute("SELECT quantity FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id)).fetchone()
+        if not entry: continue
+        db().execute("INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,?,?)",
+                      (target_list_id,variant_id,entry["quantity"],now_iso()))
+        db().execute("DELETE FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id))
+        moved += 1
+    db().commit()
+    return jsonify({"moved": moved})
+
+
+@app.post("/api/watchlists/<int:list_id>/entries/remove")
+@login_required
+def remove_watchlist_entries(list_id):
+    """Bulk-removes selected variants from one watchlist -- the multi-select complement to the
+    single-card toggle in /api/watchlist."""
+    owned_list = db().execute("SELECT id FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
+    if not owned_list: return jsonify({"error":"watchlist not found"}), 404
+    variant_ids = [v for v in (request.get_json(force=True).get("variant_ids") or []) if v]
+    if not variant_ids: return jsonify({"error":"no variants selected"}), 400
+    placeholders = ",".join("?" * len(variant_ids))
+    cur = db().execute(f"DELETE FROM named_watchlist_entries WHERE list_id=? AND variant_id IN ({placeholders})", (list_id,*variant_ids))
+    db().commit()
+    return jsonify({"removed": cur.rowcount})
 
 
 @app.route("/api/watchlists", methods=["GET","POST"])
@@ -1663,7 +1728,9 @@ def watchlists():
         except sqlite3.IntegrityError: return jsonify({"error":"Eine Watchlist mit diesem Namen existiert bereits."}),409
         return jsonify({"id":cur.lastrowid,"name":name,"game_id":game_id,"count":0,"value":0}),201
     game_id=request.args.get("game_id")
-    rows=db().execute(f"""SELECT nw.*,COUNT(nwe.id) count,COALESCE(SUM({latest_price_sql('v')}),0) value
+    # "value" is the cost to actually complete the list -- price times how many copies are
+    # *wanted* (nwe.quantity), not one price per distinct variant.
+    rows=db().execute(f"""SELECT nw.*,COUNT(nwe.id) count,COALESCE(SUM({latest_price_sql('v')}*nwe.quantity),0) value
       FROM named_watchlists nw LEFT JOIN named_watchlist_entries nwe ON nwe.list_id=nw.id
       LEFT JOIN variants v ON v.id=nwe.variant_id WHERE nw.user_id=? AND nw.game_id=?
       GROUP BY nw.id ORDER BY nw.is_default DESC,nw.created_at""",(user_id(),game_id)).fetchall()
@@ -1697,7 +1764,7 @@ def watchlist_cards(list_id):
     rows = db().execute(
         f"""SELECT v.id variant_id,v.finish,i.id identity_id,i.canonical_name,p.collector_number,p.language,
             p.rarity,i.card_type,i.attributes identity_attrs,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
-            COALESCE(SUM(c.quantity),0) quantity,nwe.created_at
+            COALESCE(SUM(c.quantity),0) quantity,nwe.quantity desired_quantity,nwe.created_at
             FROM named_watchlist_entries nwe JOIN variants v ON v.id=nwe.variant_id JOIN printings p ON p.id=v.printing_id
             JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
             LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? WHERE nwe.list_id=? GROUP BY v.id""", (user_id(),list_id)

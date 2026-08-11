@@ -23,14 +23,19 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill::before {
   position:absolute;
   z-index:2;
   inset:0;
-  padding:2px;
+  width:auto;
+  padding:0;
+  transform:none;
   border-radius:inherit;
   background:linear-gradient(125deg,transparent 18%,rgba(255,244,205,.38) 31%,#fffef5 43%,#fff 50%,#f4d58d 59%,transparent 78%) -170px 0/148px 100% no-repeat;
   pointer-events:none;
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor;
-  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  mask-composite:exclude;
+  /* Keep the moving highlight on the two-pixel border itself. Chromium's composite
+     CSS masks can intermittently render the subtraction as a filled layer, which made
+     the shine travel through the pill's content. An even-odd clip creates a real hollow
+     ring and does not depend on mask compositing. */
+  -webkit-mask:none;
+  mask:none;
+  clip-path:polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,2px 2px,2px calc(100% - 2px),calc(100% - 2px) calc(100% - 2px),calc(100% - 2px) 2px,2px 2px);
   animation:stat-pill-shine 3.8s ease-in-out infinite;
 }
 
