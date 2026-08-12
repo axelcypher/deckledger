@@ -283,6 +283,7 @@ body.editing .card-tile .quantity-stack{display:flex}
 .watch-bulkbar button:disabled,.watch-bulkbar select:disabled { opacity:.4;cursor:not-allowed; }
 .watch-selection-toggle { display:inline-flex;align-items:center;justify-content:center;gap:7px; }
 .watch-selection-toggle.active { border-color:var(--brand);color:var(--brand); }
+.watch-export-link { display:inline-flex;align-items:center;justify-content:center;color:var(--ink);text-decoration:none; }
 .watch-selection-mode .card-tile { cursor:pointer; }
 .watch-selection-mode .card-tile::after { content:"";position:absolute;inset:-6px;z-index:6;border:2px solid transparent;border-radius:12px;background:transparent;box-shadow:0 0 0 0 transparent;pointer-events:none;transition:border-color .16s,background .16s,box-shadow .16s,transform .16s; }
 .watch-selection-mode .card-tile:hover::after { border-color:color-mix(in srgb,var(--brand) 36%,transparent);background:color-mix(in srgb,var(--brand) 4%,transparent); }

@@ -1895,6 +1895,31 @@ def watchlist_cards(list_id):
     return jsonify({"list":dict(owned),"cards":result})
 
 
+@app.get("/api/watchlists/<int:list_id>/export.txt")
+@login_required
+def export_watchlist(list_id):
+    """Plain-text export of one watchlist -- same "<qty>x <name>" format as the deck missing-
+    list export (export_deck_missing_list), aggregated by name and sorted alphabetically. A
+    watchlist is already a want-to-buy list (or, on the fixed Verkaufsliste, a want-to-sell
+    list), so unlike the deck exports there's no separate "list vs. missing-only" distinction --
+    one format, straight from each entry's own quantity column."""
+    watchlist=db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?",(list_id,user_id())).fetchone()
+    if not watchlist:return jsonify({"error":"watchlist not found"}),404
+    rows=db().execute(
+        """SELECT i.canonical_name canonical_name,nwe.quantity quantity
+           FROM named_watchlist_entries nwe JOIN variants v ON v.id=nwe.variant_id
+           JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
+           WHERE nwe.list_id=?""",(list_id,)
+    ).fetchall()
+    aggregated={}
+    for row in rows:
+        aggregated[row["canonical_name"]]=aggregated.get(row["canonical_name"],0)+row["quantity"]
+    lines=[f"{qty}x {name}" for name,qty in sorted(aggregated.items())]
+    body="\n".join(lines)+"\n" if lines else "# Diese Watchlist enthält noch keine Karten.\n"
+    filename=re.sub(r"[^A-Za-z0-9-]+","-",watchlist["name"].strip()).strip("-").lower() or "watchlist"
+    return Response(body,mimetype="text/plain",headers={"Content-Disposition":f"attachment; filename={filename}.txt"})
+
+
 @app.get("/api/watchlist")
 @login_required
 def legacy_watchlist():
