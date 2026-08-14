@@ -41,6 +41,10 @@
         <button class="primary-button login-button" type="submit">Anmelden <span>→</span></button>
         <div class="demo-hint"><span>Demo-Zugang</span><code>demo</code><span>/</span><code>deckledger</code></div>
       </form>
+      {% if oauth_enabled %}
+      <div class="login-oauth-divider"><span>oder</span></div>
+      <a class="secondary-button login-oauth-button" href="{{ url_for('oauth_login') }}">Mit {{ oauth_provider_name }} anmelden</a>
+      {% endif %}
       <p class="login-footer">Self-hosted · Deine Daten bleiben bei dir</p>
     </section>
   </main>

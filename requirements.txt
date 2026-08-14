@@ -1,3 +1,5 @@
 Flask==3.1.1
 gunicorn==23.0.0
 pypdf[image]==6.6.2
+Authlib==1.7.2
+requests==2.34.2

@@ -221,6 +221,7 @@ function setEditMode(enabled,announce=false){
   document.body.classList.toggle('editing',state.edit);
   $('#edit-panel')?.classList.toggle('on',state.edit);
   $('#edit-toggle')?.setAttribute('aria-checked',String(state.edit));
+  $('#edit-toggle')?.setAttribute('aria-label',state.edit?'Bearbeitungsmodus deaktivieren':'Bearbeitungsmodus aktivieren');
   const mobileToggle=$('#mobile-edit-toggle');
   mobileToggle?.classList.toggle('active',state.edit);
   mobileToggle?.setAttribute('aria-pressed',String(state.edit));
@@ -471,29 +472,107 @@ async function loadRecentAdditions(){
   }catch(error){/* recent additions are supplementary; keep the dashboard usable */}
 }
 
+function closeAccountPasswordDialog(){
+  $('#account-password-modal')?.remove();
+  document.documentElement.style.overflow='';
+  document.body.style.overflow='';
+}
+
+function openAccountPasswordDialog(user){
+  closeAccountPasswordDialog();
+  const modal=document.createElement('div');
+  modal.id='account-password-modal';
+  modal.className='overlay account-password-overlay';
+  modal.setAttribute('role','dialog');
+  modal.setAttribute('aria-modal','true');
+  modal.setAttribute('aria-labelledby','account-password-dialog-title');
+  modal.innerHTML=`<div class="utility-dialog account-password-dialog">
+    <div class="dialog-head account-password-dialog-head"><div><span class="eyebrow">SICHERHEIT</span><h2 id="account-password-dialog-title">${user.password_set?'Passwort ändern':'Passwort festlegen'}</h2><p>${user.password_set?'Bestätige zuerst dein aktuelles Passwort.':'Lege ein Passwort für die lokale Anmeldung fest.'}</p></div><button class="close-button" type="button" data-password-dialog-close aria-label="Dialog schließen">×</button></div>
+    <div class="account-password-fields">
+      ${user.password_set?`<label><span>Aktuelles Passwort</span><input id="account-current-password" type="password" autocomplete="current-password"></label>`:''}
+      <label><span>Neues Passwort</span><input id="account-new-password" type="password" autocomplete="new-password"></label>
+      <label><span>Neues Passwort bestätigen</span><input id="account-confirm-password" type="password" autocomplete="new-password"></label>
+    </div>
+    <div class="dialog-actions account-password-actions"><button class="secondary-button" type="button" data-password-dialog-close>Abbrechen</button><span class="spacer"></span><button class="primary-button" type="button" id="account-password-save">${user.password_set?'Passwort ändern':'Passwort festlegen'}</button></div>
+  </div>`;
+  document.body.append(modal);
+  document.documentElement.style.overflow='hidden';
+  document.body.style.overflow='hidden';
+  $$('[data-password-dialog-close]',modal).forEach(button=>button.onclick=closeAccountPasswordDialog);
+  modal.onmousedown=event=>{if(event.target===modal)closeAccountPasswordDialog()};
+  $('#account-password-save',modal).onclick=async event=>{
+    const newPassword=$('#account-new-password',modal).value,confirmPassword=$('#account-confirm-password',modal).value;
+    if(newPassword!==confirmPassword){toast('Die Passwörter stimmen nicht überein.');return}
+    const button=event.currentTarget;
+    button.disabled=true;
+    try{
+      await post('/api/account/password',{new_password:newPassword,current_password:$('#account-current-password',modal)?.value||''});
+      state.boot.user.password_set=true;
+      closeAccountPasswordDialog();
+      renderSettings();
+      toast('Passwort gespeichert');
+    }catch(error){button.disabled=false;toast(error.message)}
+  };
+  requestAnimationFrame(()=>$(user.password_set?'#account-current-password':'#account-new-password',modal)?.focus());
+}
+
 function renderSettings(){
   const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic',mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
-  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
-    <section class="settings-section">
-      <h2>Darstellung</h2>
-      <p class="muted">Das moderne Theme passt sich eigenständig an Handy, Tablet und Desktop an.</p>
-      <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Modern</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
-      ${mobileTheme==='modern'?`<div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>`:''}
-    </section>
-    <section class="settings-section">
-      <h2>Standardsprache je Spiel</h2>
-      <p class="muted">Wird als Vorauswahl in Sammlung, Deckbuilder und Import verwendet.</p>
-      <div class="settings-grid">${games.map(g=>`<label class="settings-field"><span>${escapeHtml(g.name)}</span><select data-lang-game="${g.id}" class="select-control">${g.languages.map(l=>`<option value="${l}" ${(defaultLanguages[g.id]||g.languages[0])===l?'selected':''}>${l}</option>`).join('')}</select></label>`).join('')}</div>
-    </section>
-    <section class="settings-section">
-      <h2>Highlights</h2>
-      <p class="muted">Wähle, welche Karten des aktuell aktiven TCGs in das endlose Highlight-Reel einfließen.</p>
-      <div class="settings-checklist">
-        <label class="checkbox-row"><input type="checkbox" data-banner-mode="newest" ${modes.includes('newest')?'checked':''}> Die 20 neuesten Karten</label>
-        <label class="checkbox-row"><input type="checkbox" data-banner-mode="value" ${modes.includes('value')?'checked':''}> Die 20 wertvollsten Karten</label>
+  const user=state.boot.user,oauth=state.boot.oauth||{enabled:false};
+  content.innerHTML=`<div class="page-head compact-page-head user-settings-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
+    <div class="user-settings-layout">
+    <section class="settings-section user-settings-card settings-card-profile settings-card-wide">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20c1.3-3.6 4.2-5.5 7.2-5.5s5.9 1.9 7.2 5.5"/></svg></span><div><span class="eyebrow">PROFIL</span><h2>Kontodaten</h2><p>Anzeigename, Benutzername und E-Mail-Adresse dieses Kontos.</p></div></div>
+      <div class="settings-grid settings-grid-account">
+        <label class="settings-field"><span>Anzeigename</span><input id="account-display-name" value="${escapeHtml(user.display_name)}"></label>
+        <label class="settings-field"><span>Benutzername</span><input id="account-username" value="${escapeHtml(user.username)}"></label>
+        <label class="settings-field"><span>E-Mail</span><input id="account-email" type="email" placeholder="name@example.com" value="${escapeHtml(user.email||'')}"></label>
       </div>
-      <p class="muted settings-hint">Mehrere aktive Listen werden zu einer gemeinsamen, duplikatfreien Spur zusammengeführt.</p>
-    </section>`;
+      <div class="user-settings-actions account-settings-actions"><span class="password-settings-status"><i></i><b>${user.password_set?'Lokales Passwort aktiv':'Kein lokales Passwort'}</b></span><button class="primary-button" type="button" id="account-password-open">${user.password_set?'Passwort ändern':'Passwort festlegen'}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><button class="primary-button" id="account-save"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Kontodaten speichern</button></div>
+    </section>
+    ${oauth.enabled?`<section class="settings-section user-settings-card settings-card-sso settings-card-wide">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.2c0 4.8-3.2 8.3-8 10-4.8-1.7-8-5.2-8-10V6l8-3.2Z"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2v4"/></svg></span><div><span class="eyebrow">ANMELDUNG</span><h2>Single Sign-On</h2><p>${user.oauth_linked?`Dieses Konto ist mit ${escapeHtml(oauth.provider_name)} verbunden.`:`Verknüpfe dein Konto mit ${escapeHtml(oauth.provider_name)}.`}</p></div><span class="user-settings-status ${user.oauth_linked?'is-connected':''}"><i></i>${user.oauth_linked?'Verbunden':'Nicht verbunden'}</span></div>
+      <div class="user-settings-actions">${user.oauth_linked?`<button class="secondary-button" id="account-oauth-unlink">Verbindung trennen</button>`
+        :`<a class="primary-button" href="/oauth/login">Mit ${escapeHtml(oauth.provider_name)} verbinden</a>`}</div>
+    </section>`:''}
+    <section class="settings-section user-settings-card settings-card-appearance">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-1-.8-1.5-1.7-1.2a4 4 0 0 1-5.1-5.1C14.5 4.8 14 4 13 4l-1-.1Z"/><circle cx="7.5" cy="12" r=".7"/><circle cx="10" cy="17" r=".7"/></svg></span><div><span class="eyebrow">OBERFLÄCHE</span><h2>Darstellung</h2><p>Wähle Layout und Farbgebung der Oberfläche.</p></div></div>
+      <div class="appearance-settings-grid">
+        <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Modern</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
+        ${mobileTheme==='modern'?`<div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>`:''}
+      </div>
+    </section>
+    <section class="settings-section user-settings-card settings-card-language">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17M12 3c2.2 2.4 3.4 5.4 3.4 9S14.2 18.6 12 21c-2.2-2.4-3.4-5.4-3.4-9S9.8 5.4 12 3Z"/></svg></span><div><span class="eyebrow">KARTENDATEN</span><h2>Standardsprache je Spiel</h2><p>Vorauswahl für Sammlung, Deckbuilder und Import.</p></div></div>
+      <div class="settings-grid settings-language-grid">${games.map(g=>`<label class="settings-field settings-language-field"><span class="settings-language-game"><i><img src="/game-logo/${g.id}" alt=""></i><b>${escapeHtml(g.name)}</b></span><select data-lang-game="${g.id}" class="select-control">${g.languages.map(l=>`<option value="${l}" ${(defaultLanguages[g.id]||g.languages[0])===l?'selected':''}>${l}</option>`).join('')}</select></label>`).join('')}</div>
+    </section>
+    <section class="settings-section user-settings-card settings-card-highlights settings-card-wide">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.1 5.4L20 9l-4.5 3.8L17 19l-5-3.2L7 19l1.5-6.2L4 9l5.9-.6L12 3Z"/></svg></span><div><span class="eyebrow">STARTSEITE</span><h2>Highlights</h2><p>Bestimme die Karten im endlosen Reel des aktiven TCGs.</p></div></div>
+      <div class="settings-checklist highlight-settings-list">
+        <label class="checkbox-row highlight-setting"><span><b>Neueste Karten</b><small>Die 20 zuletzt hinzugefügten Karten</small></span><input type="checkbox" data-banner-mode="newest" ${modes.includes('newest')?'checked':''}><i aria-hidden="true"></i></label>
+        <label class="checkbox-row highlight-setting"><span><b>Wertvollste Karten</b><small>Die 20 Karten mit dem höchsten Wert</small></span><input type="checkbox" data-banner-mode="value" ${modes.includes('value')?'checked':''}><i aria-hidden="true"></i></label>
+      </div>
+      <p class="muted settings-hint">Aktive Listen werden zu einer gemeinsamen, duplikatfreien Spur zusammengeführt.</p>
+    </section>
+    </div>`;
+  $('#account-save',content).onclick=async()=>{
+    const payload={display_name:$('#account-display-name').value.trim(),username:$('#account-username').value.trim(),email:$('#account-email').value.trim()};
+    try{
+      const updated=await api('/api/account',{method:'PATCH',body:JSON.stringify(payload)});
+      state.boot.user={...state.boot.user,...updated};
+      $('#user-name').textContent=updated.display_name; $('#user-avatar').textContent=initials(updated.display_name);
+      toast('Kontodaten gespeichert');
+    }catch(error){toast(error.message)}
+  };
+  $('#account-password-open',content).onclick=()=>openAccountPasswordDialog(user);
+  $('#account-oauth-unlink',content)?.addEventListener('click',async()=>{
+    try{
+      await post('/api/account/oauth/unlink',{});
+      state.boot.user.oauth_linked=false;
+      toast('SSO-Verbindung getrennt');
+      renderSettings();
+    }catch(error){toast(error.message)}
+  });
   $$('[data-mobile-theme]',content).forEach(b=>b.onclick=async()=>{
     const value=b.dataset.mobileTheme;
     await post('/api/settings',{mobileTheme:value});
@@ -529,22 +608,133 @@ function renderSettings(){
   });
 }
 
-const DECK_RULESET_OPTIONS=[['','Keine'],['lorcana-standard','Lorcana Standard'],['one-piece-standard','One Piece Standard'],['hololive-standard','hololive Standard']];
 const PRICE_METHOD_OPTIONS=[['','Keine'],['cardmarket','Cardmarket'],['tcgcsv','TCGCSV / TCGplayer'],['yuyutei','Yuyutei']];
+
+function closeAdminPriceSources(){
+  $('#admin-price-source-modal')?.remove();
+  document.documentElement.style.overflow='';
+  document.body.style.overflow='';
+}
+
+function openAdminPriceSources(games){
+  closeAdminPriceSources();
+  const modal=document.createElement('div');
+  modal.id='admin-price-source-modal';
+  modal.className='overlay admin-price-source-overlay';
+  modal.setAttribute('role','dialog');
+  modal.setAttribute('aria-modal','true');
+  modal.setAttribute('aria-labelledby','admin-price-source-title');
+  modal.innerHTML=`<div class="utility-dialog price-source-dialog">
+    <div class="dialog-head price-source-dialog-head">
+      <div><span class="eyebrow">PREISDATEN</span><h2 id="admin-price-source-title">Preisquellen</h2><p>Lege je TCG fest, welcher Marktplatz für Preise verwendet wird.</p></div>
+      <button class="close-button" type="button" data-price-source-close aria-label="Dialog schließen">×</button>
+    </div>
+    <div class="price-source-list">${games.map(g=>`<div class="price-source-row" data-price-source-game="${g.id}">
+      <div class="price-source-game"><span class="price-source-game-logo"><img src="/game-logo/${g.id}" alt=""></span><div><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.id)}</small></div></div>
+      <label><span>Preisquelle</span><select class="select-control" data-price-method>${PRICE_METHOD_OPTIONS.map(([value,label])=>`<option value="${value}" ${(g.price_method||'')===value?'selected':''}>${label}</option>`).join('')}</select></label>
+      <label class="price-source-market-id"><span>Cardmarket Spiel-ID</span><input type="number" min="1" inputmode="numeric" data-cardmarket-game-id value="${g.cardmarket_game_id||''}" placeholder="z. B. 19"></label>
+    </div>`).join('')}</div>
+    <div class="dialog-actions price-source-actions"><button class="secondary-button" type="button" data-price-source-close>Abbrechen</button><span class="spacer"></span><button class="primary-button" type="button" id="admin-price-source-save">Preisquellen speichern</button></div>
+  </div>`;
+  document.body.append(modal);
+  document.documentElement.style.overflow='hidden';
+  document.body.style.overflow='hidden';
+  const syncMarketField=row=>{
+    const isCardmarket=$('[data-price-method]',row).value==='cardmarket';
+    const field=$('[data-cardmarket-game-id]',row);
+    field.disabled=!isCardmarket;
+    row.classList.toggle('uses-cardmarket',isCardmarket);
+  };
+  $$('[data-price-source-game]',modal).forEach(row=>{
+    syncMarketField(row);
+    $('[data-price-method]',row).onchange=()=>syncMarketField(row);
+  });
+  $$('[data-price-source-close]',modal).forEach(button=>button.onclick=closeAdminPriceSources);
+  modal.onmousedown=event=>{if(event.target===modal)closeAdminPriceSources()};
+  $('#admin-price-source-save',modal).onclick=async event=>{
+    const button=event.currentTarget;
+    button.disabled=true;
+    try{
+      await Promise.all($$('[data-price-source-game]',modal).map(row=>api(`/api/admin/games/${row.dataset.priceSourceGame}`,{
+        method:'PATCH',
+        body:JSON.stringify({
+          price_method:$('[data-price-method]',row).value||null,
+          cardmarket_game_id:$('[data-cardmarket-game-id]',row).value||null,
+        }),
+      })));
+      closeAdminPriceSources();
+      toast('Preisquellen gespeichert');
+      renderAdmin();
+    }catch(error){button.disabled=false;toast(error.message)}
+  };
+  $('#admin-price-source-title',modal)?.focus?.();
+}
 
 async function renderAdmin(){
   content.innerHTML='<div class="page-loader"><span></span><p>Admin-Bereich wird geladen …</p></div>';
-  const [games,providers]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers')]);
+  const [games,providers,oauth]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers'),api('/api/admin/oauth')]);
+  const oauthLocked=oauth.source==='file',ro=oauthLocked?'disabled':'';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">VERWALTUNG</span><h1>Admin</h1><p>TCGs, Katalog-Provider und Zuordnungen verwalten.</p></div></div>
-    <section class="settings-section">
-      <h2>TCGs</h2>
-      <div class="admin-table">${games.map(g=>`<div class="admin-row" data-game-row="${g.id}">
+    <details class="settings-section oauth-admin-card ${oauthLocked?'is-locked':''}">
+      <summary class="oauth-admin-summary">
+        <div class="oauth-admin-head">
+          <div class="oauth-admin-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.2c0 4.8-3.2 8.3-8 10-4.8-1.7-8-5.2-8-10V6l8-3.2Z"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2v4"/></svg></div>
+          <div class="oauth-admin-title"><span>AUTHENTIFIZIERUNG</span><h2>Single Sign-On</h2><p>OAuth 2.0 und OpenID Connect für einen externen Identity Provider.</p></div>
+          <div class="oauth-admin-state"><span class="oauth-status ${oauth.enabled?'is-active':'is-inactive'}"><i></i>${oauth.enabled?'Aktiv':'Inaktiv'}</span><span class="oauth-source-badge">${oauthLocked?'Config-Datei':'Admin UI'}</span></div>
+          <span class="oauth-collapse-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5"/></svg></span>
+        </div>
+      </summary>
+      <div class="oauth-admin-body">
+      ${oauthLocked?`<div class="oauth-lock-notice"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg><div><b>Konfiguration schreibgeschützt</b><span>Die Werte kommen aus <code>${escapeHtml(oauth.config_path)}</code>. Änderungen erfolgen in der Datei und werden nach einem Container-Neustart übernommen.</span></div></div>`:''}
+      <div class="admin-form oauth-admin-form">
+        <label class="oauth-toggle-row">
+          <span class="oauth-toggle-copy"><b>SSO-Anmeldung</b><small>${oauth.enabled?'Der externe Login wird auf der Anmeldeseite angeboten.':'Die lokale Anmeldung bleibt aktiv; SSO ist derzeit ausgeblendet.'}</small></span>
+          <span class="oauth-toggle-control"><input type="checkbox" id="oauth-enabled" ${oauth.enabled?'checked':''} ${ro}><span aria-hidden="true"></span></span>
+        </label>
+
+        <div class="oauth-form-group">
+          <div class="oauth-form-group-head"><span>01</span><div><b>Identity Provider</b><small>Bezeichnung und Zugangsdaten der registrierten Anwendung.</small></div></div>
+          <div class="admin-form-grid oauth-provider-grid">
+            <label class="oauth-field"><span>Button-Beschriftung</span><input id="oauth-provider-name" value="${escapeHtml(oauth.provider_name||'')}" placeholder="z. B. Mit Authentik anmelden" ${ro}></label>
+            <label class="oauth-field"><span>Client-ID</span><input id="oauth-client-id" value="${escapeHtml(oauth.client_id||'')}" autocomplete="off" ${ro}></label>
+            <label class="oauth-field"><span>Client-Secret</span><input id="oauth-client-secret" type="password" autocomplete="new-password" placeholder="${oauth.client_secret_set?'••••••••  ·  leer lassen zum Beibehalten':'Client-Secret'}" ${ro}></label>
+            <label class="oauth-field oauth-field-wide"><span>Discovery-URL <em>empfohlen</em></span><input id="oauth-discovery-url" value="${escapeHtml(oauth.discovery_url||'')}" placeholder="https://idp.example.com/.well-known/openid-configuration" ${ro}></label>
+          </div>
+        </div>
+
+        <div class="oauth-form-group">
+          <div class="oauth-form-group-head"><span>02</span><div><b>Manuelle Endpunkte</b><small>Nur erforderlich, wenn der Provider keine Discovery-URL bereitstellt.</small></div></div>
+          <div class="admin-form-grid oauth-endpoint-grid">
+            <label class="oauth-field"><span>Autorisierung</span><input id="oauth-authorize-url" value="${escapeHtml(oauth.authorize_url||'')}" placeholder="https://…/authorize" ${ro}></label>
+            <label class="oauth-field"><span>Token</span><input id="oauth-token-url" value="${escapeHtml(oauth.token_url||'')}" placeholder="https://…/token" ${ro}></label>
+            <label class="oauth-field"><span>Userinfo</span><input id="oauth-userinfo-url" value="${escapeHtml(oauth.userinfo_url||'')}" placeholder="https://…/userinfo" ${ro}></label>
+          </div>
+        </div>
+
+        <div class="oauth-form-group">
+          <div class="oauth-form-group-head"><span>03</span><div><b>Identität und Konten</b><small>Scopes, Claims und Verhalten bei der ersten Anmeldung.</small></div></div>
+          <div class="admin-form-grid oauth-claims-grid">
+            <label class="oauth-field oauth-field-wide"><span>Scopes</span><input id="oauth-scopes" value="${escapeHtml(oauth.scopes||'')}" placeholder="openid email profile" ${ro}></label>
+            <label class="oauth-field"><span>Benutzername-Claim</span><input id="oauth-username-claim" value="${escapeHtml(oauth.username_claim||'')}" ${ro}></label>
+            <label class="oauth-field"><span>E-Mail-Claim</span><input id="oauth-email-claim" value="${escapeHtml(oauth.email_claim||'')}" ${ro}></label>
+            <label class="oauth-field"><span>Subjekt-ID-Claim</span><input id="oauth-subject-claim" value="${escapeHtml(oauth.subject_claim||'')}" ${ro}></label>
+            <label class="oauth-field oauth-field-wide"><span>Konto-Zuordnung</span><select id="oauth-account-matching" class="select-control" ${ro}>
+              <option value="manual" ${oauth.account_matching==='manual'?'selected':''}>Nur manuelle Verknüpfung</option>
+              <option value="email" ${oauth.account_matching==='email'?'selected':''}>Automatisch über identische E-Mail-Adresse verknüpfen</option>
+              <option value="auto_provision" ${oauth.account_matching==='auto_provision'?'selected':''}>Neue Konten automatisch anlegen</option>
+            </select></label>
+          </div>
+        </div>
+
+        <div class="oauth-admin-actions"><span>Die Anmeldung mit Benutzername und Passwort bleibt zusätzlich verfügbar.</span>${oauthLocked?'':`<button class="primary-button" id="oauth-save"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>SSO-Einstellungen speichern</button>`}</div>
+      </div>
+      </div>
+    </details>
+    <section class="settings-section admin-settings-card">
+      <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg></span><div><span class="eyebrow">KATALOG</span><h2>TCGs</h2><p>Spiele, Cardbacks und Preisquellen verwalten.</p></div><button class="primary-button admin-price-source-button" type="button" id="admin-price-source-open"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M10.5 9.5 13.5 14.5M15.5 5.5l3 3M5.5 15.5l3 3"/></svg>Preisquellen</button></div>
+      <div class="admin-table">${games.map(g=>`<div class="admin-row admin-game-row" data-game-row="${g.id}">
         <div class="admin-row-head"><b>${escapeHtml(g.name)}</b><span class="muted">${g.id} · ${g.languages.join('/')}</span></div>
-        <label>Preisquelle<select class="select-control" data-game-field="price_method" data-game="${g.id}">${PRICE_METHOD_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.price_method||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
-        <label>Cardmarket-ID<input type="number" min="1" data-game-field="cardmarket_game_id" data-game="${g.id}" value="${g.cardmarket_game_id||''}" placeholder="z.B. 19" title="Numerische Spiel-ID aus der Cardmarket-URL, z.B. cardmarket.com/.../Games/19 → 19"></label>
-        <label>Deck-Ruleset<select class="select-control" data-game-field="deck_ruleset" data-game="${g.id}">${DECK_RULESET_OPTIONS.map(([v,l])=>`<option value="${v}" ${(g.deck_ruleset||'')===v?'selected':''}>${l}</option>`).join('')}</select></label>
         <label>Card-Back<input type="file" accept="image/jpeg" data-card-back="${g.id}"></label>
-        <button class="icon-button" data-delete-game="${g.id}" data-game-name="${escapeHtml(g.name)}" title="TCG löschen">✕</button>
       </div>`).join('')}</div>
       <details class="admin-add"><summary>+ Neues TCG anlegen</summary>
         <div class="admin-form">
@@ -556,9 +746,8 @@ async function renderAdmin(){
         </div>
       </details>
     </section>
-    <section class="settings-section">
-      <h2>Katalog-Provider</h2>
-      <p class="muted">Jeder Provider ist Python-Code, der bei Ausführung ein <code>fetch_catalog() -&gt; dict</code> definiert und in einem eigenen Prozess mit Zeitlimit läuft. Code läuft mit vollem Server-Zugriff — nur einfügen, dem du vertraust.</p>
+    <section class="settings-section admin-settings-card">
+      <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 7-4 5 4 5M16 7l4 5-4 5M14 4l-4 16"/></svg></span><div><span class="eyebrow">DATENQUELLEN</span><h2>Katalog-Provider</h2><p>Import-Code, Laufstatus und Sicherheitsgrenzen verwalten.</p></div></div>
       <div class="admin-table">${providers.map(p=>`<div class="admin-row" data-provider-row="${p.id}">
         <div class="admin-row-head"><b>${escapeHtml(p.label)}</b><span class="muted">${p.game_id} · Timeout ${p.timeout_seconds}s</span></div>
         <div class="admin-status"><span class="admin-status-badge status-${p.last_status||'none'}">${p.last_status||'noch nicht gelaufen'}</span><span class="muted">${p.last_run_at?date(p.last_run_at):'–'}</span></div>
@@ -597,9 +786,8 @@ def fetch_catalog() -&gt; dict:
         </div>
       </details>
     </section>
-    <section class="settings-section">
-      <h2>Manuelle Karten</h2>
-      <p class="muted">Direkt eingetragene Karten – sofort wirksam, werden nie durch einen Sync-Lauf entfernt oder überschrieben.</p>
+    <section class="settings-section admin-settings-card">
+      <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="12" height="16" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2V7M8 11h6M11 8v6"/></svg></span><div><span class="eyebrow">SONDEREINTRÄGE</span><h2>Manuelle Karten</h2><p>Direkte Einträge bleiben unabhängig von Katalog-Synchronisierungen erhalten.</p></div></div>
       <label>TCG<select id="admin-manual-game" class="select-control">${games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}</select></label>
       <div class="admin-table" id="admin-manual-cards-list"></div>
       <details class="admin-add"><summary>+ Karte manuell hinzufügen</summary>
@@ -621,21 +809,31 @@ def fetch_catalog() -&gt; dict:
         </div>
       </details>
     </section>`;
-  $$('[data-game-field]',content).forEach(select=>select.onchange=async e=>{
-    await api(`/api/admin/games/${select.dataset.game}`,{method:'PATCH',body:JSON.stringify({[select.dataset.gameField]:e.target.value||null})});
-    toast('Gespeichert');
+  $('#oauth-save',content)?.addEventListener('click',async()=>{
+    const payload={
+      enabled:$('#oauth-enabled').checked,
+      provider_name:$('#oauth-provider-name').value.trim(),
+      client_id:$('#oauth-client-id').value.trim(),
+      client_secret:$('#oauth-client-secret').value,
+      discovery_url:$('#oauth-discovery-url').value.trim(),
+      authorize_url:$('#oauth-authorize-url').value.trim(),
+      token_url:$('#oauth-token-url').value.trim(),
+      userinfo_url:$('#oauth-userinfo-url').value.trim(),
+      scopes:$('#oauth-scopes').value.trim(),
+      username_claim:$('#oauth-username-claim').value.trim(),
+      email_claim:$('#oauth-email-claim').value.trim(),
+      subject_claim:$('#oauth-subject-claim').value.trim(),
+      account_matching:$('#oauth-account-matching').value,
+    };
+    try{await post('/api/admin/oauth',payload);toast('SSO-Einstellungen gespeichert');renderAdmin()}
+    catch(error){toast(error.message)}
   });
+  $('#admin-price-source-open',content).onclick=()=>openAdminPriceSources(games);
   $$('[data-card-back]',content).forEach(input=>input.onchange=async e=>{
     const file=e.target.files[0]; if(!file)return;
     const form=new FormData(); form.append('file',file);
     const response=await fetch(`/api/admin/games/${input.dataset.cardBack}/card-back`,{method:'POST',body:form});
     if(response.ok)toast('Card-Back hochgeladen'); else toast('Upload fehlgeschlagen');
-  });
-  $$('[data-delete-game]',content).forEach(button=>button.onclick=async()=>{
-    const name=button.dataset.gameName;
-    if(!confirm(`"${name}" wirklich vollständig löschen?\n\nDas entfernt unwiderruflich: alle Sets, Karten, Sammlungen, Decks, Watchlists, Preisdaten und Katalog-Provider dieses TCGs für ALLE Nutzer.\n\nZum Bestätigen OK klicken.`))return;
-    try{await api(`/api/admin/games/${button.dataset.deleteGame}`,{method:'DELETE'});toast('TCG gelöscht');renderAdmin()}
-    catch(error){toast(error.message)}
   });
   $('#admin-create-game').onclick=async()=>{
     const name=$('#admin-new-game-name').value.trim();
@@ -2277,15 +2475,26 @@ let importMode='text', importJsonData=null;
 
 async function previewImport(){
   const box=$('#import-preview');box.classList.add('visible');
+  const button=$('#preview-import');
+  if(importMode==='json'&&(!importJsonData||!importJsonData.length)){box.innerHTML='<div class="empty-state">Bitte zuerst eine JSON-Backup-Datei wählen.</div>';$('#apply-import').disabled=true;return[]}
+  box.innerHTML='<div class="page-loader compact"><span></span><p>Wird geprüft …</p></div>';
+  button.disabled=true;
   let rows;
-  if(importMode==='json'){
-    if(!importJsonData||!importJsonData.length){box.innerHTML='<div class="empty-state">Bitte zuerst eine JSON-Backup-Datei wählen.</div>';$('#apply-import').disabled=true;return[]}
-    rows=await post('/api/import/json/preview',{collection:importJsonData});
-  } else {
-    const payload={game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value};
-    rows=await post('/api/import/preview',payload);
+  try{
+    rows=importMode==='json'
+      ?await post('/api/import/json/preview',{collection:importJsonData})
+      :await post('/api/import/preview',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value});
+  }catch(error){
+    box.innerHTML=`<div class="empty-state">Vorschau fehlgeschlagen: ${escapeHtml(error.message)}</div>`;
+    button.disabled=false;
+    return[];
   }
-  box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.game_id==='lorcana'?lorcanaFinishLabel(r.match.finish,r.match.rarity):r.match.finish):escapeHtml(r.message||'Kein Treffer')}</small></div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
+  button.disabled=false;
+  // r.message can accompany a genuine match too (not just ambiguous/not_found) -- e.g. a
+  // JSON-backup row recovered by matching set/number/language/finish after its catalogue name
+  // text had drifted since the backup was made (see parse_json_backup in app.py). Surface it as
+  // its own line whenever present so that recovery is visible, not just silently applied.
+  box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.game_id==='lorcana'?lorcanaFinishLabel(r.match.finish,r.match.rarity):r.match.finish):escapeHtml(r.message||'Kein Treffer')}</small>${r.match&&r.message?`<small class="import-row-note">${escapeHtml(r.message)}</small>`:''}</div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
   $('#apply-import').disabled=!rows.some(r=>r.status==='matched');return rows;
 }
 
@@ -2554,11 +2763,19 @@ function wireGlobalEvents(){
   $('#import-json-file').onchange=e=>handleImportJsonFile(e.target.files[0]);
   $('#preview-import').onclick=previewImport;
   $('#apply-import').onclick=async()=>{
-    const strategy=$('input[name="strategy"]:checked').value;
-    const r=importMode==='json'
-      ?await post('/api/import/json/apply',{collection:importJsonData||[],strategy})
-      :await post('/api/import/apply',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy});
-    closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
+    const button=$('#apply-import'),originalLabel=button.textContent;
+    button.disabled=true;button.textContent='Wird importiert …';
+    try{
+      const strategy=$('input[name="strategy"]:checked').value;
+      const r=importMode==='json'
+        ?await post('/api/import/json/apply',{collection:importJsonData||[],strategy})
+        :await post('/api/import/apply',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy});
+      closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
+    }catch(error){
+      toast(error.message);
+    }finally{
+      button.disabled=false;button.textContent=originalLabel;
+    }
   };
   $('#deck-preview-import').onclick=previewDeckImport;
   $('#deck-apply-import').onclick=async()=>{
@@ -2570,8 +2787,21 @@ function wireGlobalEvents(){
   };
 }
 
+const OAUTH_ERROR_MESSAGES={
+  not_configured:'Single Sign-On ist auf diesem Server nicht aktiviert.',
+  state_mismatch:'Die Anmeldeanfrage ist abgelaufen oder ungültig. Bitte erneut versuchen.',
+  provider_error:'Der Identity Provider hat die Anmeldung abgelehnt oder ist nicht erreichbar.',
+  already_linked:'Diese SSO-Identität ist bereits mit einem anderen Konto verknüpft.',
+};
 async function init(){
-  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');document.body.classList.toggle('mobile-light',settings.mobileThemeAppearance==='light');wireGlobalEvents();await refreshWatchCount();document.body.dataset.route='dashboard';renderDashboard()}catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  try{state.boot=await api('/api/bootstrap');const u=state.boot.user;$('#user-name').textContent=u.display_name;$('#user-role').textContent=u.role==='admin'?'Administrator':'Sammler';$('#user-avatar').textContent=initials(u.display_name);document.body.classList.toggle('is-admin',u.role==='admin');const gameOptions=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.short_name)}</option>`).join('');$('#import-game').innerHTML=state.boot.games.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');$('#global-game-filter').innerHTML=gameOptions;const settings=state.boot.settings||{};state.setZoom=settings.setZoom||3;setActiveGame(settings.activeGameId||state.boot.games[0].id,false);if(settings.sidebarCollapsed)document.body.classList.add('sidebar-collapsed');document.body.classList.toggle('mobile-modern',settings.mobileTheme!=='classic');document.body.classList.toggle('mobile-light',settings.mobileThemeAppearance==='light');wireGlobalEvents();await refreshWatchCount();document.body.dataset.route='dashboard';renderDashboard();
+    // Landed here from a self-service SSO "Verbinden" click in Settings (the initiator was
+    // already authenticated, so the callback couldn't show its error on the logged-out /login
+    // page -- see app.py's oauth_failure_redirect()). Surface it as a toast instead, once.
+    const params=new URLSearchParams(location.search);
+    if(params.has('linked')){toast('SSO-Verbindung hergestellt');state.boot.user.oauth_linked=true;history.replaceState(null,'',location.pathname)}
+    else if(params.has('oauth_error')){toast(OAUTH_ERROR_MESSAGES[params.get('oauth_error')]||'SSO-Verknüpfung fehlgeschlagen.');history.replaceState(null,'',location.pathname)}
+  }catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 init();
 updateOfflineIndicator();

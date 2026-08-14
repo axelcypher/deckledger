@@ -17,14 +17,22 @@ from urllib.parse import quote_plus, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from catalog_provider_contract import digest, slug
+from oauth_client import OAuthConfigError, build_authorization_request, exchange_code, extract_identity, fetch_userinfo
 import ravensburger_foil
 
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "deckledger-local-development-key")
+if os.environ.get("TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
+    # Opt-in only (never trust X-Forwarded-* from directly-exposed traffic, where a client could
+    # spoof them) -- needed behind a TLS-terminating reverse proxy so url_for(_external=True) in
+    # the OAuth redirect_uri comes out as https://, matching what's registered with the IdP,
+    # instead of the plain http:// Flask would otherwise infer from the proxy's own request.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(__file__), "deckledger.db"))
 IMAGE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-images"
 IMAGE_SOURCE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-image-sources"
@@ -35,6 +43,21 @@ PUBLIC_DIR = Path(os.environ.get("PUBLIC_DIR", Path(__file__).with_name("public"
 PUBLIC_SET_DIR = PUBLIC_DIR / "sets"
 PUBLIC_OP_ICON_DIR = PUBLIC_DIR / "icons" / "one-piece"
 PUBLIC_IMAGE_EXTENSIONS = (".avif", ".webp", ".png", ".jpg", ".jpeg", ".svg")
+# Optional SSO config file mounted into the container (docker-entrypoint.sh has no live mount
+# for the rest of the app, but operators can mount just this one file read-only). When present
+# it is the sole source of truth for OAuth settings and the Admin UI renders it read-only; when
+# absent, OAuth settings live in the app_settings table and are fully editable from Admin.
+OAUTH_CONFIG_PATH = os.environ.get("OAUTH_CONFIG_PATH", "/config/oauth.json")
+# Fixed since there's only ever one configured provider (see plan: single generic OAuth2/OIDC
+# client, not a multi-provider table) -- kept as a named constant purely so users.oauth_provider
+# reads as "which identity system", not a magic string repeated at every call site.
+OAUTH_PROVIDER_KEY = "generic"
+OAUTH_CONFIG_DEFAULTS = {
+    "enabled": False, "provider_name": "SSO", "client_id": "", "client_secret": "",
+    "discovery_url": "", "authorize_url": "", "token_url": "", "userinfo_url": "",
+    "scopes": "openid email profile", "username_claim": "preferred_username",
+    "email_claim": "email", "subject_claim": "sub", "account_matching": "auto_provision",
+}
 
 GAME_LOGOS = {
     "lorcana": "https://www.disneylorcana.com/_nuxt/logo-br-2x.Sweb4xgr.png",
@@ -80,7 +103,8 @@ def close_db(_error=None):
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, display_name TEXT NOT NULL,
-  password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', created_at TEXT NOT NULL
+  password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', created_at TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '', oauth_provider TEXT NOT NULL DEFAULT '', oauth_subject TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS games (
   id TEXT PRIMARY KEY, module_id TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT NOT NULL,
@@ -154,6 +178,9 @@ CREATE TABLE IF NOT EXISTS user_settings (
   user_id INTEGER NOT NULL REFERENCES users(id), key TEXT NOT NULL, value TEXT NOT NULL,
   PRIMARY KEY(user_id, key)
 );
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS catalog_metadata (
   key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
@@ -174,6 +201,13 @@ CREATE TABLE IF NOT EXISTS game_price_overrides (
 CREATE INDEX IF NOT EXISTS idx_catalog_providers_game ON catalog_providers(game_id);
 CREATE INDEX IF NOT EXISTS idx_printings_set ON printings(set_id);
 CREATE INDEX IF NOT EXISTS idx_printings_identity_language ON printings(identity_id,language,set_id);
+-- Matches parse_import()/parse_json_backup()'s "UPPER(p.collector_number)=UPPER(?) AND
+-- p.language=?" import-matching lookup exactly (a plain index on collector_number can't be used
+-- for a function-wrapped comparison like UPPER(column)=?, only an expression index on the same
+-- expression can). Without this, those two queries fall back to scanning the entire printings
+-- (or, pre-ANALYZE, variants) table per row -- 6-14ms per line even indexed on game_id alone,
+-- which is what actually made a several-hundred-line import take upwards of ten seconds.
+CREATE INDEX IF NOT EXISTS idx_printings_number_language ON printings(UPPER(collector_number),language);
 CREATE INDEX IF NOT EXISTS idx_variants_printing ON variants(printing_id);
 CREATE INDEX IF NOT EXISTS idx_variants_game ON variants(game_id);
 CREATE INDEX IF NOT EXISTS idx_collection_user ON collection_entries(user_id);
@@ -499,6 +533,16 @@ def init_database():
     connection = sqlite3.connect(DB_PATH)
     connection.execute("PRAGMA busy_timeout = 10000")
     connection.executescript(SCHEMA)
+    # One-time catch-up for any database that predates this: without ANALYZE, SQLite has no table
+    # size statistics at all (no sqlite_stat1) and its query planner badly misjudges several
+    # catalog-matching queries -- e.g. import matching was measured doing a full ~27k-row scan of
+    # `variants` per line (6ms+ each) instead of the sub-0.1ms indexed lookup it should be, which
+    # is what actually made importing a several-hundred-line collection take upwards of ten
+    # seconds. catalog_sync.py re-runs ANALYZE after every write, so this only ever needs to catch
+    # up a database that's never had it; a fresh install runs its first catalog_sync immediately
+    # after this anyway (see docker-entrypoint.sh).
+    if not connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_stat1'").fetchone():
+        connection.execute("ANALYZE")
     deck_columns = {row[1] for row in connection.execute("PRAGMA table_info(decks)")}
     if "cover_variant_id" not in deck_columns:
         connection.execute("ALTER TABLE decks ADD COLUMN cover_variant_id TEXT REFERENCES variants(id)")
@@ -511,6 +555,17 @@ def init_database():
         connection.execute("ALTER TABLE games ADD COLUMN deck_ruleset TEXT")
     if "cardmarket_game_id" not in game_columns:
         connection.execute("ALTER TABLE games ADD COLUMN cardmarket_game_id INTEGER")
+    user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
+    if "email" not in user_columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+    if "oauth_provider" not in user_columns:
+        connection.execute("ALTER TABLE users ADD COLUMN oauth_provider TEXT NOT NULL DEFAULT ''")
+        connection.execute("ALTER TABLE users ADD COLUMN oauth_subject TEXT NOT NULL DEFAULT ''")
+    # Partial index (only rows actually linked to an IdP identity) -- created here rather than in
+    # SCHEMA because on an upgrade from an older DB the ALTER TABLEs above (which add the columns
+    # this index is built on) only just ran; SCHEMA's own executescript() runs before this point.
+    connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oauth_identity
+      ON users(oauth_provider,oauth_subject) WHERE oauth_subject != ''""")
     watchlist_entry_columns = {row[1] for row in connection.execute("PRAGMA table_info(named_watchlist_entries)")}
     if "quantity" not in watchlist_entry_columns:
         connection.execute("ALTER TABLE named_watchlist_entries ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
@@ -625,20 +680,166 @@ def jload(value, default=None):
         return default
 
 
+def resolve_oauth_config():
+    # File wins whenever it's mounted -- the Admin UI shows those fields read-only in that
+    # case (see api_admin_oauth). Without a mounted file, settings live in app_settings and
+    # are read fresh on every call (no in-process caching of this dict) so an Admin UI save
+    # takes effect on the very next login click, no restart needed.
+    path = Path(OAUTH_CONFIG_PATH)
+    if path.is_file():
+        try:
+            file_config = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            file_config = {}
+        return {**OAUTH_CONFIG_DEFAULTS, **file_config, "source": "file"}
+    row = db().execute("SELECT value FROM app_settings WHERE key='oauth_config'").fetchone()
+    stored = jload(row["value"], {}) if row else {}
+    return {**OAUTH_CONFIG_DEFAULTS, **stored, "source": "database"}
+
+
+OAUTH_ERROR_MESSAGES = {
+    "not_configured": "Single Sign-On ist auf diesem Server nicht aktiviert.",
+    "state_mismatch": "Die Anmeldeanfrage ist abgelaufen oder ungültig. Bitte erneut versuchen.",
+    "provider_error": "Der Identity Provider hat die Anmeldung abgelehnt oder ist nicht erreichbar.",
+    "no_account": "Kein DeckLedger-Konto mit dieser Identität verknüpft. Bitte zuerst mit Benutzername/Passwort anmelden und das Konto in den Einstellungen unter „Single Sign-On“ verbinden.",
+    "already_linked": "Diese SSO-Identität ist bereits mit einem anderen Konto verknüpft.",
+}
+
+
+def unique_username_from(candidate):
+    base = slug(candidate) or "user"
+    username, suffix = base, 1
+    while db().execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+        suffix += 1
+        username = f"{base}-{suffix}"
+    return username
+
+
+def resolve_oauth_identity(config, subject, email, display_name):
+    """Walks the account-matching chain for a login (not link) OAuth callback and
+    returns the matched/created users row, or None if no account could be resolved.
+    Order is cumulative: exact identity match always applies; email-matching and
+    auto-provisioning are opt-in escalations controlled by account_matching."""
+    connection = db()
+    matched = connection.execute(
+        "SELECT * FROM users WHERE oauth_provider=? AND oauth_subject=?", (OAUTH_PROVIDER_KEY, subject),
+    ).fetchone()
+    if matched:
+        return matched
+    mode = config.get("account_matching") or "manual"
+    if mode in ("email", "auto_provision") and email:
+        candidate = connection.execute(
+            "SELECT * FROM users WHERE oauth_subject='' AND lower(email)=lower(?)", (email,),
+        ).fetchone()
+        if candidate:
+            connection.execute(
+                "UPDATE users SET oauth_provider=?, oauth_subject=? WHERE id=?", (OAUTH_PROVIDER_KEY, subject, candidate["id"]),
+            )
+            connection.commit()
+            return connection.execute("SELECT * FROM users WHERE id=?", (candidate["id"],)).fetchone()
+    if mode == "auto_provision":
+        username = unique_username_from(email.split("@")[0] if email else display_name or subject)
+        connection.execute(
+            "INSERT INTO users(username,display_name,password_hash,role,created_at,email,oauth_provider,oauth_subject) VALUES(?,?,?,?,?,?,?,?)",
+            (username, display_name or username, "", "user", now_iso(), email, OAUTH_PROVIDER_KEY, subject),
+        )
+        connection.commit()
+        return connection.execute(
+            "SELECT * FROM users WHERE oauth_provider=? AND oauth_subject=?", (OAUTH_PROVIDER_KEY, subject),
+        ).fetchone()
+    return None
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    oauth_config = resolve_oauth_config()
+    oauth_context = {"oauth_enabled": oauth_config["enabled"], "oauth_provider_name": oauth_config["provider_name"]}
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         row = db().execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-        if row and check_password_hash(row["password_hash"], password):
+        if row and row["password_hash"] and check_password_hash(row["password_hash"], password):
             session.clear()
             session["user_id"] = row["id"]
             return redirect(url_for("index"))
-        return render_template("login.html", error="Benutzername oder Passwort ist nicht korrekt."), 401
+        return render_template("login.html", error="Benutzername oder Passwort ist nicht korrekt.", **oauth_context), 401
     if session.get("user_id"):
         return redirect(url_for("index"))
-    return render_template("login.html")
+    error = OAUTH_ERROR_MESSAGES.get(request.args.get("error"))
+    return render_template("login.html", error=error, **oauth_context)
+
+
+def oauth_failure_redirect(link_flow, error_code):
+    # An already-authenticated user hitting this from the Settings "Verbinden" button never sees
+    # /login (it immediately bounces anyone with a session straight to "/") -- routing those
+    # failures there would silently swallow the error. Send them to "/" with a query flag the SPA
+    # itself reads and toasts (see init() in app.js) instead. A genuine logged-out login attempt
+    # still gets the server-rendered banner on /login as before.
+    if link_flow:
+        return redirect(url_for("index", oauth_error=error_code))
+    return redirect(url_for("login", error=error_code))
+
+
+@app.get("/oauth/login")
+def oauth_login():
+    config = resolve_oauth_config()
+    link_flow = bool(session.get("user_id"))
+    if not config["enabled"]:
+        return oauth_failure_redirect(link_flow, "not_configured")
+    try:
+        auth_url, state, code_verifier = build_authorization_request(config, url_for("oauth_callback", _external=True))
+    except OAuthConfigError:
+        return oauth_failure_redirect(link_flow, "provider_error")
+    session["oauth_state"] = state
+    session["oauth_code_verifier"] = code_verifier
+    # Only set (and only ever trusted) when the browser already carries an authenticated
+    # session -- marks this round trip on the callback as "link this identity to my
+    # current account" (started from Settings) rather than "log me in as whoever this
+    # identity resolves to" (started from the logged-out /login page).
+    session["oauth_link_user_id"] = session.get("user_id")
+    return redirect(auth_url)
+
+
+@app.get("/oauth/callback")
+def oauth_callback():
+    config = resolve_oauth_config()
+    link_user_id = session.pop("oauth_link_user_id", None)
+    expected_state = session.pop("oauth_state", None)
+    code_verifier = session.pop("oauth_code_verifier", None)
+    if not config["enabled"] or not expected_state or request.args.get("state") != expected_state:
+        return oauth_failure_redirect(link_user_id, "state_mismatch")
+    code = request.args.get("code")
+    if not code:
+        return oauth_failure_redirect(link_user_id, "provider_error")
+    try:
+        redirect_uri = url_for("oauth_callback", _external=True)
+        token = exchange_code(config, redirect_uri, code, code_verifier)
+        claims = fetch_userinfo(config, token)
+        subject, email, display_name = extract_identity(config, claims)
+    except OAuthConfigError:
+        return oauth_failure_redirect(link_user_id, "provider_error")
+
+    connection = db()
+    if link_user_id:
+        conflict = connection.execute(
+            "SELECT id FROM users WHERE oauth_provider=? AND oauth_subject=? AND id!=?", (OAUTH_PROVIDER_KEY, subject, link_user_id),
+        ).fetchone()
+        if conflict:
+            return oauth_failure_redirect(link_user_id, "already_linked")
+        connection.execute(
+            "UPDATE users SET oauth_provider=?, oauth_subject=?, email=CASE WHEN email='' THEN ? ELSE email END WHERE id=?",
+            (OAUTH_PROVIDER_KEY, subject, email, link_user_id),
+        )
+        connection.commit()
+        session["user_id"] = link_user_id
+        return redirect(url_for("index", linked="1"))
+
+    matched = resolve_oauth_identity(config, subject, email, display_name)
+    if not matched:
+        return redirect(url_for("login", error="no_account"))
+    session.clear()
+    session["user_id"] = matched["id"]
+    return redirect(url_for("index"))
 
 
 @app.post("/logout")
@@ -706,7 +907,7 @@ def latest_price_meta_sql(alias="v", field="provider_id"):
 @login_required
 def bootstrap():
     uid = user_id()
-    current = db().execute("SELECT id,username,display_name,role FROM users WHERE id=?", (uid,)).fetchone()
+    current = db().execute("SELECT id,username,display_name,role,email,oauth_subject,password_hash FROM users WHERE id=?", (uid,)).fetchone()
     settings = {r["key"]: jload(r["value"], r["value"]) for r in db().execute("SELECT key,value FROM user_settings WHERE user_id=?", (uid,))}
     default_languages = settings.get("defaultLanguages") or {}
     main_set_types = {
@@ -766,7 +967,12 @@ def bootstrap():
         games.append(game)
     imports = [dict(r) for r in db().execute("SELECT id,created_at,game_id,undone_at FROM import_operations WHERE user_id=? ORDER BY id DESC LIMIT 4", (uid,))]
     price_sync = db().execute("SELECT MAX(observed_at) FROM price_observations").fetchone()[0]
-    return jsonify({"user": dict(current), "games": games, "settings": settings, "imports": imports, "price_sync": price_sync})
+    user_payload = {k: current[k] for k in ("id", "username", "display_name", "role", "email")}
+    user_payload["oauth_linked"] = bool(current["oauth_subject"])
+    user_payload["password_set"] = bool(current["password_hash"])
+    oauth_config = resolve_oauth_config()
+    oauth_payload = {"enabled": oauth_config["enabled"], "provider_name": oauth_config["provider_name"]}
+    return jsonify({"user": user_payload, "games": games, "settings": settings, "imports": imports, "price_sync": price_sync, "oauth": oauth_payload})
 
 
 def fetch_banner_cards(game_id, mode, uid):
@@ -1166,6 +1372,44 @@ def admin_delete_manual_card(game_id, identity_id):
     return jsonify({"deleted": True})
 
 
+@app.get("/api/admin/oauth")
+@admin_required
+def admin_get_oauth():
+    config = resolve_oauth_config()
+    response = {key: value for key, value in config.items() if key != "client_secret"}
+    response["client_secret_set"] = bool(config.get("client_secret"))
+    response["config_path"] = OAUTH_CONFIG_PATH
+    return jsonify(response)
+
+
+@app.post("/api/admin/oauth")
+@admin_required
+def admin_save_oauth():
+    if Path(OAUTH_CONFIG_PATH).is_file():
+        return jsonify({"error": f"OAuth wird über die Config-Datei {OAUTH_CONFIG_PATH} verwaltet und kann hier nicht bearbeitet werden."}), 400
+    p = request.get_json(force=True) or {}
+    if p.get("account_matching") not in ("manual", "email", "auto_provision"):
+        return jsonify({"error": "Ungültiger Wert für account_matching."}), 400
+    row = db().execute("SELECT value FROM app_settings WHERE key='oauth_config'").fetchone()
+    current = jload(row["value"], {}) if row else {}
+    config = {**OAUTH_CONFIG_DEFAULTS, **current}
+    for key in ("enabled",):
+        config[key] = bool(p.get(key))
+    for key in ("provider_name", "client_id", "discovery_url", "authorize_url", "token_url", "userinfo_url",
+                "scopes", "username_claim", "email_claim", "subject_claim", "account_matching"):
+        if key in p:
+            config[key] = str(p[key] or "").strip()
+    # Blank client_secret in the payload means "leave the stored secret unchanged" -- the GET
+    # response above never sends the real secret back, so the form field is blank by default
+    # and a save that doesn't touch it must not wipe it out.
+    if p.get("client_secret"):
+        config["client_secret"] = p["client_secret"]
+    db().execute(
+        "INSERT INTO app_settings(key,value) VALUES('oauth_config',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (json.dumps(config),),
+    )
+    db().commit()
+    return jsonify({"saved": True})
 
 
 @app.get("/api/games/<game_id>/sets")
@@ -2519,14 +2763,29 @@ def import_preview():
     return jsonify(parse_import(p.get("text",""),p.get("game_id","lorcana"),p.get("language","EN"),p.get("condition","Near Mint")))
 
 
+JSON_BACKUP_MATCH_COLUMNS = """v.id variant_id,v.finish,v.game_id,p.collector_number,p.language,i.canonical_name,s.name set_name"""
+JSON_BACKUP_MATCH_FROM = """FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
+               JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id"""
+
+
 def parse_json_backup(entries):
     """Match rows from a DeckLedger /api/export.json payload back onto current catalog variants.
 
     collector_number can legitimately be an empty string (e.g. One Piece DON!! tokens), so
-    only language/finish/game/set_code are required. Matching also pins canonical_name because
-    misprints and alternate-art tokens can otherwise share (game,set_code,number,language,finish)
-    across genuinely different variants — without it, an ambiguous match would silently apply to
-    the wrong physical card.
+    only language/finish/game/set_code are required. The primary match also pins canonical_name
+    because misprints and alternate-art tokens can otherwise share (game,set_code,number,
+    language,finish) across genuinely different variants — without it, an ambiguous match would
+    silently apply to the wrong physical card.
+
+    canonical_name is free text pulled straight from each provider's upstream source, though, and
+    is by far the field most likely to drift between two catalogues synced at different times (a
+    spelling fix, a punctuation/dash change upstream, ...) -- unlike game/set_code/finish, which
+    are small, stable, effectively-structural vocabularies. A backup made against an older or
+    newer catalogue snapshot than the one it's being restored into would otherwise show every
+    affected card as "not found" even though the exact same physical printing is right there.
+    So: only fall back to a name-agnostic re-match when the strict one finds nothing at all
+    (0 candidates) -- an ambiguous strict match (>1) still means "can't tell which one, ask a
+    human", never "guess by ignoring the name".
     """
     results = []
     for idx, entry in enumerate(entries, 1):
@@ -2541,21 +2800,36 @@ def parse_json_backup(entries):
             results.append({"line":idx,"original":label,"number":number,"language":lang,"status":"not_found","message":"Unvollständiger Eintrag"})
             continue
         candidates = db().execute(
-            """SELECT v.id variant_id,v.finish,v.game_id,p.collector_number,p.language,i.canonical_name,s.name set_name
-               FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
-               JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
+            f"""SELECT {JSON_BACKUP_MATCH_COLUMNS} {JSON_BACKUP_MATCH_FROM}
                WHERE g.name=? AND s.code=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=? AND i.canonical_name=?""",
             (game_name, set_code, number, lang, finish, name)
         ).fetchall()
-        selected = dict(candidates[0]) if len(candidates) == 1 else None
-        status = "matched" if selected else ("ambiguous" if candidates else "not_found")
+        selected, message = None, None
+        if len(candidates) == 1:
+            selected = dict(candidates[0])
+        elif len(candidates) > 1:
+            message = "Mehrdeutig – mehrere Varianten passen, manuell prüfen"
+        else:
+            loose = db().execute(
+                f"""SELECT {JSON_BACKUP_MATCH_COLUMNS} {JSON_BACKUP_MATCH_FROM}
+                   WHERE g.name=? AND s.code=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=?""",
+                (game_name, set_code, number, lang, finish)
+            ).fetchall()
+            if len(loose) == 1:
+                selected = dict(loose[0])
+                message = f"Name im Katalog abweichend („{selected['canonical_name']}“ statt „{name}“ im Backup) – anhand Set/Nummer/Sprache/Finish zugeordnet."
+            elif len(loose) > 1:
+                message = "Mehrdeutig – mehrere Varianten teilen sich Set/Nummer/Sprache/Finish, der Name aus dem Backup passt auf keine davon"
+            else:
+                message = "Karte nicht im Katalog gefunden"
+        status = "matched" if selected else ("ambiguous" if candidates or message.startswith("Mehrdeutig") else "not_found")
         results.append({
             "line": idx, "original": label, "number": number, "language": lang,
             "quantity": int(entry.get("quantity") or 0),
             "condition": entry.get("condition") or "Near Mint",
             "notes": entry.get("notes"),
             "status": status,
-            "message": None if selected else ("Mehrdeutig – mehrere Varianten passen, manuell prüfen" if candidates else "Karte nicht im Katalog gefunden"),
+            "message": None if selected and not message else message,
             "match": selected,
         })
     return results
@@ -2649,6 +2923,69 @@ def save_settings():
     for key,value in request.get_json(force=True).items():
         db().execute("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value", (user_id(),key,json.dumps(value)))
     db().commit(); return jsonify({"saved":True})
+
+
+@app.patch("/api/account")
+@login_required
+def update_account():
+    payload = request.get_json(force=True) or {}
+    uid = user_id()
+    updates, params = [], []
+    if "display_name" in payload:
+        display_name = str(payload["display_name"] or "").strip()
+        if not display_name:
+            return jsonify({"error": "Anzeigename darf nicht leer sein."}), 400
+        updates.append("display_name=?"); params.append(display_name)
+    if "username" in payload:
+        username = str(payload["username"] or "").strip()
+        if not re.match(r"^[a-zA-Z0-9._-]{3,32}$", username):
+            return jsonify({"error": "Benutzername muss 3-32 Zeichen lang sein (Buchstaben, Zahlen, . _ -)."}), 400
+        if db().execute("SELECT 1 FROM users WHERE lower(username)=lower(?) AND id!=?", (username, uid)).fetchone():
+            return jsonify({"error": "Benutzername ist bereits vergeben."}), 409
+        updates.append("username=?"); params.append(username)
+    if "email" in payload:
+        email = str(payload["email"] or "").strip()
+        if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            return jsonify({"error": "E-Mail-Adresse ist ungültig."}), 400
+        if email and db().execute("SELECT 1 FROM users WHERE email!='' AND lower(email)=lower(?) AND id!=?", (email, uid)).fetchone():
+            return jsonify({"error": "E-Mail-Adresse wird bereits von einem anderen Konto verwendet."}), 409
+        updates.append("email=?"); params.append(email)
+    if not updates:
+        return jsonify({"error": "Keine Änderungen übermittelt."}), 400
+    params.append(uid)
+    db().execute(f"UPDATE users SET {','.join(updates)} WHERE id=?", params)
+    db().commit()
+    row = db().execute("SELECT id,username,display_name,email,role FROM users WHERE id=?", (uid,)).fetchone()
+    return jsonify(dict(row))
+
+
+@app.post("/api/account/password")
+@login_required
+def update_account_password():
+    payload = request.get_json(force=True) or {}
+    new_password = str(payload.get("new_password") or "")
+    current_password = str(payload.get("current_password") or "")
+    if len(new_password) < 8:
+        return jsonify({"error": "Das neue Passwort muss mindestens 8 Zeichen lang sein."}), 400
+    row = db().execute("SELECT password_hash FROM users WHERE id=?", (user_id(),)).fetchone()
+    # A blank stored hash means an SSO-only account with no local password yet -- skip the
+    # current-password check so it can SET one for the first time, not just change one.
+    if row["password_hash"] and not check_password_hash(row["password_hash"], current_password):
+        return jsonify({"error": "Aktuelles Passwort ist nicht korrekt."}), 401
+    db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(new_password), user_id()))
+    db().commit()
+    return jsonify({"saved": True})
+
+
+@app.post("/api/account/oauth/unlink")
+@login_required
+def unlink_account_oauth():
+    row = db().execute("SELECT password_hash FROM users WHERE id=?", (user_id(),)).fetchone()
+    if not row["password_hash"]:
+        return jsonify({"error": "Bitte zuerst ein Passwort festlegen -- sonst ist nach dem Trennen kein Login mehr möglich."}), 400
+    db().execute("UPDATE users SET oauth_provider='', oauth_subject='' WHERE id=?", (user_id(),))
+    db().commit()
+    return jsonify({"unlinked": True})
 
 
 @app.get("/api/export.<fmt>")

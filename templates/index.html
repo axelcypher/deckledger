@@ -11,11 +11,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=115">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=125">
   <link rel="stylesheet" href="{{ url_for('static', filename='foil-effects.css') }}?v=21">
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile-theme.css') }}?v=99">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-pages.css') }}?v=47">
-  <link rel="stylesheet" href="{{ url_for('static', filename='responsive-theme.css') }}?v=16">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-pages.css') }}?v=63">
+  <link rel="stylesheet" href="{{ url_for('static', filename='responsive-theme.css') }}?v=31">
   <link rel="stylesheet" href="{{ url_for('static', filename='stat-pill.css') }}?v=4">
 </head>
 <body class="dark">
@@ -83,9 +83,11 @@
       </nav>
       <div class="sidebar-spacer"></div>
       <div id="edit-panel" class="edit-panel">
-        <div><span class="status-dot"></span><strong>Edit Mode</strong></div>
-        <p>Karten direkt bearbeiten</p>
-        <button id="edit-toggle" class="switch" role="switch" aria-checked="false"><span></span></button>
+        <span class="edit-panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m4 20 4.2-1 10.4-10.4a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.7 3 3"/></svg>
+        </span>
+        <div class="edit-panel-copy"><strong>Bearbeiten</strong><span>Direkte Eingabe</span></div>
+        <button id="edit-toggle" class="switch" role="switch" aria-checked="false" aria-label="Bearbeitungsmodus aktivieren"><span></span></button>
       </div>
       <div class="user-menu">
         <div id="user-popup" class="user-popup hidden" role="menu">
@@ -202,6 +204,6 @@
   <div id="offline-indicator" class="offline-indicator hidden"></div>
   <script src="{{ url_for('static', filename='filter-panel.js') }}?v=1"></script>
   <script src="{{ url_for('static', filename='stat-pill.js') }}?v=1"></script>
-  <script src="{{ url_for('static', filename='app.js') }}?v=197"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=210"></script>
 </body>
 </html>

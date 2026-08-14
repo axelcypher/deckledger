@@ -8,9 +8,11 @@ services:
     environment:
       DATABASE_PATH: /data/deckledger.db
       SECRET_KEY: ${SECRET_KEY:-deckledger-local-development-key}
+      # TRUST_PROXY_HEADERS: "true"  # only behind a TLS-terminating reverse proxy, see README
     volumes:
       - deckledger_data:/data
       - ./public:/app/public:ro
+      # - ./oauth.json:/config/oauth.json:ro  # optional SSO config file, see README
 
 volumes:
   deckledger_data:

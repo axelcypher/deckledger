@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "provider_name": "Authentik",
+  "client_id": "deckledger",
+  "client_secret": "change-me",
+  "discovery_url": "https://auth.example.com/application/o/deckledger/.well-known/openid-configuration",
+  "authorize_url": "",
+  "token_url": "",
+  "userinfo_url": "",
+  "scopes": "openid email profile",
+  "username_claim": "preferred_username",
+  "email_claim": "email",
+  "subject_claim": "sub",
+  "account_matching": "auto_provision"
+}

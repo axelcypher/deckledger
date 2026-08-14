@@ -267,6 +267,16 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
         connection.rollback()
         raise
     finally:
+        # Keeps the query planner's table-size statistics current as the catalogue grows (a stale
+        # or absent sqlite_stat1 is what made collection import-matching queries silently regress
+        # to full-table scans -- see app.py's init_database()). In `finally` and its own try/except
+        # so a stats-refresh hiccup can never surface as "catalog sync failed" after the actual
+        # write already committed successfully.
+        try:
+            connection.execute("ANALYZE")
+            connection.commit()
+        except Exception:
+            pass
         connection.close()
 
 

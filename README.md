@@ -59,6 +59,66 @@ generated wordmarks. Prefer the internal set ID as filename, for example
 folder is mounted read-only into the container, so adding an asset needs no
 image rebuild.
 
+## Account settings
+
+Every signed-in user can update their own display name, username, email
+address and password from **Settings → Kontodaten / Passwort**. Changing a
+password always requires the current one, except for an account that has no
+local password yet (e.g. one created through SSO auto-provisioning below) —
+that account can set its first password directly.
+
+## OAuth / SSO login
+
+DeckLedger supports logging in through one external OAuth2/OIDC identity
+provider (Google, Authentik, Keycloak, Authelia, Okta, or any other
+OIDC-compatible IdP), in addition to local username/password accounts. It can
+be configured two ways:
+
+- **Web UI**: sign in as an admin and open **Admin → Single Sign-On (OAuth)**.
+  Settings are stored in the database and take effect immediately, no restart
+  needed.
+- **Config file mounted into the container**: create a JSON file (see
+  `oauth.json.example` in this repository for the shape) and mount it
+  read-only at `/config/oauth.json`:
+
+  ```yaml
+  services:
+    deckledger:
+      volumes:
+        - deckledger_data:/data
+        - ./public:/app/public:ro
+        - ./oauth.json:/config/oauth.json:ro
+  ```
+
+  **The config file always wins when it's present.** In that case, the Admin
+  UI shows every SSO field read-only with a note pointing at the file — edit
+  the file and restart the container (`docker compose restart deckledger`) to
+  change anything. The mount path can be moved with the `OAUTH_CONFIG_PATH`
+  environment variable; without a file at that path, settings come from the
+  database and the Admin UI is fully editable.
+
+Only `client_id`, `client_secret`, and either `discovery_url` (OIDC) or all
+three of `authorize_url`/`token_url`/`userinfo_url` (plain OAuth2) are
+required; the rest have sane defaults. `account_matching` controls how a
+first-time login from an identity DeckLedger hasn't seen before is resolved,
+each level including the ones before it:
+
+- `manual` (safest): the identity must already be linked. A user links their
+  own account themselves from **Settings → Single Sign-On** while signed in
+  with a password.
+- `email`: additionally, if the provider's email matches an existing local
+  account's email and that account isn't linked to anything yet, it's linked
+  automatically on first login.
+- `auto_provision`: additionally, an unmatched identity gets a brand-new
+  local account (`user` role, never `admin`) created automatically.
+
+Running behind a TLS-terminating reverse proxy (Traefik, Nginx, Caddy, …)?
+Most OAuth/OIDC providers require an `https://` redirect URI. Set
+`TRUST_PROXY_HEADERS=true` so DeckLedger honors the proxy's
+`X-Forwarded-Proto`/`X-Forwarded-Host` headers when building that URL — only
+enable this when the proxy is the sole way to reach the container, since it
+otherwise lets a direct client spoof those headers.
+
 ## Operations
 
 ```bash
