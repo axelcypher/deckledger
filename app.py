@@ -2752,7 +2752,46 @@ def parse_import(text, game_id, language="EN", condition="Near Mint"):
         exact = [dict(c) for c in candidates if variant_hint in (c["variant_code"].lower(),c["finish"].lower())]
         selected = exact[0] if exact else (dict(candidates[0]) if candidates else None)
         status = "matched" if selected and (exact or len(candidates)==1) else "ambiguous" if selected else "not_found"
-        results.append({"line":line_no,"original":original,"quantity":qty,"number":number,"language":lang,"condition":cond,"status":status,"match":selected,"inferred":not bool(match.group(3))})
+        message = f"{len(candidates)} Karten teilen sich diese Nummer" if status=="ambiguous" else None
+        # collector_number alone isn't globally unique for every game -- Lorcana's restarts at 1
+        # every set (card "16" alone matches ~240 different EN printings across the catalogue:
+        # 98% of its collector numbers are shared by more than one printing), so a plain
+        # "<qty> <number> <language>" line almost never resolves cleanly there. When the number
+        # lookup can't, retry treating the WHOLE first field as a card NAME instead -- the same
+        # fallback parse_deck_text() already has for pasted decklists. Only a name match that's
+        # itself unambiguous (after the same language/variant filtering) upgrades the result to
+        # "matched"; a genuine name collision still needs a human to pick.
+        if status in ("ambiguous", "not_found"):
+            name_query = parts[0]
+            qty_prefix = re.match(r"^\s*\d+\s*[xX]?\s+", name_query)
+            if qty_prefix: name_query = name_query[qty_prefix.end():]
+            # match.group(3) only caught a trailing language code when it sat right after the
+            # NUMBER-shaped first word (e.g. "16 EN") -- a real card name has other words in
+            # between ("Prince Phillip - Dragonslayer EN"), so the language code is detected
+            # fresh here instead of reusing that capture.
+            trailing_lang = re.search(r"\s+(DE|EN|JP)\s*$", name_query, re.I)
+            if trailing_lang:
+                name_query = name_query[:trailing_lang.start()]
+                lang = trailing_lang.group(1).upper()  # more reliable than the number-path's guess for a name line
+            name_query = name_query.strip()
+            name_candidates = db().execute(
+                """SELECT v.id variant_id,v.variant_code,v.finish,v.game_id,p.collector_number,p.language,p.rarity,i.canonical_name,s.name set_name
+                   FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id
+                   WHERE v.game_id=? AND i.canonical_name=? COLLATE NOCASE AND p.language=?
+                   ORDER BY s.release_date DESC,
+                     CASE WHEN v.variant_code IN ('standard','normal') THEN 0 WHEN v.finish='Normal' THEN 0 ELSE 1 END""",
+                (game_id, name_query, lang)
+            ).fetchall() if name_query else []
+            if name_candidates:
+                name_exact = [dict(c) for c in name_candidates if variant_hint in (c["variant_code"].lower(), c["finish"].lower())]
+                # Same default as parse_deck_text()'s name fallback: a name (now also pinned to
+                # one language) resolving to several FINISHES of the same card isn't a real
+                # ambiguity worth blocking on -- default to the base/Normal print (already
+                # ordered first above) and just mention the alternative count.
+                name_selected = name_exact[0] if name_exact else dict(name_candidates[0])
+                selected, status = name_selected, "matched"
+                message = f"{len(name_candidates)-1} weitere Drucke dieser Karte verfügbar" if len(name_candidates)>1 and not name_exact else None
+        results.append({"line":line_no,"original":original,"quantity":qty,"number":number,"language":lang,"condition":cond,"status":status,"match":selected,"message":message,"inferred":not bool(match.group(3))})
     return results
 
 
