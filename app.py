@@ -2825,6 +2825,15 @@ def parse_json_backup(entries):
     So: only fall back to a name-agnostic re-match when the strict one finds nothing at all
     (0 candidates) -- an ambiguous strict match (>1) still means "can't tell which one, ask a
     human", never "guess by ignoring the name".
+
+    set_code turned out to be less stable than assumed: Lorcana's own `sets.code` changed from
+    LorcanaJSON's raw numeric strings ("1", "2", ...) to community letter abbreviations ("TFC",
+    "ROF", ...) -- an older backup taken before that change still has the numeric code, which no
+    longer matches ANY current set, so every card from that set (in practice: everything from the
+    first affected set onward, since a JSON backup is sorted by release date) came back "not
+    found". set_name (the actual set title, e.g. "The First Chapter") wasn't touched by that
+    rename and isn't expected to be as volatile as a short code -- matching on EITHER makes this
+    resilient to that change and to the same kind of code-scheme change in the future.
     """
     results = []
     for idx, entry in enumerate(entries, 1):
@@ -2833,6 +2842,7 @@ def parse_json_backup(entries):
         finish = str(entry.get("finish") or "").strip()
         game_name = str(entry.get("game") or "").strip()
         set_code = str(entry.get("set_code") or "").strip()
+        set_name_field = str(entry.get("set_name") or "").strip()
         name = str(entry.get("canonical_name") or "").strip()
         label = name or number or f"Zeile {idx}"
         if not (lang and finish and game_name and set_code and name):
@@ -2840,8 +2850,8 @@ def parse_json_backup(entries):
             continue
         candidates = db().execute(
             f"""SELECT {JSON_BACKUP_MATCH_COLUMNS} {JSON_BACKUP_MATCH_FROM}
-               WHERE g.name=? AND s.code=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=? AND i.canonical_name=?""",
-            (game_name, set_code, number, lang, finish, name)
+               WHERE g.name=? AND (s.code=? OR s.name=?) AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=? AND i.canonical_name=?""",
+            (game_name, set_code, set_name_field, number, lang, finish, name)
         ).fetchall()
         selected, message = None, None
         if len(candidates) == 1:
@@ -2851,8 +2861,8 @@ def parse_json_backup(entries):
         else:
             loose = db().execute(
                 f"""SELECT {JSON_BACKUP_MATCH_COLUMNS} {JSON_BACKUP_MATCH_FROM}
-                   WHERE g.name=? AND s.code=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=?""",
-                (game_name, set_code, number, lang, finish)
+                   WHERE g.name=? AND (s.code=? OR s.name=?) AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=?""",
+                (game_name, set_code, set_name_field, number, lang, finish)
             ).fetchall()
             if len(loose) == 1:
                 selected = dict(loose[0])
