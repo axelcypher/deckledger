@@ -82,6 +82,23 @@ def now_iso():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+_asset_versions = {}
+
+
+@app.template_global()
+def asset_url(filename):
+    """Static URL carrying a hash of the file's content. The service worker and browsers keep
+    static files for good, keyed by URL; a hand-maintained ?v=N only helps when someone remembers
+    to bump it, and a forgotten bump meant a stale stylesheet or script stayed in use indefinitely."""
+    path = Path(app.static_folder) / filename
+    stat = path.stat()
+    cached = _asset_versions.get(filename)
+    if not cached or cached[0] != (stat.st_mtime_ns, stat.st_size):
+        cached = ((stat.st_mtime_ns, stat.st_size), hashlib.sha256(path.read_bytes()).hexdigest()[:12])
+        _asset_versions[filename] = cached
+    return f"{url_for('static', filename=filename)}?v={cached[1]}"
+
+
 def db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
@@ -244,6 +261,8 @@ CREATE INDEX IF NOT EXISTS idx_printings_identity_language ON printings(identity
 -- which is what actually made a several-hundred-line import take upwards of ten seconds.
 CREATE INDEX IF NOT EXISTS idx_printings_number_language ON printings(UPPER(collector_number),language);
 CREATE INDEX IF NOT EXISTS idx_variants_printing ON variants(printing_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_variant ON marketplace_products(variant_id);
+CREATE INDEX IF NOT EXISTS idx_prices_variant_metric ON price_observations(variant_id, provider_id, metric, observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_variants_game ON variants(game_id);
 CREATE INDEX IF NOT EXISTS idx_collection_user ON collection_entries(user_id);
 CREATE INDEX IF NOT EXISTS idx_named_watchlists_user_game ON named_watchlists(user_id,game_id);
@@ -994,18 +1013,25 @@ def service_worker():
     return response
 
 
+def latest_observation_sql(alias, metric, field):
+    """Newest observation of a variant: Cardmarket's if it has one, else the newest of any other
+    mapped provider. The inner MAX() is a single index seek per provider, so the cost stays flat
+    however much price history piles up -- sorting a variant's whole history on every lookup (as
+    this did before) got slower with each daily sync, on every page that shows a price."""
+    return f"""(SELECT po.{field} FROM marketplace_products mp
+      JOIN price_observations po ON po.variant_id=mp.variant_id AND po.provider_id=mp.provider_id AND po.metric='{metric}'
+      WHERE mp.variant_id={alias}.id AND po.observed_at=(
+        SELECT MAX(latest.observed_at) FROM price_observations latest
+        WHERE latest.variant_id=mp.variant_id AND latest.provider_id=mp.provider_id AND latest.metric='{metric}')
+      ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END,po.observed_at DESC LIMIT 1)"""
+
+
 def latest_price_sql(alias="v", metric="trend"):
-    return f"""(SELECT po.amount FROM price_observations po
-      JOIN marketplace_products mp ON mp.variant_id=po.variant_id AND mp.provider_id=po.provider_id
-      WHERE po.variant_id={alias}.id AND po.metric='{metric}'
-      ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END,observed_at DESC LIMIT 1)"""
+    return latest_observation_sql(alias, metric, "amount")
 
 
 def latest_price_meta_sql(alias="v", field="provider_id"):
-    return f"""(SELECT po.{field} FROM price_observations po
-      JOIN marketplace_products mp ON mp.variant_id=po.variant_id AND mp.provider_id=po.provider_id
-      WHERE po.variant_id={alias}.id AND po.metric='trend'
-      ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END,observed_at DESC LIMIT 1)"""
+    return latest_observation_sql(alias, "trend", field)
 
 
 @app.get("/api/bootstrap")
@@ -1029,9 +1055,9 @@ def bootstrap():
         stats = db().execute(
             f"""SELECT COALESCE(SUM(c.quantity),0) copies, COUNT(DISTINCT CASE WHEN c.quantity>0 THEN v.id END) unique_cards,
                  COALESCE(SUM(c.quantity * {latest_price_sql('v')}),0) value
-                 FROM variants v JOIN printings p ON p.id=v.printing_id
-                 LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
-                 WHERE v.game_id=? AND (? IS NULL OR p.language=?)""",
+                 FROM collection_entries c JOIN variants v ON v.id=c.variant_id
+                 JOIN printings p ON p.id=v.printing_id
+                 WHERE c.user_id=? AND v.game_id=? AND (? IS NULL OR p.language=?)""",
             (uid, game_id, lang, lang),
         ).fetchone()
         total = db().execute(
@@ -1525,15 +1551,24 @@ def game_sets(game_id):
     uid = user_id()
     rows = []
     for s in db().execute("SELECT * FROM sets WHERE game_id=? ORDER BY release_date DESC", (game_id,)):
-        values = db().execute(
-            f"""SELECT COUNT(DISTINCT p.identity_id) total,
-                COUNT(DISTINCT CASE WHEN c.quantity>0 THEN p.identity_id END) owned,
+        # Ownership and value start from the user's own rows: the price lookup is a correlated
+        # subquery, and running it for every variant of the set instead of only the owned ones
+        # is what made this endpoint take about a second per game.
+        owned_values = db().execute(
+            f"""SELECT COUNT(DISTINCT CASE WHEN c.quantity>0 THEN p.identity_id END) owned,
                 COALESCE(SUM(c.quantity * {latest_price_sql('v')}),0) value
-                FROM printings p JOIN variants v ON v.printing_id=p.id
-                LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
-                WHERE p.set_id=?""",
+                FROM collection_entries c JOIN variants v ON v.id=c.variant_id
+                JOIN printings p ON p.id=v.printing_id
+                WHERE c.user_id=? AND p.set_id=?""",
             (uid, s["id"]),
         ).fetchone()
+        values = {
+            "total": db().execute(
+                "SELECT COUNT(DISTINCT p.identity_id) FROM printings p WHERE p.set_id=? AND EXISTS(SELECT 1 FROM variants v WHERE v.printing_id=p.id)",
+                (s["id"],),
+            ).fetchone()[0],
+            "owned": owned_values["owned"], "value": owned_values["value"],
+        }
         variants_total = db().execute("SELECT COUNT(*) FROM variants v JOIN printings p ON p.id=v.printing_id WHERE p.set_id=?", (s["id"],)).fetchone()[0]
         variants_owned = db().execute("SELECT COUNT(DISTINCT v.id) FROM variants v JOIN printings p ON p.id=v.printing_id JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? AND c.quantity>0 WHERE p.set_id=?", (uid, s["id"])).fetchone()[0]
         playset_owned = db().execute(

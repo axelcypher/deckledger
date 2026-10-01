@@ -10,13 +10,16 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-180.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=125">
-  <link rel="stylesheet" href="{{ url_for('static', filename='foil-effects.css') }}?v=21">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-theme.css') }}?v=99">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile-pages.css') }}?v=63">
-  <link rel="stylesheet" href="{{ url_for('static', filename='responsive-theme.css') }}?v=31">
-  <link rel="stylesheet" href="{{ url_for('static', filename='stat-pill.css') }}?v=4">
+  <!-- Web fonts are decoration: loaded without blocking rendering, so the page does not hang on
+       fonts.googleapis.com when there is no internet (offline use, DNS filter) -- the system font
+       fallback from the stylesheet shows until they arrive. -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="{{ asset_url('app.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('foil-effects.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('mobile-theme.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('mobile-pages.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('responsive-theme.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('stat-pill.css') }}">
 </head>
 <body class="dark">
   <!-- Card-reflection plate mask: a solid white visibility field with the plate's front edge
@@ -202,8 +205,8 @@
   <div id="toast-stack" class="toast-stack"></div>
   <button type="button" id="back-to-top" class="back-to-top hidden" aria-label="Nach oben springen">↑</button>
   <div id="offline-indicator" class="offline-indicator hidden"></div>
-  <script src="{{ url_for('static', filename='filter-panel.js') }}?v=1"></script>
-  <script src="{{ url_for('static', filename='stat-pill.js') }}?v=1"></script>
-  <script src="{{ url_for('static', filename='app.js') }}?v=213"></script>
+  <script src="{{ asset_url('filter-panel.js') }}"></script>
+  <script src="{{ asset_url('stat-pill.js') }}"></script>
+  <script src="{{ asset_url('app.js') }}"></script>
 </body>
 </html>

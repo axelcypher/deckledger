@@ -153,6 +153,10 @@ const variantName = variant => {
   const label = variant.game_id==='lorcana' ? lorcanaFinishLabel(variant.finish,variant.rarity) : variant.finish;
   return variant.edition_label ? `${label} · ${variant.edition_label}` : label;
 };
+// True while the service worker is answering from its saved copies because the server did not
+// respond (it marks those answers) -- shown in the indicator so old data is never mistaken for
+// the current state.
+let serverUnreachable=false;
 const api = async (url, options={}) => {
   let response;
   try{
@@ -166,6 +170,12 @@ const api = async (url, options={}) => {
     throw error;
   }
   if (response.status===401) { location.href='/login'; throw new Error('Nicht angemeldet'); }
+  const stale=response.headers.get('X-DeckLedger-Stale')==='1';
+  if(stale!==serverUnreachable){
+    serverUnreachable=stale;
+    updateOfflineIndicator();
+    if(!stale)syncOfflineQueue(); // the server is back: send whatever was queued meanwhile
+  }
   let data;
   try{
     data = await response.json();
@@ -1272,6 +1282,9 @@ async function updateOfflineIndicator(){
   if(!navigator.onLine){
     el.classList.remove('hidden');
     el.textContent=count>0?`Offline · ${count} ausstehende Änderung${count===1?'':'en'}`:'Offline';
+  }else if(serverUnreachable){
+    el.classList.remove('hidden');
+    el.textContent=`Server nicht erreichbar · gespeicherter Stand${count>0?` · ${count} ausstehende Änderung${count===1?'':'en'}`:''}`;
   }else if(count>0){
     el.classList.remove('hidden');
     el.textContent=`Wird synchronisiert … (${count})`;
@@ -1283,8 +1296,12 @@ let offlineSyncInProgress=false;
 async function syncOfflineQueue(){
   if(offlineSyncInProgress||!navigator.onLine)return;
   offlineSyncInProgress=true;
+  let hadItems=false;
   try{
     const items=await listOfflineMutations();
+    // Runs on every page load. With nothing queued there is nothing to announce and nothing to
+    // reload -- refreshing the view here fetched everything on the page a second time.
+    hadItems=items.length>0;
     for(const item of items){
       try{
         await post('/api/collection',item.payload);
@@ -1300,9 +1317,11 @@ async function syncOfflineQueue(){
   }finally{
     offlineSyncInProgress=false;
     await updateOfflineIndicator();
-    if((await listOfflineMutations()).length===0)toast('Offline-Änderungen synchronisiert');
-    await refreshCurrentView();
-    if(state.modalCard)await openCard(state.modalCard.id,state.modalVariant?.id,true);
+    if(hadItems){
+      if((await listOfflineMutations()).length===0)toast('Offline-Änderungen synchronisiert');
+      await refreshCurrentView();
+      if(state.modalCard)await openCard(state.modalCard.id,state.modalVariant?.id,true);
+    }
   }
 }
 window.addEventListener('online',()=>{updateOfflineIndicator();syncOfflineQueue()});

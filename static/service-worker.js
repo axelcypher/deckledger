@@ -1,7 +1,7 @@
 // DeckLedger offline shell. Bump CACHE_VERSION whenever the caching strategy
-// itself changes -- old caches are purged on activate. Static assets already
-// have their own ?v=NN cache-busting param from index.html, so this doesn't
-// need to track that separately.
+// itself changes -- old caches are purged on activate. Static assets carry a
+// content hash in their ?v= param (asset_url() in app.py), so a changed file
+// always arrives under a new URL without anyone having to bump a number.
 const CACHE_VERSION = 'v2';
 const SHELL_CACHE = `deckledger-shell-${CACHE_VERSION}`;
 const API_CACHE = `deckledger-api-${CACHE_VERSION}`;
@@ -13,6 +13,19 @@ const KNOWN_CACHES = [SHELL_CACHE, API_CACHE, IMAGE_CACHE];
 // cache the wrong thing under the app's URL. It gets cached lazily on first
 // authenticated visit via the networkFirst runtime handler below instead.
 const PRECACHE_ASSETS = ['/static/manifest.json'];
+
+// How long the network may take before a saved copy is shown instead. The
+// page shell is a few KB, so a server that has not delivered it after 3 s is
+// not going to; API answers can legitimately take longer on a big catalogue.
+const NAVIGATION_TIMEOUT_MS = 3000;
+const API_TIMEOUT_MS = 15000;
+// Once one request has shown the server to be unreachable, the requests that
+// follow (a page load fires several) stop waiting out the full limit each.
+const UNREACHABLE_TIMEOUT_MS = 1500;
+const UNREACHABLE_WINDOW_MS = 30000;
+// What a reverse proxy answers while the app container is down or restarting.
+const GATEWAY_ERRORS = new Set([502, 503, 504]);
+let unreachableUntil = 0;
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -40,13 +53,15 @@ function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
 }
 
-// Images/static assets change rarely and are addressed by content-stable
-// URLs (or their own ?v= param) -- safe to serve from cache first and only
-// hit the network on a miss.
+// Card images are addressed by stable URLs and never change once fetched --
+// safe to serve from cache first and only hit the network on a miss.
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return cached;
+  // While the server is known not to answer, an image that is not saved yet stays missing
+  // rather than tying up a connection the next page or API attempt needs.
+  if (Date.now() < unreachableUntil) return Response.error();
   const response = await fetch(request);
   // The server answers a card image it could not fetch with a generated stand-in (marked
   // X-Image-Source: placeholder). Keeping that would pin the stand-in for good.
@@ -54,18 +69,75 @@ async function cacheFirst(request, cacheName) {
   return response;
 }
 
-// API responses and the app shell page itself should always prefer a fresh
-// network answer when online -- the cache is purely the offline fallback.
-async function networkFirst(request, cacheName) {
+// Static files. A URL with a content hash can only ever mean one file, so the
+// cached copy is final. Everything else (ES modules that import each other by
+// plain path, icons) is served from cache for speed and refreshed in the
+// background, so a changed file is picked up on the following load instead of
+// staying frozen at whatever version was cached first.
+async function staticAsset(event, cacheName) {
+  const { request } = event;
+  const url = new URL(request.url);
   const cache = await caches.open(cacheName);
-  try {
-    const response = await fetch(request);
+  const cached = await cache.match(request);
+  if (cached && (url.searchParams.has('v') || Date.now() < unreachableUntil)) return cached;
+  const refresh = fetch(request).then(async response => {
+    if (response.ok) {
+      await cache.put(request, response.clone());
+      // Earlier versions of the same file are dead weight once this one is stored.
+      const stored = await cache.keys();
+      await Promise.all(stored
+        .filter(entry => { const other = new URL(entry.url); return other.pathname === url.pathname && other.search !== url.search; })
+        .map(entry => cache.delete(entry)));
+    }
+    return response;
+  });
+  if (!cached) return refresh;
+  event.waitUntil(refresh.catch(() => {}));
+  return cached;
+}
+
+// Marks an answer that came out of the cache because the server did not
+// respond, so the app can say so instead of passing old data off as current.
+function staleCopy(cached) {
+  const headers = new Headers(cached.headers);
+  headers.set('X-DeckLedger-Stale', '1');
+  return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
+}
+
+// The page shell and API answers always prefer the network; the cache is the
+// fallback for "the server cannot be reached", which includes a connection
+// that just hangs (away from the home network, server restarting) -- waiting
+// for the browser's own timeout there takes a minute or more per request.
+async function networkFirst(event, cacheName, timeoutMs) {
+  const { request } = event;
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const controller = new AbortController();
+  const network = fetch(request, { signal: controller.signal }).then(response => {
     if (response.ok) cache.put(request, response.clone());
     return response;
+  });
+  // Without a saved copy there is nothing to fall back to: wait for whatever the network gives.
+  if (!cached) return network;
+  const limit = Date.now() < unreachableUntil ? UNREACHABLE_TIMEOUT_MS : timeoutMs;
+  let timer;
+  try {
+    const response = await Promise.race([
+      network,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), limit); }),
+    ]);
+    if (GATEWAY_ERRORS.has(response.status)) throw new Error('gateway');
+    unreachableUntil = 0;
+    return response;
   } catch (err) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw err;
+    // Given up on: a request left hanging keeps one of the browser's few connections to the
+    // server occupied, and the next attempts would queue behind it.
+    network.catch(() => {});
+    controller.abort();
+    unreachableUntil = Date.now() + UNREACHABLE_WINDOW_MS;
+    return staleCopy(cached);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -81,10 +153,10 @@ self.addEventListener('fetch', event => {
   if (isImageRequest(url)) {
     event.respondWith(cacheFirst(request, IMAGE_CACHE));
   } else if (isStaticAsset(url)) {
-    event.respondWith(cacheFirst(request, SHELL_CACHE));
+    event.respondWith(staticAsset(event, SHELL_CACHE));
   } else if (isApiRequest(url)) {
-    event.respondWith(networkFirst(request, API_CACHE));
+    event.respondWith(networkFirst(event, API_CACHE, API_TIMEOUT_MS));
   } else if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, SHELL_CACHE));
+    event.respondWith(networkFirst(event, SHELL_CACHE, NAVIGATION_TIMEOUT_MS));
   }
 });
