@@ -274,6 +274,7 @@ function routeTo(route, data) {
   hideDeckImagePreview();closeDeckAddPopup();setDeckCatalogOpen(false);clearTimeout(state.homeBannerTimer);
   state.mobileFiltersOpen={};
   if(route!=='watchlist'){state.watchSelection.clear();state.watchSelectionMode=false}
+  state.statsUrl=null;state.statsItems=null;tileFeed?.observer?.disconnect();tileFeed=null;
   state.route=route; document.body.dataset.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
   if(route==='dashboard') renderDashboard();
   if(route==='game') renderGame(data || state.game?.id);
@@ -1024,7 +1025,10 @@ async function renderSet(setId, preserve=false){
         <div class="zoom-control card-filter-end"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
     </div>
-    <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(card=>cardTile(card,foilDisplayActive)).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
+    <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
+  mountTileFeed($('.card-grid',content),[{cards:data.cards}],{key:`set:${setId}`,preserve,render:card=>cardTile(card,foilDisplayActive)});
+  state.statsUrl=`/api/sets/${setId}/cards?${params}`;
+  state.statsItems=stats=>[['Base',`${stats.base}%`],['Foil',`${stats.foil}%`],['Master',`${stats.master}%`],['Playset',`${stats.playset}%`],['Besitz / Fehlt',`${stats.owned} / ${stats.missing}`],['Setwert',money(stats.value)]];
   mountFilterPanel('set-cards',['.card-toolbar-sticky'],'Karten filtern & sortieren');
   $('#sort-filter').value=state.sort;
   $('[data-dashboard]').onclick=()=>routeTo('dashboard'); $('[data-game-back]').onclick=()=>routeTo('game',game.id);
@@ -1080,7 +1084,10 @@ async function renderAllCards(gameId,preserve=false){
         <div class="zoom-control card-filter-end"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
     </div>
-    <div class="all-card-groups">${data.groups.length?data.groups.map(group=>`<section class="all-card-set"><header class="set-card-divider"><img loading="lazy" src="/set-logo/${encodeURIComponent(group.set.id)}?v=${encodeURIComponent(group.set.visual_version||'provider-v1')}" alt=""><div><span>${escapeHtml(group.set.code)}</span><h2>${escapeHtml(group.set.name)}</h2></div><small>${releaseDate(group.set)} · ${group.cards.length} Karten</small></header><div class="card-grid" style="--card-size:${state.zoom}px">${group.cards.map(card=>cardTile(card,foilDisplayActive)).join('')}</div></section>`).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</div>`;
+    <div class="all-card-groups" style="--card-size:${state.zoom}px">${data.groups.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</div>`;
+  mountTileFeed($('.all-card-groups',content),data.groups.map(group=>({cards:group.cards,sectionHtml:`<section class="all-card-set"><header class="set-card-divider"><img loading="lazy" src="/set-logo/${encodeURIComponent(group.set.id)}?v=${encodeURIComponent(group.set.visual_version||'provider-v1')}" alt=""><div><span>${escapeHtml(group.set.code)}</span><h2>${escapeHtml(group.set.name)}</h2></div><small>${releaseDate(group.set)} · ${group.cards.length} Karten</small></header><div class="card-grid"></div></section>`})),{key:`all:${gameId}`,preserve,render:card=>cardTile(card,foilDisplayActive)});
+  state.statsUrl=`/api/games/${gameId}/cards?${params}`;
+  state.statsItems=stats=>[['Base',`${stats.base}%`],['Foil',`${stats.foil}%`],['Master',`${stats.master}%`],['Playset',`${stats.playset}%`],['Besitz / Fehlt',`${stats.owned} / ${stats.missing}`],['Gesamtwert',money(stats.value)]];
   mountFilterPanel('all-cards',['.card-toolbar-sticky'],'Karten filtern & sortieren');
   $('#all-sort-filter').value=state.sort;$('#all-set-order').value=state.setDirection;bindCardEvents();
   $('[data-dashboard]').onclick=()=>routeTo('dashboard');$('[data-game-back]').onclick=()=>routeTo('game',gameId);$('#cards-back').onclick=()=>routeTo('game',gameId);
@@ -1093,7 +1100,7 @@ async function renderAllCards(gameId,preserve=false){
   $$('[data-card-single-filter]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardSingleFilter,value=b.dataset.value;f[key]=f[key]===value?'':value;renderAllCards(gameId,true)});
   $$('[data-card-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardMode,value=b.dataset.value;f[key]=value;renderAllCards(gameId,true)});
   let timer;$('#all-card-search').oninput=event=>{clearTimeout(timer);state.query=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#all-card-search',()=>renderAllCards(gameId,true)),280)};
-  $('#all-card-zoom').oninput=event=>{state.zoom=event.target.value;$$('.card-grid',content).forEach(grid=>grid.style.setProperty('--card-size',`${state.zoom}px`));post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
+  $('#all-card-zoom').oninput=event=>{state.zoom=event.target.value;$('.all-card-groups',content).style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
 }
 
 const cardCycleRegistry=new Map();
@@ -1182,8 +1189,55 @@ function syncWatchlistIcon(identityId,variantId,active){
   const btn=$(`.card-tile[data-identity="${identityId}"] .watch-button`,content);
   if(btn){btn.classList.toggle('active',active);btn.innerHTML=watchlistIcon(active);btn.setAttribute('aria-pressed',String(active));btn.setAttribute('aria-label',active?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen')}
 }
+// ---- Progressive card grids ------------------------------------------------------------
+// A game's full card list or a large collection is thousands of tiles. The data arrives in one
+// answer either way, but turning all of it into DOM at once is what made opening and re-rendering
+// those views slow. Only the first chunk is built; further chunks are appended from the data
+// already in memory shortly before the user scrolls to them, so loading more costs a few
+// milliseconds and no request.
+const TILE_CHUNK=120;
+const TILE_FEED_MARGIN=2400; // px below the viewport at which the next chunk is appended
+let tileFeed=null;
+function mountTileFeed(container,groups,{key,preserve=false,render=cardTile,bind=()=>bindCardEvents()}={}){
+  const wanted=preserve&&tileFeed?.key===key?Math.max(TILE_CHUNK,tileFeed.rendered):TILE_CHUNK;
+  tileFeed?.observer?.disconnect();
+  const feed=tileFeed={key,container,groups,render,bind,groupIndex:0,cardIndex:0,rendered:0,grid:null,sentinel:document.createElement('div')};
+  feed.sentinel.className='tile-feed-sentinel';
+  container.after(feed.sentinel);
+  appendTiles(feed,wanted);
+  if(!feed.done&&'IntersectionObserver'in window){
+    feed.observer=new IntersectionObserver(()=>fillTileFeed(feed),{rootMargin:`${TILE_FEED_MARGIN}px 0px`});
+    feed.observer.observe(feed.sentinel);
+  }else if(!feed.done)appendTiles(feed,Infinity);
+}
+function appendTiles(feed,count){
+  let added=0;
+  while(added<count&&feed.groupIndex<feed.groups.length){
+    const group=feed.groups[feed.groupIndex];
+    if(feed.cardIndex===0){
+      // A group with its own heading (one set in the all-cards view) brings its own grid.
+      if(group.sectionHtml){feed.container.insertAdjacentHTML('beforeend',group.sectionHtml);feed.grid=$('.card-grid',feed.container.lastElementChild)}
+      else feed.grid=feed.container;
+    }
+    const slice=group.cards.slice(feed.cardIndex,feed.cardIndex+(count-added));
+    feed.grid.insertAdjacentHTML('beforeend',slice.map(card=>feed.render(card)).join(''));
+    feed.cardIndex+=slice.length;added+=slice.length;
+    if(feed.cardIndex>=group.cards.length){feed.groupIndex+=1;feed.cardIndex=0}
+  }
+  feed.rendered+=added;
+  if(added)feed.bind();
+  if(feed.groupIndex>=feed.groups.length){feed.done=true;feed.observer?.disconnect();feed.sentinel.remove()}
+}
+function fillTileFeed(feed){
+  // The observer only reports a change of state; after a long jump (End key, dragging the
+  // scrollbar) one chunk is not enough, so keep appending until the sentinel is out of range.
+  while(feed===tileFeed&&!feed.done&&feed.sentinel.getBoundingClientRect().top<innerHeight+TILE_FEED_MARGIN)appendTiles(feed,TILE_CHUNK);
+}
+
 function bindCardEvents(watchlistId=null){
-  $$('.card-tile',content).forEach(tile=>{
+  // Only tiles that are new since the last call: the feed above appends chunks to a live grid.
+  $$('.card-tile:not([data-bound])',content).forEach(tile=>{
+    tile.dataset.bound='1';
     tile.tabIndex=0;tile.setAttribute('role','button');
     tile.onkeydown=event=>{if(event.target===tile&&(event.key==='Enter'||event.key===' ')){event.preventDefault();tile.click()}};
     tile.onclick=e=>{
@@ -1341,6 +1395,28 @@ window.addEventListener('offline',updateOfflineIndicator);
 // Everywhere else showing this variant's quantity (badges, dashboard stats,
 // the collection page) stays stale until the next real sync -- acceptable
 // since the offline indicator already tells the user a sync is pending.
+// The card objects behind the grid: tiles that are not rendered yet (see mountTileFeed) and the
+// detail view's previous/next navigation read their quantities from here.
+function patchCardData(variantId,delta){
+  for(const card of state.cards||[]){
+    const variants=card.variants||[],hit=variants.find(item=>(item.variant_id||item.id)===variantId);
+    if(!hit)continue;
+    hit.quantity=Math.max(0,(Number(hit.quantity)||0)+delta);
+    card.quantity=variants.reduce((sum,item)=>sum+(Number(item.quantity)||0),0);
+    card.owned_variants=variants.filter(item=>item.quantity>0).length;
+    if('foil_quantity'in card)card.foil_quantity=variants.find(item=>item.finish==='Silver'&&item.language===card.language)?.quantity||0;
+  }
+}
+function updatePlaysetRibbons(tile,isLorcana,total){
+  const held=selector=>parseInt($(`${selector} b`,tile)?.textContent,10)||0;
+  const size=playsetSize(state.activeGameId);
+  const html=isLorcana
+    ?`${held('.quantity-control:not(.foil)')>=4?'<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓</span>':''}${held('.quantity-control.foil')>=4?'<span class="playset-badge foil" title="Foil-Playset komplett · 4 Exemplare">✓</span>':''}`
+    :(total>=size?`<span class="playset-badge" title="Playset komplett · ${size} Exemplare">✓</span>`:'');
+  $('.playset-ribbons',tile)?.remove();
+  if(html)$('.card-image-wrap',tile)?.insertAdjacentHTML('afterend',`<div class="playset-ribbons">${html}</div>`);
+}
+
 function patchLocalQuantity(variantId,delta,sourceButton){
   $$(`.quantity-control[data-variant="${variantId}"]`).forEach(control=>{
     const el=$('b',control),before=parseInt(el.textContent,10)||0,after=Math.max(0,before+delta);
@@ -1358,6 +1434,7 @@ function patchLocalQuantity(variantId,delta,sourceButton){
       }
       const any=$$('.variant-badge',badges).some(item=>(parseInt(item.textContent.slice(1),10)||0)>0);
       tile.classList.toggle('owned',any);tile.classList.toggle('missing',!any);
+      updatePlaysetRibbons(tile,true,0);
       return;
     }
     const pill=$('.owned-pill',badges),total=Math.max(0,(pill?parseInt(pill.textContent.slice(1),10)||0:0)+(after-before));
@@ -1365,7 +1442,9 @@ function patchLocalQuantity(variantId,delta,sourceButton){
     else if(pill)pill.remove();
     else if(total)badges.insertAdjacentHTML('beforeend',`<span class="owned-pill">×${total}</span>`);
     tile.classList.toggle('owned',total>0);tile.classList.toggle('missing',total===0);
+    updatePlaysetRibbons(tile,false,total);
   });
+  patchCardData(variantId,delta);
   if(sourceButton){
     const b=sourceButton.parentElement?.querySelector('b');
     if(b)b.textContent=String(Math.max(0,(parseInt(b.textContent,10)||0)+delta));
@@ -1385,17 +1464,29 @@ function patchLocalQuantity(variantId,delta,sourceButton){
 // burst of rapid clicks triggers exactly one real refresh shortly after the burst ends, while
 // patchLocalQuantity gives instant feedback on every individual click in the meantime.
 let refreshDebounceTimer=null;
-// The views that hold a whole game or collection take seconds to rebuild; a set is quick.
-const refreshDelay=()=>['game-cards','collection'].includes(state.route)?4000:1500;
-function scheduleRefresh(delayMs=refreshDelay()){
+// After a quantity change the card grids are NOT rebuilt: the tile and the data behind it are
+// already patched in place (patchLocalQuantity), and rebuilding replaced every button on the
+// page, so a click landing in that moment was lost. Only the summary numbers are fetched again.
+// Views without such a summary (watchlist, deck builder) still reload as a whole.
+function scheduleRefresh(delayMs=900){
   clearTimeout(refreshDebounceTimer);
   refreshDebounceTimer=setTimeout(async()=>{
-    // Rebuilding replaces every button on the page -- a click landing during that is lost, and
-    // a reload that starts before the last change has been saved shows the old number again.
+    // Numbers fetched before the last change has been saved would show the old state again.
     if(quantityChains.size){scheduleRefresh(delayMs);return}
-    await refreshCurrentView();
-    if(state.modalCard) await openCard(state.modalCard.id,state.modalVariant?.id,true);
+    if(state.statsUrl)await refreshStats();
+    else await refreshCurrentView();
+    if(state.modalCard&&!quantityChains.size) await openCard(state.modalCard.id,state.modalVariant?.id,true);
   },delayMs);
+}
+async function refreshStats(){
+  const url=state.statsUrl,items=state.statsItems;
+  let data;
+  try{data=await api(`${url}&stats_only=1`)}catch{return}
+  if(url!==state.statsUrl)return; // the view changed while the numbers were on their way
+  for(const [label,value] of items(data.stats)){
+    const cell=$$('deckledger-stat-pill [data-stat]',content).find(item=>$('span',item)?.textContent===label);
+    if(cell)$('b',cell).textContent=String(value);
+  }
 }
 
 // Sent with every queueable collection change: the server applies a given id only once, so a
@@ -1805,7 +1896,10 @@ async function renderCollection(preserve=false){
         </div>
       </div>
     </div></div>
-    <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?data.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
+    <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
+  mountTileFeed($('.card-grid',content),[{cards:data.cards}],{key:`collection:${state.activeGameId}`,preserve,render:card=>cardTile(card)});
+  state.statsUrl=`/api/collection?${params}`;
+  state.statsItems=stats=>[['Varianten',stats.variants],['Exemplare',stats.copies],['Marktwert',money(stats.value)]];
   mountFilterPanel('collection',['.collection-filter-shell'],'Sammlung filtern & sortieren');
   $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};
   $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderCollection(true)});
@@ -2601,18 +2695,18 @@ async function doSearch(q){
   $$('.search-result',wrap).forEach(el=>el.onclick=()=>{closeOverlay('search-overlay');openCard(el.dataset.id,el.dataset.variant)});
 }
 
-let importMode='text', importJsonData=null;
+let importMode='text', importJsonData=null, importJsonExtras={decks:[],watchlists:[]};
 
 async function previewImport(){
   const box=$('#import-preview');box.classList.add('visible');
   const button=$('#preview-import');
-  if(importMode==='json'&&(!importJsonData||!importJsonData.length)){box.innerHTML='<div class="empty-state">Bitte zuerst eine JSON-Backup-Datei wählen.</div>';$('#apply-import').disabled=true;return[]}
+  if(importMode==='json'&&!importJsonData){box.innerHTML='<div class="empty-state">Bitte zuerst eine JSON-Backup-Datei wählen.</div>';$('#apply-import').disabled=true;return[]}
   box.innerHTML='<div class="page-loader compact"><span></span><p>Wird geprüft …</p></div>';
   button.disabled=true;
   let rows;
   try{
     rows=importMode==='json'
-      ?await post('/api/import/json/preview',{collection:importJsonData})
+      ?await post('/api/import/json/preview',{collection:importJsonData,...importJsonExtras})
       :await post('/api/import/preview',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value});
   }catch(error){
     box.innerHTML=`<div class="empty-state">Vorschau fehlgeschlagen: ${escapeHtml(error.message)}</div>`;
@@ -2624,7 +2718,9 @@ async function previewImport(){
   // JSON-backup row recovered by matching set/number/language/finish after its catalogue name
   // text had drifted since the backup was made (see parse_json_backup in app.py). Surface it as
   // its own line whenever present so that recovery is visible, not just silently applied.
-  box.innerHTML=rows.length?rows.map(r=>`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.game_id==='lorcana'?lorcanaFinishLabel(r.match.finish,r.match.rarity):r.match.finish):escapeHtml(r.message||'Kein Treffer')}${r.match&&r.condition&&r.condition!=='Near Mint'?` · ${escapeHtml(r.condition)}`:''}${r.match&&r.is_graded?` · ${escapeHtml(r.grade_label||'Graded')}`:''}</small>${r.match&&r.message?`<small class="import-row-note">${escapeHtml(r.message)}</small>`:''}</div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
+  box.innerHTML=rows.length?rows.map(r=>r.kind
+    ?`<div class="import-row"><span>${r.line}</span><div><b>${escapeHtml(r.original)}</b><small>${escapeHtml(r.message||'')}</small></div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':'Fehlt'}</span></div>`
+    :`<div class="import-row"><span>${r.line}</span><div><b>${r.match?escapeHtml(r.match.canonical_name):escapeHtml(r.number||r.original)}</b><small>${r.quantity||'–'}× · ${r.language||'–'} · ${r.match?escapeHtml(r.match.game_id==='lorcana'?lorcanaFinishLabel(r.match.finish,r.match.rarity):r.match.finish):escapeHtml(r.message||'Kein Treffer')}${r.match&&r.condition&&r.condition!=='Near Mint'?` · ${escapeHtml(r.condition)}`:''}${r.match&&r.is_graded?` · ${escapeHtml(r.grade_label||'Graded')}`:''}</small>${r.match&&r.message?`<small class="import-row-note">${escapeHtml(r.message)}</small>`:''}</div><span class="import-status ${r.status}">${r.status==='matched'?'Gefunden':r.status==='ambiguous'?'Prüfen':'Fehlt'}</span></div>`).join(''):'<div class="empty-state">Keine Zeilen erkannt.</div>';
   $('#apply-import').disabled=!rows.some(r=>r.status==='matched');return rows;
 }
 
@@ -2653,11 +2749,14 @@ function setIeMode(mode){
 
 async function handleImportJsonFile(file){
   const nameLabel=$('#import-json-filename');
+  importJsonExtras={decks:[],watchlists:[]};
   if(!file){importJsonData=null;nameLabel.textContent='';return}
   try{
     const parsed=JSON.parse(await file.text());
     importJsonData=Array.isArray(parsed)?parsed:(parsed.collection||[]);
-    nameLabel.textContent=`${file.name} · ${importJsonData.length} Einträge`;
+    if(!Array.isArray(parsed))importJsonExtras={decks:parsed.decks||[],watchlists:(parsed.watchlists||[]).filter(list=>list.entries?.length)};
+    const extras=[importJsonExtras.decks.length&&`${importJsonExtras.decks.length} Decks`,importJsonExtras.watchlists.length&&`${importJsonExtras.watchlists.length} Watchlists`].filter(Boolean);
+    nameLabel.textContent=`${file.name} · ${importJsonData.length} Einträge${extras.length?` · ${extras.join(' · ')}`:''}`;
   }catch(error){
     importJsonData=null;nameLabel.textContent='';
     toast('Die Datei ist kein gültiges JSON-Backup.');
@@ -2898,9 +2997,10 @@ function wireGlobalEvents(){
     try{
       const strategy=$('input[name="strategy"]:checked').value;
       const r=importMode==='json'
-        ?await post('/api/import/json/apply',{collection:importJsonData||[],strategy})
+        ?await post('/api/import/json/apply',{collection:importJsonData||[],...importJsonExtras,strategy})
         :await post('/api/import/apply',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy});
-      closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
+      const restored=[r.decks_restored&&`${r.decks_restored} Decks`,r.watchlist_entries_restored&&`${r.watchlist_entries_restored} Watchlist-Einträge`,r.decks_skipped&&`${r.decks_skipped} vorhandene Decks übersprungen`].filter(Boolean);
+      closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert${restored.length?` · ${restored.join(' · ')}`:''}.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
     }catch(error){
       toast(error.message);
     }finally{

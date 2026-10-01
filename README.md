@@ -51,6 +51,8 @@ Prices refresh automatically on startup and every six hours when a provider has 
 docker compose exec deckledger python price_sync.py
 ```
 
+Price history is kept for good without growing without bound: roughly the last three months stay day by day, and every calendar month that has aged out of that window is folded into one average per card, provider and metric.
+
 Cardmarket product IDs are persisted separately from internal variant IDs. One Piece Western and Japanese expansions are resolved and priced separately: the Western expansion is anchored by Bandai's official release date, while the corresponding Japanese match must use a distinct Cardmarket expansion ID with the same set/number/name fingerprint. Ambiguous matches remain empty; the importer never resolves them by card name alone.
 
 VCard TCG (Gamer Supps) is imported from the public set pages of vcardtcg.com. Every card is tracked per edition and finish (Unlimited/Limited and 1st Edition, each regular and Holo). The 1-of-1 God Rares are left out by default (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`), and no marketplace price feed carries VCard yet, so its prices stay empty.

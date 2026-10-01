@@ -114,3 +114,12 @@ def test_simultaneous_deck_adds_all_count(client):
     statuses = click_concurrently(f"/api/decks/{deck_id}/cards", {"variant_id": EMBER8, "zone": "auto", "delta": 1})
     assert set(statuses) == {200}
     assert query("SELECT quantity q FROM deck_cards WHERE deck_id=?", (deck_id,))[0]["q"] == 40
+
+
+def test_stats_only_answers_match_the_full_ones(client):
+    """The grids refresh their summary numbers after a quantity change without the card list."""
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 3})
+    for url in ("/api/sets/vcard-test/cards?language=EN", "/api/games/vcard/cards?language=EN", "/api/collection?game_id=vcard"):
+        full, short = client.get(url).get_json(), client.get(url + "&stats_only=1").get_json()
+        assert short["stats"] == full["stats"], url
+        assert "cards" not in short and "groups" not in short, url

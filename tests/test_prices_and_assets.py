@@ -64,9 +64,9 @@ def test_collection_value_in_bootstrap_and_set_overview(client):
 
     vcard = next(game for game in client.get("/api/bootstrap").get_json()["games"] if game["id"] == "vcard")
     assert (vcard["copies"], vcard["unique_cards"], vcard["value"]) == (4, 2, 16.0)
-    test_set = client.get("/api/games/vcard/sets").get_json()[0]
+    test_set = next(item for item in client.get("/api/games/vcard/sets").get_json() if item["id"] == "vcard-test")
     assert (test_set["owned"], test_set["value"]) == (2, 16.0)
-    assert test_set["total"] == query("SELECT COUNT(*) n FROM card_identities WHERE game_id='vcard'")[0]["n"]
+    assert test_set["total"] == query("SELECT COUNT(DISTINCT identity_id) n FROM printings WHERE set_id='vcard-test'")[0]["n"]
 
 
 def test_static_urls_carry_a_content_hash(client, tmp_path, monkeypatch):

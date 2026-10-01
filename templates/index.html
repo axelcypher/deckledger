@@ -153,11 +153,11 @@
             <label>Zustand<select id="import-condition"><option>Mint</option><option selected>Near Mint</option><option>Excellent</option><option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option></select></label>
           </div>
           <label class="import-text-label">Liste einfügen<textarea id="import-text" rows="7" placeholder="4 OP01016 EN&#10;2x OP01017 EN&#10;OP01018;1;EN;Parallel;Near Mint"></textarea></label>
-          <div class="format-help">Unterstützt Sammlernummern (<code>4 OP01016 EN</code> oder <code>OP01016;4;EN;Parallel;NM</code>) oder Kartennamen (<code>4 Belle - Strange and Beautiful</code>) -- eine Karte pro Zeile.</div>
+          <div class="format-help">Unterstützt Sammlernummern (<code>4 OP01016 EN</code> oder <code>OP01016;4;EN;Parallel;NM</code>) oder Kartennamen (<code>4 Belle - Strange and Beautiful</code>) -- eine Karte pro Zeile. Gibt es eine Nummer in mehreren Sets, das Set voranstellen: <code>4 TFC:16 DE</code>.</div>
         </div>
         <div id="import-json-fields" class="hidden">
           <label class="import-text-label">JSON-Datei wählen<input type="file" id="import-json-file" accept="application/json,.json"></label>
-          <div class="format-help">Stellt eine Sammlung aus einer zuvor mit <code>JSON Export</code> erzeugten Backup-Datei wieder her.<span id="import-json-filename" class="json-filename"></span></div>
+          <div class="format-help">Stellt Sammlung, Decks und Watchlists aus einer zuvor mit <code>JSON Export</code> erzeugten Backup-Datei wieder her. Vorhandene Decks gleichen Namens bleiben unverändert, außer mit „Ersetzen“.<span id="import-json-filename" class="json-filename"></span></div>
         </div>
         <div id="import-preview" class="import-preview"></div>
         <div class="dialog-actions"><label class="radio-label"><input type="radio" name="strategy" value="add" checked> Mengen addieren</label><label class="radio-label"><input type="radio" name="strategy" value="replace"> Ersetzen</label><span class="spacer"></span><button class="secondary-button" id="preview-import">Vorschau</button><button class="primary-button" id="apply-import" disabled>Import anwenden</button></div>
@@ -185,7 +185,7 @@
     <div class="utility-dialog import-dialog">
       <div class="dialog-head"><div><span class="eyebrow">DECK ÜBERNEHMEN</span><h2>Deckliste importieren</h2></div><button class="close-button" data-close="deck-import-modal">×</button></div>
       <label class="import-text-label">Liste einfügen<textarea id="deck-import-text" rows="9" placeholder="4x OP01-016&#10;1x OP01-001&#10;oder&#10;4 Belle - Strange and Beautiful"></textarea></label>
-      <div class="format-help">Unterstützt Sammlernummern (<code>4x OP01-016</code>) oder Kartennamen (<code>4 Belle - Strange and Beautiful</code>), eine Karte pro Zeile. Karten aus anderen Deckbuildern lassen sich meist direkt einfügen.</div>
+      <div class="format-help">Unterstützt Sammlernummern (<code>4x OP01-016</code>) oder Kartennamen (<code>4 Belle - Strange and Beautiful</code>), eine Karte pro Zeile. Gibt es eine Nummer in mehreren Sets, das Set voranstellen (<code>4x TFC:16</code>). Karten aus anderen Deckbuildern lassen sich meist direkt einfügen.</div>
       <div id="deck-import-preview" class="import-preview"></div>
       <div class="dialog-actions"><label class="radio-label"><input type="radio" name="deck-import-strategy" value="replace" checked> Deck ersetzen</label><label class="radio-label"><input type="radio" name="deck-import-strategy" value="add"> Zum Deck hinzufügen</label><span class="spacer"></span><button class="secondary-button" id="deck-preview-import">Vorschau</button><button class="primary-button" id="deck-apply-import" disabled>Import anwenden</button></div>
     </div>

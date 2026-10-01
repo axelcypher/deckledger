@@ -173,21 +173,6 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
     connection.executescript(SCHEMA)
     connection.execute("BEGIN IMMEDIATE")
     try:
-        previous_format = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_format'").fetchone()
-        previous_version = connection.execute("SELECT value FROM catalog_metadata WHERE key='catalog_version'").fetchone()
-        upgrading_real_catalog = bool(
-            (previous_format and json.loads(previous_format[0]) == "real-catalog")
-            # Back-compat for databases from before per-provider versioning existed.
-            or (previous_version and isinstance(json.loads(previous_version[0]), str) and json.loads(previous_version[0]).startswith("real-catalog-"))
-        )
-        if not upgrading_real_catalog:
-            # This is the one-time transition away from the former fabricated IDs.
-            for table in (
-                "deck_cards", "decks", "named_watchlist_entries", "watchlist_entries",
-                "collection_entries", "import_operations", "marketplace_products", "price_observations", "variants",
-                "printings", "card_identities", "sets",
-            ):
-                connection.execute(f"DELETE FROM {table}")
         connection.executemany(
             """INSERT INTO sets VALUES(?,?,?,?,?,?,?,?,?,'imported') ON CONFLICT(id) DO UPDATE SET
                game_id=excluded.game_id,code=excluded.code,name=excluded.name,set_type=excluded.set_type,
@@ -215,60 +200,64 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
                source_type=excluded.source_type,attributes=excluded.attributes""",
             [(x["id"], x["printing_id"], x["game_id"], x["variant_code"], x["finish"], x["artwork_id"], x["is_parallel"], x["source_type"], json.dumps(x["attributes"], ensure_ascii=False)) for x in catalog["variants"].values()],
         )
-        if upgrading_real_catalog:
-            migration_stats = migrate_hololive_virtual_pools(connection)
-            if migration_stats["mapped_variants"] or any(migration_stats[table] for table in (
-                "collection_entries", "watchlist_entries", "named_watchlist_entries", "deck_cards"
-            )):
-                print(f"hololive sele-Migration: {json.dumps(migration_stats, ensure_ascii=False)}", flush=True)
-            # Stable IDs preserve all user data. Catalogue rows that vanished upstream are
-            # only pruned while nothing a user entered still points at them.
-            for table, records in (
-                ("incoming_variants", catalog["variants"]),
-                ("incoming_printings", catalog["printings"]),
-                ("incoming_identities", catalog["identities"]),
-                ("incoming_sets", catalog["sets"]),
+        # There used to be a branch here that emptied every table, user data included, whenever the
+        # database carried no "real catalogue imported" marker -- a one-time step away from the
+        # fabricated demo data of the first versions. A lost or unreadable marker row would have
+        # erased a real collection, so the branch is gone: importing only ever adds, updates and
+        # prunes catalogue rows nobody references.
+        migration_stats = migrate_hololive_virtual_pools(connection)
+        if migration_stats["mapped_variants"] or any(migration_stats[table] for table in (
+            "collection_entries", "watchlist_entries", "named_watchlist_entries", "deck_cards"
+        )):
+            print(f"hololive sele-Migration: {json.dumps(migration_stats, ensure_ascii=False)}", flush=True)
+        # Stable IDs preserve all user data. Catalogue rows that vanished upstream are
+        # only pruned while nothing a user entered still points at them.
+        for table, records in (
+            ("incoming_variants", catalog["variants"]),
+            ("incoming_printings", catalog["printings"]),
+            ("incoming_identities", catalog["identities"]),
+            ("incoming_sets", catalog["sets"]),
+        ):
+            connection.execute(f"CREATE TEMP TABLE {table}(id TEXT PRIMARY KEY)")
+            connection.executemany(f"INSERT INTO {table}(id) VALUES(?)", ((key,) for key in records))
+        if fetched_game_ids:
+            # Providers that did not run this pass (untouched games) and manually
+            # entered records must never be pruned just because their game's catalog
+            # dict is absent from this run's `catalog` argument.
+            placeholders = ",".join("?" for _ in fetched_game_ids)
+            for temp_table, source_table in (
+                ("incoming_variants", "variants"), ("incoming_printings", "printings"),
+                ("incoming_identities", "card_identities"), ("incoming_sets", "sets"),
             ):
-                connection.execute(f"CREATE TEMP TABLE {table}(id TEXT PRIMARY KEY)")
-                connection.executemany(f"INSERT INTO {table}(id) VALUES(?)", ((key,) for key in records))
-            if fetched_game_ids:
-                # Providers that did not run this pass (untouched games) and manually
-                # entered records must never be pruned just because their game's catalog
-                # dict is absent from this run's `catalog` argument.
-                placeholders = ",".join("?" for _ in fetched_game_ids)
-                for temp_table, source_table in (
-                    ("incoming_variants", "variants"), ("incoming_printings", "printings"),
-                    ("incoming_identities", "card_identities"), ("incoming_sets", "sets"),
-                ):
-                    connection.execute(
-                        f"""INSERT OR IGNORE INTO {temp_table}(id)
-                            SELECT id FROM {source_table}
-                            WHERE game_id NOT IN ({placeholders}) OR source_type='manual-override'""",
-                        tuple(fetched_game_ids),
-                    )
-                # A card missing from this run is not proof it stopped existing -- a source page
-                # can come back short, or a provider can change its id scheme. Deleting the
-                # collection, deck and watchlist rows behind it would be unrecoverable, so any
-                # variant still referenced by user data stays in the catalogue untouched, along
-                # with the printing, identity and set it hangs off.
-                referenced = """SELECT variant_id FROM collection_entries UNION SELECT variant_id FROM deck_cards
-                    UNION SELECT variant_id FROM named_watchlist_entries UNION SELECT variant_id FROM watchlist_entries
-                    UNION SELECT cover_variant_id FROM decks WHERE cover_variant_id IS NOT NULL"""
-                retained = connection.execute(
-                    f"SELECT COUNT(*) FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants) AND variant_id NOT IN (SELECT id FROM incoming_variants)"
-                ).fetchone()[0]
-                if retained:
-                    print(f"{retained} nicht mehr gelieferte Varianten bleiben erhalten, weil Sammlungen, Decks oder Watchlists sie verwenden.", flush=True)
-                    connection.execute(f"INSERT OR IGNORE INTO incoming_variants(id) SELECT variant_id FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants)")
-                    connection.execute("INSERT OR IGNORE INTO incoming_printings(id) SELECT printing_id FROM variants WHERE id IN (SELECT id FROM incoming_variants)")
-                    connection.execute("INSERT OR IGNORE INTO incoming_identities(id) SELECT identity_id FROM printings WHERE id IN (SELECT id FROM incoming_printings)")
-                    connection.execute("INSERT OR IGNORE INTO incoming_sets(id) SELECT set_id FROM printings WHERE id IN (SELECT id FROM incoming_printings)")
-                for table in ("marketplace_products", "price_observations"):
-                    connection.execute(f"DELETE FROM {table} WHERE variant_id NOT IN (SELECT id FROM incoming_variants)")
-                connection.execute("DELETE FROM variants WHERE id NOT IN (SELECT id FROM incoming_variants)")
-                connection.execute("DELETE FROM printings WHERE id NOT IN (SELECT id FROM incoming_printings)")
-                connection.execute("DELETE FROM card_identities WHERE id NOT IN (SELECT id FROM incoming_identities)")
-                connection.execute("DELETE FROM sets WHERE id NOT IN (SELECT id FROM incoming_sets)")
+                connection.execute(
+                    f"""INSERT OR IGNORE INTO {temp_table}(id)
+                        SELECT id FROM {source_table}
+                        WHERE game_id NOT IN ({placeholders}) OR source_type='manual-override'""",
+                    tuple(fetched_game_ids),
+                )
+            # A card missing from this run is not proof it stopped existing -- a source page
+            # can come back short, or a provider can change its id scheme. Deleting the
+            # collection, deck and watchlist rows behind it would be unrecoverable, so any
+            # variant still referenced by user data stays in the catalogue untouched, along
+            # with the printing, identity and set it hangs off.
+            referenced = """SELECT variant_id FROM collection_entries UNION SELECT variant_id FROM deck_cards
+                UNION SELECT variant_id FROM named_watchlist_entries UNION SELECT variant_id FROM watchlist_entries
+                UNION SELECT cover_variant_id FROM decks WHERE cover_variant_id IS NOT NULL"""
+            retained = connection.execute(
+                f"SELECT COUNT(*) FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants) AND variant_id NOT IN (SELECT id FROM incoming_variants)"
+            ).fetchone()[0]
+            if retained:
+                print(f"{retained} nicht mehr gelieferte Varianten bleiben erhalten, weil Sammlungen, Decks oder Watchlists sie verwenden.", flush=True)
+                connection.execute(f"INSERT OR IGNORE INTO incoming_variants(id) SELECT variant_id FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants)")
+                connection.execute("INSERT OR IGNORE INTO incoming_printings(id) SELECT printing_id FROM variants WHERE id IN (SELECT id FROM incoming_variants)")
+                connection.execute("INSERT OR IGNORE INTO incoming_identities(id) SELECT identity_id FROM printings WHERE id IN (SELECT id FROM incoming_printings)")
+                connection.execute("INSERT OR IGNORE INTO incoming_sets(id) SELECT set_id FROM printings WHERE id IN (SELECT id FROM incoming_printings)")
+            for table in ("marketplace_products", "price_observations"):
+                connection.execute(f"DELETE FROM {table} WHERE variant_id NOT IN (SELECT id FROM incoming_variants)")
+            connection.execute("DELETE FROM variants WHERE id NOT IN (SELECT id FROM incoming_variants)")
+            connection.execute("DELETE FROM printings WHERE id NOT IN (SELECT id FROM incoming_printings)")
+            connection.execute("DELETE FROM card_identities WHERE id NOT IN (SELECT id FROM incoming_identities)")
+            connection.execute("DELETE FROM sets WHERE id NOT IN (SELECT id FROM incoming_sets)")
         metadata = {
             "catalog_format": "real-catalog",
             "catalog_synced_at": iso_now(),

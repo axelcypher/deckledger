@@ -107,3 +107,101 @@ def test_undoing_a_text_import_keeps_graded_copies(client):
     client.post(f"/api/import/{operation['operation_id']}/undo")
 
     assert [(row["variant_id"], row["grade_label"], row["quantity"]) for row in stored_collection()] == [(BOOST, "PSA 10", 1)]
+
+
+# ---- decks and watchlists ------------------------------------------------------------------
+
+def backup_with_decks_and_lists(client):
+    fill_collection(client)
+    deck_id = client.post("/api/decks", json={"game_id": "vcard", "name": "Feuer"}).get_json()["id"]
+    client.post(f"/api/decks/{deck_id}/cards", json={"variant_id": EMBER8, "zone": "auto", "delta": 3})
+    client.post(f"/api/decks/{deck_id}/cards", json={"variant_id": BOOST, "zone": "auto", "delta": 2})
+    client.patch(f"/api/decks/{deck_id}", json={"cover_variant_id": BOOST, "notes": "Testnotiz"})
+    client.post("/api/watchlist", json={"variant_id": TIDE8})
+    custom = client.post("/api/watchlists", json={"game_id": "vcard", "name": "Tauschliste"}).get_json()["id"]
+    client.post("/api/watchlist", json={"variant_id": EMBER8_HOLO, "list_id": custom})
+    client.patch(f"/api/watchlists/{custom}/entries/{EMBER8_HOLO}", json={"quantity": 3})
+    return client.get("/api/export.json").get_json()
+
+
+def decks_and_lists():
+    decks = query("""SELECT d.name,d.notes,d.cover_variant_id,dc.variant_id,dc.zone,dc.quantity FROM decks d
+                     JOIN deck_cards dc ON dc.deck_id=d.id ORDER BY d.name,dc.variant_id""")
+    lists = query("""SELECT w.name,e.variant_id,e.quantity FROM named_watchlists w
+                     JOIN named_watchlist_entries e ON e.list_id=w.id ORDER BY w.name,e.variant_id""")
+    return decks, lists
+
+
+def wipe_user_data():
+    for table in ("deck_cards", "decks", "named_watchlist_entries", "collection_entries"):
+        query(f"DELETE FROM {table}")
+    query("DELETE FROM named_watchlists WHERE is_default=0 AND is_sale_list=0")
+
+
+def test_restore_brings_back_decks_and_watchlists(client):
+    backup = backup_with_decks_and_lists(client)
+    before = decks_and_lists()
+    wipe_user_data()
+
+    result = client.post("/api/import/json/apply", json={**backup, "strategy": "add"}).get_json()
+
+    assert (result["applied"], result["decks_restored"], result["watchlist_entries_restored"]) == (6, 1, 2)
+    assert decks_and_lists() == before
+
+
+def test_restore_preview_lists_decks_and_watchlists(client):
+    backup = backup_with_decks_and_lists(client)
+    rows = client.post("/api/import/json/preview", json=backup).get_json()
+    extras = [(row["kind"], row["original"], row["status"], row["message"]) for row in rows if row.get("kind")]
+    assert extras == [
+        ("deck", "Deck: Feuer", "matched", "VCard Trading Card Game · 2 von 2 Karten gefunden"),
+        ("watchlist", "Watchlist: Merkliste", "matched", "VCard Trading Card Game · 1 von 1 Karten gefunden"),
+        ("watchlist", "Watchlist: Tauschliste", "matched", "VCard Trading Card Game · 1 von 1 Karten gefunden"),
+    ]
+
+
+def test_existing_deck_is_only_overwritten_with_replace(client):
+    backup = backup_with_decks_and_lists(client)
+    deck_id = query("SELECT id FROM decks")[0]["id"]
+    client.post(f"/api/decks/{deck_id}/cards", json={"variant_id": TIDE8, "zone": "auto", "delta": 1})
+    edited = decks_and_lists()
+
+    added = client.post("/api/import/json/apply", json={**backup, "strategy": "add"}).get_json()
+    assert (added["decks_restored"], added["decks_skipped"]) == (0, 1)
+    assert decks_and_lists()[0] == edited[0]
+
+    client.post(f"/api/import/{added['operation_id']}/undo")
+    replaced = client.post("/api/import/json/apply", json={"decks": backup["decks"], "strategy": "replace"}).get_json()
+    assert replaced["decks_restored"] == 1
+    assert [row["variant_id"] for row in decks_and_lists()[0]] == sorted([EMBER8, BOOST])
+    assert query("SELECT COUNT(*) n FROM decks")[0]["n"] == 1, "replace must not create a second deck"
+
+    client.post(f"/api/import/{replaced['operation_id']}/undo")
+    assert decks_and_lists()[0] == edited[0], "undo brings back the cards the deck had before"
+
+
+def test_undo_removes_what_a_restore_created(client):
+    backup = backup_with_decks_and_lists(client)
+    wipe_user_data()
+    operation = client.post("/api/import/json/apply", json={**backup, "strategy": "add"}).get_json()
+
+    client.post(f"/api/import/{operation['operation_id']}/undo")
+
+    assert decks_and_lists() == ([], [])
+    assert query("SELECT COUNT(*) n FROM collection_entries")[0]["n"] == 0
+    assert query("SELECT COUNT(*) n FROM named_watchlists WHERE name='Tauschliste'")[0]["n"] == 0
+    assert query("SELECT COUNT(*) n FROM named_watchlists WHERE is_default=1 AND game_id='vcard' AND user_id=1")[0]["n"] == 1, "built-in lists stay"
+
+
+def test_undo_restores_last_added(client):
+    """Regression: undoing an import kept the import's time as "zuletzt hinzugefügt"."""
+    client.post("/api/collection", json={"variant_id": TIDE8, "delta": 1})
+    query("UPDATE collection_entries SET last_added_at='2025-04-02T11:00:00+00:00'")
+    for url, payload in (
+        ("/api/import/apply", {"text": "2 Tide (PL8)", "game_id": "vcard", "language": "EN"}),
+        ("/api/import/json/apply", {"collection": [dict(client.get("/api/export.json").get_json()["collection"][0], quantity=2)], "strategy": "add"}),
+    ):
+        operation = client.post(url, json=payload).get_json()
+        assert query("SELECT last_added_at t FROM collection_entries")[0]["t"] != "2025-04-02T11:00:00+00:00"
+        client.post(f"/api/import/{operation['operation_id']}/undo")
+        assert query("SELECT quantity q,last_added_at t FROM collection_entries") == [{"q": 1, "t": "2025-04-02T11:00:00+00:00"}], url

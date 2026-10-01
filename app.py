@@ -1867,6 +1867,8 @@ def set_cards(set_id):
     selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
     inkwell = request.args.get("inkwell", "")
     cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
+    if request.args.get("stats_only"):
+        return jsonify({"stats": stats})
     rarity_sql = "SELECT DISTINCT rarity FROM printings WHERE set_id=?" + ("" if language == "combined" else " AND language=?")
     rarity_params = (set_id,) if language == "combined" else (set_id, language)
     rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: (rarity_rank(set_row["game_id"], r), r))
@@ -1930,6 +1932,8 @@ def game_cards(game_id):
         "playset": round(aggregate["playset_owned"] / max(1, aggregate["playset_total"]) * 100),
         "value": round(aggregate["value"], 2),
     })
+    if request.args.get("stats_only"):
+        return jsonify({"stats": aggregate, "group_count": len(groups)})
     return jsonify({"game": {**dict(game), "languages": jload(game["languages"], [])}, "groups": groups, "stats": aggregate, "rarities": rarity_options})
 
 
@@ -2131,19 +2135,22 @@ def variant_price_history(variant_id):
     metric = request.args.get("metric", "trend")
     if metric not in {"trend", "low", "avg30"}:
         metric = "trend"
+    # The day is taken from the text itself: SQLite's date() returns NULL for Cardmarket's
+    # "+0200" offsets (no colon), which lumped every Cardmarket observation into one dateless
+    # point. Months older than the daily window hold one averaged point each (price_sync.py).
     try:
-        days = min(365, max(7, int(request.args.get("days", 180))))
+        days = min(3650, max(7, int(request.args.get("days", 180))))
     except (TypeError, ValueError):
         days = 180
     rows = db().execute(
         """SELECT day, amount, currency FROM (
-             SELECT date(po.observed_at) day, po.amount, po.currency,
+             SELECT substr(po.observed_at,1,10) day, po.amount, po.currency,
                     ROW_NUMBER() OVER (
-                      PARTITION BY date(po.observed_at)
+                      PARTITION BY substr(po.observed_at,1,10)
                       ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END, po.observed_at DESC
                     ) rn
              FROM price_observations po
-             WHERE po.variant_id=? AND po.metric=? AND po.observed_at >= datetime('now', ?)
+             WHERE po.variant_id=? AND po.metric=? AND substr(po.observed_at,1,10) >= date('now', ?)
            ) WHERE rn=1 ORDER BY day""",
         (variant_id, metric, f"-{days} days"),
     ).fetchall()
@@ -2419,7 +2426,9 @@ def collection_browser():
     sorters={"number":lambda c:[int(x) if x.isdigit() else x for x in re.split(r"(\d+)",c["collector_number"])],"name":lambda c:c["canonical_name"],"set":lambda c:(c["release_date"],c["collector_number"]),"rarity":lambda c:(rarity_rank(game_id,c["rarity"]),c["collector_number"]),"value":lambda c:-c["value"],"quantity":lambda c:-c["quantity"]}
     cards.sort(key=sorters.get(sort,sorters["number"]))
     sets=[dict(r) for r in db().execute("SELECT id,code,name FROM sets WHERE game_id=? ORDER BY release_date DESC",(game_id,))]
-    return jsonify({"cards":cards,"sets":sets,"stats":{"variants":len(cards),"copies":sum(c["quantity"] for c in cards),"value":round(sum((c["value"] or 0) for c in cards),2)}})
+    stats={"variants":len(cards),"copies":sum(c["quantity"] for c in cards),"value":round(sum((c["value"] or 0) for c in cards),2)}
+    if request.args.get("stats_only"):return jsonify({"stats":stats})
+    return jsonify({"cards":cards,"sets":sets,"stats":stats})
 
 
 @app.get("/api/games/<game_id>/formats")
@@ -2799,6 +2808,63 @@ def export_deck_missing_list(deck_id):
     return Response(body,mimetype="text/plain",headers={"Content-Disposition":f"attachment; filename={filename}-fehlend.txt"})
 
 
+def split_set_prefix(token):
+    """'TFC:16' -> ('TFC', '16'); a plain number comes back with no set."""
+    set_code, separator, number = str(token).partition(":")
+    return (set_code, number) if separator and set_code and number else (None, str(token))
+
+
+def code_key(value):
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+def match_collector_number(game_id, number, language, set_code=None, variant_hint=None):
+    """Resolve a collector number to exactly one variant, or say why that is not possible.
+
+    A number identifies a printing, not a variant: one printing usually has several finishes, and
+    several printings can share a number (Lorcana and VCard restart at 1 in every set; One Piece
+    reprints a card under its original number in other products). Returns (variant, status,
+    message, candidate_count) with status matched / ambiguous / not_found.
+
+    - One printing: its base variant, or the finish named by `variant_hint`.
+    - Several printings: the one in the set named with "SET:number"; otherwise the set the number
+      itself is prefixed with ("OP01-016" belongs to OP-01), which is where a reprinted card
+      originally comes from. Anything else is ambiguous -- never "whichever row came first".
+    """
+    rows = [dict(row) for row in db().execute(
+        """SELECT v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.game_id,p.id printing_id,p.collector_number,p.language,p.rarity,
+                  i.canonical_name,i.card_type,s.name set_name,s.code set_code
+           FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id
+           WHERE v.game_id=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=?
+           ORDER BY s.release_date,p.id,v.id""", (game_id, number, language)
+    )]
+    if set_code:
+        rows = [row for row in rows if code_key(row["set_code"]) == code_key(set_code)]
+    if not rows:
+        return None, "not_found", "Karte nicht im Katalog gefunden", 0
+    printings = {}
+    for row in rows:
+        printings.setdefault(row["printing_id"], []).append(row)
+    if len(printings) > 1 and not set_code:
+        prefix = code_key(str(number).split("-", 1)[0]) if "-" in str(number) else ""
+        home = {key: variants for key, variants in printings.items() if prefix and code_key(variants[0]["set_code"]) == prefix}
+        if len(home) == 1:
+            printings = home
+    if len(printings) > 1:
+        sets = sorted({variants[0]["set_code"] for variants in printings.values()})
+        hint = f' – mit Set angeben, z. B. „{sets[0]}:{number}“' if len(sets) > 1 else " im selben Set – bitte den Kartennamen verwenden"
+        return rows[0], "ambiguous", f"{len(printings)} Karten teilen sich diese Nummer{hint}", len(rows)
+    variants = next(iter(printings.values()))
+    hint = str(variant_hint or "").strip().lower()
+    if hint and hint not in ("standard", "normal"):
+        named = [row for row in variants if hint in (row["variant_code"].lower(), row["finish"].lower())]
+        if not named:
+            return variants[0], "ambiguous", f'Ausführung „{variant_hint}“ gibt es für diese Karte nicht', len(variants)
+        return named[0], "matched", None, len(variants)
+    base = sorted(variants, key=lambda row: (row["variant_code"] not in ("standard", "normal"), row["finish"] != "Normal", row["is_parallel"], row["variant_id"]))[0]
+    return base, "matched", None, len(variants)
+
+
 def parse_deck_text(text, game_id):
     """Match a pasted decklist (from this app or another deckbuilder) onto catalog variants.
 
@@ -2817,25 +2883,17 @@ def parse_deck_text(text, game_id):
         qty_match = re.match(r"^\s*(\d+)\s*[xX]?\s+(.+)$", line)
         qty = int(qty_match.group(1)) if qty_match else 1
         rest = qty_match.group(2).strip() if qty_match else line
-        number_candidates = []
-        number_match = re.match(r"^([A-Za-z0-9-]+(?:/\d+)?)\s*(DE|EN|JP)?\s*$", rest, re.I)
-        if number_match:
-            number, lang = number_match.group(1), (number_match.group(2) or "EN").upper()
-            number_candidates = db().execute(
-                """SELECT v.id variant_id,v.finish,i.canonical_name,i.card_type,p.collector_number,p.language,s.name set_name
-                   FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
-                   JOIN sets s ON s.id=p.set_id
-                   WHERE v.game_id=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=?""",
-                (game_id, number, lang)
-            ).fetchall()
         selected, status, message, alt_count = None, "not_found", "Karte nicht im Katalog gefunden", 0
-        if len(number_candidates) > 1:
-            # The same collector_number string can be reused across unrelated products (e.g. a
-            # starter-deck parallel reprint) — that's a genuine collision, not a card to guess at.
-            status, message = "ambiguous", f"{len(number_candidates)} Karten teilen sich diese Nummer – bitte im Builder manuell hinzufügen."
-        elif len(number_candidates) == 1:
-            selected = dict(number_candidates[0])
-        else:
+        number_match = re.match(r"^((?:[A-Za-z0-9-]+:)?[A-Za-z0-9-]+(?:/\d+)?)\s*(DE|EN|JP)?\s*$", rest, re.I)
+        number_status = "not_found"
+        if number_match:
+            set_code, number = split_set_prefix(number_match.group(1))
+            lang = (number_match.group(2) or "EN").upper()
+            selected, number_status, message, _ = match_collector_number(game_id, number, lang, set_code)
+        if number_status == "ambiguous":
+            selected, status = None, "ambiguous"
+        elif number_status == "not_found":
+            message = "Karte nicht im Katalog gefunden"
             name_rows = db().execute(
                 """SELECT v.id variant_id,v.finish,i.canonical_name,i.card_type,p.collector_number,p.language,s.name set_name
                    FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
@@ -2952,23 +3010,17 @@ def parse_import(text, game_id, language="EN", condition="Near Mint"):
         line = original.strip()
         if not line: continue
         parts = [p.strip() for p in line.split(";")]
-        match = re.match(r"^\s*(?:(\d+)\s*[xX]?\s+)?([A-Za-z0-9-]+(?:/\d+)?)\s*(DE|EN|JP)?", parts[0], re.I)
+        match = re.match(r"^\s*(?:(\d+)\s*[xX]?\s+)?((?:[A-Za-z0-9-]+:)?[A-Za-z0-9-]+(?:/\d+)?)\s*(DE|EN|JP)?", parts[0], re.I)
         if not match:
             results.append({"line":line_no,"original":original,"status":"not_found","message":"Format nicht erkannt"}); continue
         qty = int(match.group(1) or (parts[1] if len(parts)>1 and parts[1].isdigit() else 1))
-        number = match.group(2)
+        set_code, number = split_set_prefix(match.group(2))
         lang = (match.group(3) or (parts[2] if len(parts)>2 and parts[2].upper() in ("DE","EN","JP") else language)).upper()
         variant_hint = parts[3].lower() if len(parts)>3 else "standard"
         cond = parts[4] if len(parts)>4 else condition
-        candidates = db().execute(
-            """SELECT v.id variant_id,v.variant_code,v.finish,v.game_id,p.collector_number,p.language,p.rarity,i.canonical_name,s.name set_name
-               FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id
-               WHERE v.game_id=? AND UPPER(p.collector_number)=UPPER(?) AND p.language=?""", (game_id,number,lang)
-        ).fetchall()
-        exact = [dict(c) for c in candidates if variant_hint in (c["variant_code"].lower(),c["finish"].lower())]
-        selected = exact[0] if exact else (dict(candidates[0]) if candidates else None)
-        status = "matched" if selected and (exact or len(candidates)==1) else "ambiguous" if selected else "not_found"
-        message = f"{len(candidates)} Karten teilen sich diese Nummer" if status=="ambiguous" else None
+        selected, status, message, _ = match_collector_number(game_id, number, lang, set_code, variant_hint)
+        if status == "not_found":
+            message = None
         # collector_number alone isn't globally unique for every game -- Lorcana's restarts at 1
         # every set (card "16" alone matches ~240 different EN printings across the catalogue:
         # 98% of its collector numbers are shared by more than one printing), so a plain
@@ -3122,7 +3174,123 @@ def parse_json_backup(entries):
 @login_required
 def import_json_preview():
     p = request.get_json(force=True)
-    return jsonify(parse_json_backup(p.get("collection") or []))
+    rows = parse_json_backup(p.get("collection") or [])
+    games = {row["name"] for row in db().execute("SELECT name FROM games")}
+    # One summary line per deck and watchlist in the backup, in the same shape as a card row.
+    for kind, label, items, cards_key in (("deck", "Deck", p.get("decks") or [], "cards"), ("watchlist", "Watchlist", p.get("watchlists") or [], "entries")):
+        for item in items:
+            entries = item.get(cards_key) or []
+            if not entries:
+                continue
+            found = sum(1 for row in parse_json_backup(entries) if row["status"] == "matched")
+            known_game = item.get("game") in games
+            rows.append({
+                "line": len(rows) + 1, "kind": kind, "original": f'{label}: {item.get("name") or "ohne Namen"}',
+                "status": "matched" if found and known_game else "not_found",
+                "message": f'{item.get("game")} · {found} von {len(entries)} Karten gefunden' if known_game else f'Spiel „{item.get("game")}“ gibt es hier nicht',
+            })
+    return jsonify(rows)
+
+
+def restore_backup_decks(decks, strategy, changes):
+    """A deck from the backup is created when none of that name exists for the game. An existing
+    one is left alone unless the import runs with "replace" -- two decks of the same name are
+    never merged card by card."""
+    uid, stamp, summary = user_id(), now_iso(), {"decks_restored": 0, "decks_skipped": 0}
+    games = {row["name"]: row["id"] for row in db().execute("SELECT id,name FROM games")}
+    for deck in decks:
+        game_id, name = games.get(deck.get("game")), str(deck.get("name") or "").strip()[:100]
+        if not game_id or not name:
+            continue
+        profiles = FORMAT_PROFILES.get(game_id, [])
+        profile = next((item for item in profiles if item["id"] == deck.get("format_id")), profiles[0] if profiles else None)
+        zones = {zone["id"] for zone in (profile or {}).get("zones", [])} or {"main"}
+        entries = deck.get("cards") or []
+        cards = {}
+        for entry, row in zip(entries, parse_json_backup(entries)):
+            if row["status"] == "matched" and row["quantity"] > 0:
+                key = (row["match"]["variant_id"], entry.get("zone") if entry.get("zone") in zones else "main")
+                cards[key] = cards.get(key, 0) + row["quantity"]
+        existing = db().execute("SELECT id,cover_variant_id FROM decks WHERE user_id=? AND game_id=? AND name=?", (uid, game_id, name)).fetchone()
+        if existing and strategy != "replace":
+            summary["decks_skipped"] += 1
+            continue
+        if existing:
+            deck_id = existing["id"]
+            before = [dict(row) for row in db().execute("SELECT variant_id,zone,quantity FROM deck_cards WHERE deck_id=?", (deck_id,))]
+            changes.append({"kind": "deck_replaced", "deck_id": deck_id, "cards_before": before, "cover_before": existing["cover_variant_id"]})
+            db().execute("UPDATE decks SET cover_variant_id=NULL,updated_at=? WHERE id=?", (stamp, deck_id))
+            db().execute("DELETE FROM deck_cards WHERE deck_id=?", (deck_id,))
+        else:
+            deck_id = db().execute(
+                "INSERT INTO decks(user_id,game_id,name,format_id,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+                (uid, game_id, name, profile["id"] if profile else "standard", deck.get("notes") or "", deck.get("created_at") or stamp, deck.get("updated_at") or stamp),
+            ).lastrowid
+            changes.append({"kind": "deck_created", "deck_id": deck_id})
+        db().executemany("INSERT INTO deck_cards(deck_id,variant_id,zone,quantity) VALUES(?,?,?,?)", [(deck_id, variant_id, zone, quantity) for (variant_id, zone), quantity in cards.items()])
+        if any(variant_id == deck.get("cover_variant_id") for variant_id, _ in cards):
+            db().execute("UPDATE decks SET cover_variant_id=? WHERE id=?", (deck["cover_variant_id"], deck_id))
+        summary["decks_restored"] += 1
+    return summary
+
+
+def restore_backup_watchlists(watchlists, strategy, changes):
+    """Entries are added to the list of the same name (created if missing). A card already on
+    the list keeps its wanted quantity unless the import runs with "replace"."""
+    uid, stamp, summary = user_id(), now_iso(), {"watchlist_entries_restored": 0}
+    games = {row["name"]: row["id"] for row in db().execute("SELECT id,name FROM games")}
+    for watchlist in watchlists:
+        game_id, name = games.get(watchlist.get("game")), str(watchlist.get("name") or "").strip()[:80]
+        entries = watchlist.get("entries") or []
+        if not game_id or not name or not entries:
+            continue
+        if watchlist.get("is_sale_list"):
+            target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? AND is_sale_list=1", (uid, game_id)).fetchone()
+        else:
+            target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? AND name=? AND is_sale_list=0", (uid, game_id, name)).fetchone()
+        if target:
+            list_id = target["id"]
+        else:
+            list_id = db().execute("INSERT INTO named_watchlists(user_id,game_id,name,is_default,created_at) VALUES(?,?,?,0,?)", (uid, game_id, name, stamp)).lastrowid
+            changes.append({"kind": "watchlist_created", "list_id": list_id})
+        for entry, row in zip(entries, parse_json_backup(entries)):
+            if row["status"] != "matched":
+                continue
+            variant_id, quantity = row["match"]["variant_id"], max(1, min(99, row["quantity"] or 1))
+            existing = db().execute("SELECT id,quantity FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id, variant_id)).fetchone()
+            if existing and (strategy != "replace" or existing["quantity"] == quantity):
+                continue
+            if existing:
+                changes.append({"kind": "watchlist_entry_updated", "entry_id": existing["id"], "quantity_before": existing["quantity"]})
+                db().execute("UPDATE named_watchlist_entries SET quantity=? WHERE id=?", (quantity, existing["id"]))
+            else:
+                entry_id = db().execute(
+                    "INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,source,created_at) VALUES(?,?,?,?,?)",
+                    (list_id, variant_id, quantity, "auto" if entry.get("source") == "auto" else "manual", entry.get("created_at") or stamp),
+                ).lastrowid
+                changes.append({"kind": "watchlist_entry_added", "entry_id": entry_id})
+            summary["watchlist_entries_restored"] += 1
+    return summary
+
+
+def undo_restored_item(change):
+    """Reverts one deck/watchlist step of a backup import; every statement is scoped to the user."""
+    uid, kind = user_id(), change["kind"]
+    own_deck = "id=? AND user_id=?"
+    own_entry = "id=? AND list_id IN (SELECT id FROM named_watchlists WHERE user_id=?)"
+    if kind == "deck_created":
+        db().execute(f"DELETE FROM decks WHERE {own_deck}", (change["deck_id"], uid))
+    elif kind == "deck_replaced" and db().execute(f"SELECT 1 FROM decks WHERE {own_deck}", (change["deck_id"], uid)).fetchone():
+        db().execute("UPDATE decks SET cover_variant_id=NULL WHERE id=?", (change["deck_id"],))
+        db().execute("DELETE FROM deck_cards WHERE deck_id=?", (change["deck_id"],))
+        db().executemany("INSERT INTO deck_cards(deck_id,variant_id,zone,quantity) VALUES(?,?,?,?)", [(change["deck_id"], card["variant_id"], card["zone"], card["quantity"]) for card in change["cards_before"]])
+        db().execute("UPDATE decks SET cover_variant_id=? WHERE id=?", (change["cover_before"], change["deck_id"]))
+    elif kind == "watchlist_created":
+        db().execute("DELETE FROM named_watchlists WHERE id=? AND user_id=? AND is_default=0 AND is_sale_list=0", (change["list_id"], uid))
+    elif kind == "watchlist_entry_added":
+        db().execute(f"DELETE FROM named_watchlist_entries WHERE {own_entry}", (change["entry_id"], uid))
+    elif kind == "watchlist_entry_updated":
+        db().execute(f"UPDATE named_watchlist_entries SET quantity=? WHERE {own_entry}", (change["quantity_before"], change["entry_id"], uid))
 
 
 @app.post("/api/import/json/apply")
@@ -3153,14 +3321,16 @@ def import_json_apply():
                  price_override=COALESCE(excluded.price_override,collection_entries.price_override),last_added_at=excluded.last_added_at""",
             (user_id(), vid, cond, after, notes, graded, grade, override, row["created_at"] or import_stamp, last_added_at)
         )
-        changes.append({"variant_id":vid,"condition":cond,"is_graded":graded,"grade_label":grade,"before":before,"after":after,"notes_before":notes_before,"price_override_before":override_before})
+        changes.append({"variant_id":vid,"condition":cond,"is_graded":graded,"grade_label":grade,"before":before,"after":after,"notes_before":notes_before,"price_override_before":override_before,"last_added_at_before":old["last_added_at"] if old else None})
+    applied = len(changes)
+    summary = {**restore_backup_decks(p.get("decks") or [], strategy, changes), **restore_backup_watchlists(p.get("watchlists") or [], strategy, changes)}
     games = sorted({row["match"]["game_id"] for row in rows if row.get("match")})
     cur = db().execute(
         "INSERT INTO import_operations(user_id,created_at,game_id,source_text,changes) VALUES(?,?,?,?,?)",
         (user_id(), now_iso(), ",".join(games) or "backup", "json-backup", json.dumps(changes))
     )
     db().commit()
-    return jsonify({"operation_id":cur.lastrowid,"applied":len(changes),"matched":sum(1 for r in rows if r["status"]=="matched"),"total":len(rows)})
+    return jsonify({"operation_id":cur.lastrowid,"applied":applied,"matched":sum(1 for r in rows if r["status"]=="matched"),"total":len(rows),**summary})
 
 
 @app.post("/api/import/apply")
@@ -3184,7 +3354,7 @@ def import_apply():
                  quantity=excluded.quantity,last_added_at=excluded.last_added_at""",
             (user_id(),vid,cond,after,import_stamp,last_added_at),
         )
-        changes.append({"variant_id":vid,"condition":cond,"before":before,"after":after})
+        changes.append({"variant_id":vid,"condition":cond,"before":before,"after":after,"last_added_at_before":old["last_added_at"] if old else None})
     cur = db().execute("INSERT INTO import_operations(user_id,created_at,game_id,source_text,changes) VALUES(?,?,?,?,?)", (user_id(),now_iso(),p.get("game_id"),p.get("text",""),json.dumps(changes)))
     db().commit()
     return jsonify({"operation_id":cur.lastrowid,"applied":len(changes)})
@@ -3196,6 +3366,9 @@ def undo_import(operation_id):
     op = db().execute("SELECT * FROM import_operations WHERE id=? AND user_id=?", (operation_id,user_id())).fetchone()
     if not op or op["undone_at"]: return jsonify({"error":"operation unavailable"}), 404
     for change in jload(op["changes"],[]):
+        if change.get("kind"):
+            undo_restored_item(change)
+            continue
         # An import only ever touches one row of the variant: this condition and this grading.
         # Operations recorded before grading was tracked only wrote ungraded rows, hence the defaults.
         row_key = (user_id(), change["variant_id"], change["condition"], change.get("is_graded", 0), change.get("grade_label", ""))
@@ -3208,6 +3381,8 @@ def undo_import(operation_id):
             db().execute(f"UPDATE collection_entries SET quantity=?,notes=? WHERE {row_filter}", (change["before"],change["notes_before"],*row_key))
         else:
             db().execute(f"UPDATE collection_entries SET quantity=? WHERE {row_filter}", (change["before"],*row_key))
+        if change["before"] and change.get("last_added_at_before"):
+            db().execute(f"UPDATE collection_entries SET last_added_at=? WHERE {row_filter}", (change["last_added_at_before"],*row_key))
     db().execute("UPDATE import_operations SET undone_at=? WHERE id=?", (now_iso(),operation_id)); db().commit()
     return jsonify({"undone":True})
 

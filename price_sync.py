@@ -13,12 +13,13 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote_plus, unquote, urlsplit
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -63,6 +64,45 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_external
 CREATE INDEX IF NOT EXISTS idx_prices_variant_metric
   ON price_observations(variant_id, provider_id, metric, observed_at DESC);
 """
+
+
+DAILY_HISTORY_DAYS = 92
+MONTHLY_STAMP = "-15T12:00:00+00:00"
+
+
+def compact_price_history(connection, today: date | None = None) -> dict:
+    """Keeps the price history from growing without bound while keeping it for good.
+
+    Roughly the last three months stay as observed, one row per card, metric and day. Once a
+    calendar month lies entirely before that window, its rows are replaced by a single row per
+    card, provider and metric holding the month's average, dated mid-month. A year of history
+    then costs 12 rows per series instead of 365, and the long-term trend survives.
+
+    Idempotent: a month that already holds one row per series is left alone, so this runs after
+    every sync and only does work when a month crosses the boundary.
+    """
+    boundary = ((today or local_today()) - timedelta(days=DAILY_HISTORY_DAYS)).replace(day=1).isoformat()
+    months = [row[0] for row in connection.execute(
+        """SELECT DISTINCT month FROM (
+             SELECT substr(observed_at,1,7) month FROM price_observations WHERE observed_at < ?
+             GROUP BY variant_id,provider_id,metric,substr(observed_at,1,7) HAVING COUNT(*) > 1
+           ) ORDER BY month""", (boundary,)
+    )]
+    removed = 0
+    for month in months:
+        connection.execute("DROP TABLE IF EXISTS temp.monthly_prices")
+        connection.execute(
+            """CREATE TEMP TABLE monthly_prices AS
+               SELECT variant_id,provider_id,metric,MAX(currency) currency,ROUND(AVG(amount),2) amount,COUNT(*) samples
+               FROM price_observations WHERE substr(observed_at,1,7)=? GROUP BY variant_id,provider_id,metric""", (month,)
+        )
+        removed += connection.execute("DELETE FROM price_observations WHERE substr(observed_at,1,7)=?", (month,)).rowcount
+        removed -= connection.execute(
+            """INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at)
+               SELECT variant_id,provider_id,metric,amount,currency,? FROM monthly_prices""", (month + MONTHLY_STAMP,)
+        ).rowcount
+        connection.execute("DROP TABLE temp.monthly_prices")
+    return {"months": months, "rows_removed": removed}
 
 
 def fetch_json(url: str) -> dict:
@@ -959,6 +999,16 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             [(key, json.dumps(value, ensure_ascii=False)) for key, value in metadata.items()],
         )
         connection.commit()
+        # After the prices themselves are saved, and in a transaction of its own: folding a month
+        # of a large catalogue takes several seconds, and a problem here must not undo the sync.
+        try:
+            compacted = compact_price_history(connection)
+            connection.commit()
+            if compacted["months"]:
+                print(f"Preishistorie verdichtet: {compacted}", file=sys.stderr, flush=True)
+        except sqlite3.Error as error:
+            connection.rollback()
+            print(f"Preishistorie konnte nicht verdichtet werden: {error}", file=sys.stderr, flush=True)
         result.pop("audits", None)
         return result
     except Exception:

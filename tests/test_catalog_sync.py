@@ -108,3 +108,19 @@ def test_admin_edited_provider_code_is_kept(admin):
     assert reseed()["code"] == custom
     admin.patch("/api/admin/providers/vcard", json={"code": deckledger.default_provider_code("vcard")})
     assert reseed()["customized"] == 0, "saving the shipped code again hands the provider back to the repository"
+
+
+def test_import_never_empties_user_tables_even_without_the_catalogue_marker(client):
+    """Regression: a database without the "real catalogue imported" metadata row had every table
+    emptied before the import, collection, decks and watchlists included."""
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 4})
+    deck_id = client.post("/api/decks", json={"game_id": "vcard", "name": "Bleibt"}).get_json()["id"]
+    client.post(f"/api/decks/{deck_id}/cards", json={"variant_id": TIDE8, "zone": "auto", "delta": 1})
+    client.post("/api/watchlist", json={"variant_id": BOOST})
+    query("DELETE FROM catalog_metadata")
+
+    catalog_sync.write_database(sample_catalog(), {"vcard", "lorcana", "one-piece"})
+
+    assert query("SELECT SUM(quantity) q FROM collection_entries")[0]["q"] == 4
+    assert query("SELECT COUNT(*) n FROM decks")[0]["n"] == 1 and query("SELECT COUNT(*) n FROM deck_cards")[0]["n"] == 1
+    assert query("SELECT COUNT(*) n FROM named_watchlist_entries")[0]["n"] == 1

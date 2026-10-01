@@ -61,10 +61,14 @@ def card(catalog, game, set_id, key, name, card_type, number, rarity, finishes=(
 
 def sample_catalog():
     catalog = {"sets": {}, "identities": {}, "printings": {}, "variants": {}, "sources": {}}
-    for set_id, game, code, name in (("vcard-test", "vcard", "1", "Test Set"), ("lorcana-1", "lorcana", "TFC", "The First Chapter")):
+    for set_id, game, code, name, released in (
+        ("vcard-test", "vcard", "1", "Test Set", "2025-01-31"), ("vcard-two", "vcard", "2", "Second Set", "2024-06-01"),
+        ("lorcana-1", "lorcana", "TFC", "The First Chapter", "2025-01-31"),
+        ("one-piece-op-01", "one-piece", "OP-01", "Romance Dawn", "2022-12-02"), ("one-piece-prb-01", "one-piece", "PRB-01", "Premium Booster", "2024-11-08"),
+    ):
         catalog["sets"][set_id] = {
             "id": set_id, "game_id": game, "code": code, "name": name, "set_type": "Booster Set",
-            "release_date": "2025-01-31", "printed_card_count": 0, "classifications": [], "accent": "#123456",
+            "release_date": released, "printed_card_count": 0, "classifications": [], "accent": "#123456",
         }
     vt = dict(game="vcard", set_id="vcard-test", card_type="VT")
     card(catalog, key="ember8", name="Ember (PL8)", number="001", rarity="Uncommon", color="Fire", cost=8, finishes=("Normal", "Holo", "1st Edition"), **vt)
@@ -77,6 +81,11 @@ def sample_catalog():
     card(catalog, "vcard", "vcard-test", "topper", "Ember", "Box Topper", "BT-01", "Box Topper", finishes=("Normal",), color="Fire", cost=None)
     for index in range(1, 16):
         card(catalog, "vcard", "vcard-test", f"filler{index}", f"Filler {index}", "Support", f"{100 + index}", "Support", color=None, cost=None)
+    # The same collector number in a second set (VCard and Lorcana restart at 1 in every set) ...
+    card(catalog, "vcard", "vcard-two", "spark2", "Spark (PL8)", "VT", "001", "Uncommon", color="Electric", cost=8)
+    # ... and a One Piece card reprinted under its original number in a later product.
+    card(catalog, "one-piece", "one-piece-op-01", "op01-016", "Nami", "Character", "OP01-016", "R", finishes=("standard", "parallel"), color="Red", cost=1)
+    card(catalog, "one-piece", "one-piece-prb-01", "prb-op01-016", "Nami", "Character", "OP01-016", "R", finishes=("standard",), color="Red", cost=1)
     card(catalog, "lorcana", "lorcana-1", "elsa", "Elsa - Snow Queen", "Character", "1", "Rare", finishes=("Normal", "Silver"), color="Amethyst", cost=4)
     card(catalog, "lorcana", "lorcana-1", "mickey", "Mickey Mouse - Detective", "Character", "2", "Common", finishes=("Normal", "Silver"), color="Sapphire", cost=2)
     return catalog
@@ -93,6 +102,8 @@ BOOST = "vcard-print-boost-en-normal"
 BOOST_SECRET = "vcard-print-boost-sr-en-holo"
 TOPPER = "vcard-print-topper-en-normal"
 ELSA = "lorcana-print-elsa-en-normal"
+SPARK_SET_TWO = "vcard-print-spark2-en-normal"
+NAMI = "one-piece-print-op01-016-en-standard"
 
 
 def query(statement, args=()):
@@ -115,7 +126,7 @@ def fresh_database():
     connection.commit()
     connection.close()
     deckledger.init_database()
-    catalog_sync.write_database(sample_catalog(), {"vcard", "lorcana"})
+    catalog_sync.write_database(sample_catalog(), {"vcard", "lorcana", "one-piece"})
     yield
 
 
