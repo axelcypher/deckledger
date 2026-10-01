@@ -169,7 +169,7 @@ const api = async (url, options={}) => {
     error.isNetworkError=true;
     throw error;
   }
-  if (response.status===401) { location.href='/login'; throw new Error('Nicht angemeldet'); }
+  if (response.status===401) { location.href='/login'; const error=new Error('Nicht angemeldet'); error.isAuthError=true; throw error; }
   const stale=response.headers.get('X-DeckLedger-Stale')==='1';
   if(stale!==serverUnreachable){
     serverUnreachable=stale;
@@ -1257,7 +1257,9 @@ async function queueOfflineMutation(payload){
   const db=await openOfflineDb();
   return new Promise((resolve,reject)=>{
     const tx=db.transaction(OFFLINE_STORE,'readwrite');
-    tx.objectStore(OFFLINE_STORE).add({payload,createdAt:Date.now()});
+    // userId: the outbox lives in the browser, not in an account -- a change queued by one
+    // user must never be sent under whoever signs in on this device next.
+    tx.objectStore(OFFLINE_STORE).add({payload,createdAt:Date.now(),userId:state.boot?.user?.id??null});
     tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
   });
 }
@@ -1278,7 +1280,7 @@ async function removeOfflineMutation(id){
 }
 async function updateOfflineIndicator(){
   const el=$('#offline-indicator'); if(!el)return;
-  let count=0; try{count=(await listOfflineMutations()).length}catch{}
+  let count=0; try{count=(await listOfflineMutations()).filter(item=>item.userId==null||item.userId===state.boot?.user?.id).length}catch{}
   if(!navigator.onLine){
     el.classList.remove('hidden');
     el.textContent=count>0?`Offline · ${count} ausstehende Änderung${count===1?'':'en'}`:'Offline';
@@ -1296,18 +1298,22 @@ let offlineSyncInProgress=false;
 async function syncOfflineQueue(){
   if(offlineSyncInProgress||!navigator.onLine)return;
   offlineSyncInProgress=true;
-  let hadItems=false;
+  let hadItems=false,signedOut=false;
   try{
     const items=await listOfflineMutations();
     // Runs on every page load. With nothing queued there is nothing to announce and nothing to
     // reload -- refreshing the view here fetched everything on the page a second time.
     hadItems=items.length>0;
     for(const item of items){
+      if(item.userId!=null&&item.userId!==state.boot?.user?.id)continue; // someone else's, kept for them
       try{
         await post('/api/collection',item.payload);
         await removeOfflineMutation(item.id);
       }catch(error){
-        if(error.isNetworkError)break; // still unreachable -- stop, keep this and the rest queued, retry later
+        // Still unreachable, or the session ran out while offline: keep this and the rest queued.
+        // They are sent after the next sign-in instead of being thrown away.
+        signedOut=Boolean(error.isAuthError);
+        if(error.isNetworkError||error.isAuthError)break;
         // a real server error (e.g. the variant no longer exists) -- this one can never succeed as-is,
         // so drop it and tell the user rather than blocking every queued change behind it forever
         await removeOfflineMutation(item.id);
@@ -1317,8 +1323,8 @@ async function syncOfflineQueue(){
   }finally{
     offlineSyncInProgress=false;
     await updateOfflineIndicator();
-    if(hadItems){
-      if((await listOfflineMutations()).length===0)toast('Offline-Änderungen synchronisiert');
+    if(hadItems&&!signedOut){ // signed out: the page is already on its way to the login form
+      if(!(await listOfflineMutations()).some(item=>item.userId==null||item.userId===state.boot?.user?.id))toast('Offline-Änderungen synchronisiert');
       await refreshCurrentView();
       if(state.modalCard)await openCard(state.modalCard.id,state.modalVariant?.id,true);
     }
@@ -2869,13 +2875,18 @@ async function init(){
     else if(params.has('oauth_error')){toast(OAUTH_ERROR_MESSAGES[params.get('oauth_error')]||'SSO-Verknüpfung fehlgeschlagen.');history.replaceState(null,'',location.pathname)}
   }catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
-init();
-updateOfflineIndicator();
-if(navigator.onLine)syncOfflineQueue(); // in case the app was reopened after being offline and is already back online
+// The outbox is replayed once the signed-in user is known (see queueOfflineMutation), in case
+// the app was reopened after being offline and is already back online.
+init().then(()=>{updateOfflineIndicator();if(navigator.onLine)syncOfflineQueue()});
 
 // Registered independent of init() -- offline shell caching shouldn't block
 // or be blocked by the initial data load. Service workers require a secure
 // context (HTTPS or localhost), so this silently no-ops over plain HTTP.
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{navigator.serviceWorker.register('/service-worker.js').catch(()=>{})});
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+    // Without this the browser may drop the saved pages, images and queued changes on its own
+    // when the device runs low on space.
+    navigator.storage?.persist?.().catch(()=>{});
+  });
 }

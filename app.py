@@ -1,5 +1,6 @@
 import csv
 import fcntl
+import gzip
 import hashlib
 import io
 import json
@@ -136,6 +137,25 @@ def reject_cross_site_writes():
     if not allowed:
         return jsonify({"error": "Anfrage von einer fremden Seite abgelehnt."}), 403
     return None
+
+
+@app.after_request
+def compress_json(response):
+    """The catalogue endpoints return megabytes of JSON (every card of a game is ~17 MB) that
+    shrinks to about a tenth. Images and other binary answers are already compressed."""
+    if (
+        response.mimetype != "application/json" or response.direct_passthrough
+        or response.status_code != 200 or "Content-Encoding" in response.headers
+        or "gzip" not in request.headers.get("Accept-Encoding", "")
+    ):
+        return response
+    payload = response.get_data()
+    if len(payload) < 2048:
+        return response
+    response.set_data(gzip.compress(payload, compresslevel=5))
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers.add("Vary", "Accept-Encoding")
+    return response
 
 
 @app.errorhandler(sqlite3.IntegrityError)
@@ -1849,7 +1869,7 @@ def set_cards(set_id):
     cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
     rarity_sql = "SELECT DISTINCT rarity FROM printings WHERE set_id=?" + ("" if language == "combined" else " AND language=?")
     rarity_params = (set_id,) if language == "combined" else (set_id, language)
-    rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(set_row["game_id"], r))
+    rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: (rarity_rank(set_row["game_id"], r), r))
     meta = dict(set_row)
     meta["classifications"] = jload(meta["classifications"], [])
     meta["languages"] = jload(meta["languages"], [])
@@ -1891,7 +1911,7 @@ def game_cards(game_id):
     sets.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, set_order)))
     rarity_sql = "SELECT DISTINCT p.rarity FROM printings p JOIN sets s ON s.id=p.set_id WHERE s.game_id=?" + ("" if language == "combined" else " AND p.language=?")
     rarity_params = (game_id,) if language == "combined" else (game_id, language)
-    rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: rarity_rank(game_id, r))
+    rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: (rarity_rank(game_id, r), r))
     for set_row in sets:
         cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
         meta = dict(set_row)
@@ -2565,7 +2585,7 @@ def deck_catalog():
     )]
     rarities = sorted({row[0] for row in db().execute(
         "SELECT DISTINCT rarity FROM printings WHERE game_id=? AND rarity<>''", (game_id,)
-    )}, key=lambda value: rarity_rank(game_id, value))
+    )}, key=lambda value: (rarity_rank(game_id, value), value))
     return jsonify({
         "cards": result, "sets": sets, "types": types, "colors": colors, "rarities": rarities,
         "pagination": {"offset": offset, "limit": limit, "total": total, "has_more": offset + len(result) < total},

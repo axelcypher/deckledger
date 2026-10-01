@@ -5,3 +5,8 @@ __pycache__
 .DS_Store
 deckledger.db
 
+tests
+pytest.ini
+requirements-dev.txt
+.pytest_cache
+.github

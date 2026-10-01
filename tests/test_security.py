@@ -1,0 +1,85 @@
+"""Session handling, cross-site writes, access to images and SSO account matching."""
+import json
+
+from conftest import EMBER8, deckledger, query
+
+WRITE = json.dumps({"variant_id": EMBER8, "delta": 1})
+
+
+def test_session_cookie_is_samesite_lax(anonymous):
+    response = anonymous.post("/login", data={"username": "demo", "password": "deckledger"})
+    cookie = response.headers["Set-Cookie"]
+    assert "SameSite=Lax" in cookie and "HttpOnly" in cookie
+
+
+def test_cross_site_writes_are_rejected(client):
+    # What a <form> on another website can send: no JSON content type, cookies attached.
+    for headers in ({"Sec-Fetch-Site": "cross-site"}, {"Sec-Fetch-Site": "same-site"}, {"Origin": "https://evil.example"}):
+        response = client.post("/api/collection", data=WRITE, content_type="text/plain", headers=headers)
+        assert response.status_code == 403, headers
+    assert query("SELECT COUNT(*) n FROM collection_entries")[0]["n"] == 0
+
+
+def test_own_and_non_browser_writes_pass(client):
+    for headers in ({"Sec-Fetch-Site": "same-origin"}, {"Sec-Fetch-Site": "none"}, {"Origin": "http://localhost"}, {}):
+        assert client.post("/api/collection", data=WRITE, content_type="application/json", headers=headers).status_code == 200, headers
+
+
+def test_api_requires_a_session(anonymous):
+    assert anonymous.get("/api/bootstrap").status_code == 401
+    assert anonymous.post("/api/collection", json={"variant_id": EMBER8, "delta": 1}).status_code == 401
+    assert anonymous.get("/api/admin/providers").status_code == 401
+
+
+def test_admin_api_is_closed_to_normal_users(client):
+    assert client.get("/api/admin/providers").status_code == 403
+
+
+def test_card_images_need_a_login(anonymous, client):
+    for url in (f"/art/{EMBER8}.svg", f"/foil-mask/{EMBER8}.webp", "/set-logo/vcard-test", "/game-logo/vcard"):
+        assert anonymous.get(url).status_code == 302, url
+    assert client.get(f"/art/{EMBER8}.svg").status_code == 200
+
+
+def test_public_endpoints_stay_public(anonymous):
+    for url in ("/health", "/login", "/service-worker.js", "/static/manifest.json"):
+        assert anonymous.get(url).status_code == 200, url
+
+
+def test_image_placeholder_is_not_cached_as_the_real_image(client):
+    """Regression: the stand-in for an image that could not be fetched was served immutable for a
+    year, which pinned it in browsers and the service worker."""
+    response = client.get(f"/art/{EMBER8}.svg")  # the fixture catalogue has no image URLs
+    assert response.mimetype == "image/svg+xml"
+    assert response.headers["X-Image-Source"] == "placeholder"
+    assert "immutable" not in response.headers["Cache-Control"]
+
+
+def resolve(mode, email, verified=True):
+    with deckledger.app.app_context():
+        row = deckledger.resolve_oauth_identity({"account_matching": mode}, "subject-1", email, "Name", email_verified=verified)
+        return dict(row) if row else None
+
+
+def test_sso_links_a_user_by_verified_email():
+    query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
+    assert resolve("email", "demo@example.com")["username"] == "demo"
+    assert query("SELECT oauth_subject s FROM users WHERE username='demo'")[0]["s"] == "subject-1"
+
+
+def test_sso_ignores_an_unverified_email():
+    query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
+    assert resolve("email", "demo@example.com", verified=False) is None
+
+
+def test_sso_never_claims_an_admin_account_by_email():
+    query("UPDATE users SET email='admin@example.com' WHERE username='admin'")
+    assert resolve("email", "admin@example.com") is None
+    assert query("SELECT oauth_subject s FROM users WHERE username='admin'")[0]["s"] == ""
+
+
+def test_sso_manual_mode_only_accepts_linked_identities():
+    query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
+    assert resolve("manual", "demo@example.com") is None
+    query("UPDATE users SET oauth_provider='generic', oauth_subject='subject-1' WHERE username='demo'")
+    assert resolve("manual", "")["username"] == "demo"

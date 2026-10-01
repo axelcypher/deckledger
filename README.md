@@ -123,6 +123,15 @@ Most OAuth/OIDC providers require an `https://` redirect URI. Set
 enable this when the proxy is the sole way to reach the container, since it
 otherwise lets a direct client spoof those headers.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The suite runs against a throwaway database with a small built-in catalogue and never touches the network. It covers the backup round trip, import undo, what a catalogue sync may and may not delete, provider seeding, the collection endpoint, the VCard provider and deck rules, price lookup, and the cross-site/session checks. The container workflow runs it before building an image.
+
 ## Operations
 
 ```bash

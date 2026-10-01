@@ -26,6 +26,18 @@ const UNREACHABLE_WINDOW_MS = 30000;
 // What a reverse proxy answers while the app container is down or restarting.
 const GATEWAY_ERRORS = new Set([502, 503, 504]);
 let unreachableUntil = 0;
+// Every distinct search, filter and sort combination is its own API URL, and every card thumbnail
+// its own image; left alone both caches only ever grow. Oldest entries go first.
+const API_CACHE_LIMIT = 150;
+const IMAGE_CACHE_LIMIT = 6000;
+const IMAGE_TRIM_INTERVAL = 250;
+let imagesStoredSinceTrim = 0;
+
+async function trimCache(cacheName, limit) {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - limit)).map(key => cache.delete(key)));
+}
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -55,7 +67,8 @@ function isApiRequest(url) {
 
 // Card images are addressed by stable URLs and never change once fetched --
 // safe to serve from cache first and only hit the network on a miss.
-async function cacheFirst(request, cacheName) {
+async function cacheFirst(event, cacheName) {
+  const { request } = event;
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return cached;
@@ -65,7 +78,14 @@ async function cacheFirst(request, cacheName) {
   const response = await fetch(request);
   // The server answers a card image it could not fetch with a generated stand-in (marked
   // X-Image-Source: placeholder). Keeping that would pin the stand-in for good.
-  if (response.ok && response.headers.get('X-Image-Source') !== 'placeholder') cache.put(request, response.clone());
+  if (response.ok && response.headers.get('X-Image-Source') !== 'placeholder') {
+    const stored = cache.put(request, response.clone());
+    imagesStoredSinceTrim += 1;
+    if (imagesStoredSinceTrim >= IMAGE_TRIM_INTERVAL) {
+      imagesStoredSinceTrim = 0;
+      event.waitUntil(stored.then(() => trimCache(cacheName, IMAGE_CACHE_LIMIT)).catch(() => {}));
+    }
+  }
   return response;
 }
 
@@ -114,7 +134,10 @@ async function networkFirst(event, cacheName, timeoutMs) {
   const cached = await cache.match(request);
   const controller = new AbortController();
   const network = fetch(request, { signal: controller.signal }).then(response => {
-    if (response.ok) cache.put(request, response.clone());
+    if (response.ok) {
+      const stored = cache.put(request, response.clone());
+      if (cacheName === API_CACHE) event.waitUntil(stored.then(() => trimCache(cacheName, API_CACHE_LIMIT)).catch(() => {}));
+    }
     return response;
   });
   // Without a saved copy there is nothing to fall back to: wait for whatever the network gives.
@@ -151,7 +174,7 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (isImageRequest(url)) {
-    event.respondWith(cacheFirst(request, IMAGE_CACHE));
+    event.respondWith(cacheFirst(event, IMAGE_CACHE));
   } else if (isStaticAsset(url)) {
     event.respondWith(staticAsset(event, SHELL_CACHE));
   } else if (isApiRequest(url)) {
