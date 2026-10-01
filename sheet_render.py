@@ -10,6 +10,8 @@ of any publisher is used.
 
 from __future__ import annotations
 
+import colorsys
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -174,6 +176,102 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, size: float, max_width: float
     return text.rstrip() + "…", face
 
 
+# ---- Holo cards --------------------------------------------------------------------------------
+# A scan of a holo card looks like its regular print, and on a sale sheet that difference is the
+# price. Holo cards therefore get a rainbow sheen over the artwork and an iridescent frame.
+
+PREMIUM_NAME = re.compile(r"manga|enchanted|verzaubert|iconic|epic|signature|signed")
+PREMIUM_CODE = re.compile(r"(?:^|[\s_-])(our|osr|sec|sp|ur|sy)(?:$|[\s_-])")
+FOIL_NAME = re.compile(r"foil|silver|satin|holo|rainbow|etched|textured|gold|parallel|alternate|alt art")
+
+
+def is_holo(finish: str | None, variant_code: str | None = "", rarity: str | None = "", game_id: str | None = "", is_parallel=0) -> bool:
+    """Whether a variant is a foil print of any kind. Same rules as finishPresentation() in
+    static/app.js, which decides where the app itself shows a foil effect."""
+    finish = str(finish or "").strip()
+    descriptor = f"{finish} {variant_code or ''} {rarity or ''}".lower()
+    if PREMIUM_NAME.search(descriptor) or PREMIUM_CODE.search(descriptor) or FOIL_NAME.search(descriptor):
+        return True
+    if game_id == "hololive" and finish.lower() in ("s", "sr"):
+        return True
+    return bool(int(is_parallel or 0))
+
+
+@lru_cache(maxsize=32)
+def rainbow(size: tuple[int, int], cycles: float = 1.5, saturation: float = .6, angle: float = 32.0) -> Image.Image:
+    """Diagonal spectrum, the way light breaks on foil."""
+    width, height = size
+    span = int((width ** 2 + height ** 2) ** .5) + 2
+    ramp = Image.linear_gradient("L").resize((span, span)).rotate(angle, resample=Image.BICUBIC)
+    left, top = (span - width) // 2, (span - height) // 2
+    ramp = ramp.crop((left, top, left + width, top + height))
+    tables = [[], [], []]
+    for step in range(256):
+        for table, value in zip(tables, colorsys.hsv_to_rgb((step / 255 * cycles + .5) % 1, saturation, 1)):
+            table.append(round(value * 255))
+    return Image.merge("RGB", [ramp.point(table) for table in tables])
+
+
+@lru_cache(maxsize=8)
+def glare(size: tuple[int, int]) -> Image.Image:
+    """Two soft bands of light running across the card."""
+    width, height = size
+    bands = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(bands)
+    for start, thickness, strength in ((.18, .13, 60), (.58, .06, 42)):
+        x = width * (start + .5)
+        draw.polygon([(x, 0), (x + width * thickness, 0), (x + width * thickness - height * .62, height), (x - height * .62, height)], fill=strength)
+    return bands.filter(ImageFilter.GaussianBlur(width * .035))
+
+
+def holo_sheen(image: Image.Image) -> Image.Image:
+    """Lays the spectrum and the glare over a card. Near-black areas (borders, text boxes) stay
+    as they are, like on the real card, where the foil only shows through the printed colours."""
+    size = image.size
+    colour = image.convert("RGB")
+    lit = ImageChops.screen(colour, rainbow(size, saturation=.9).point(lambda value: int(value * .3)))
+    lit = ImageChops.screen(lit, Image.merge("RGB", [glare(size)] * 3))
+    printed = colour.convert("L").filter(ImageFilter.GaussianBlur(max(1, size[0] // 90)))
+    printed = printed.point(lambda value: 0 if value <= 18 else (255 if value >= 70 else int((value - 18) * 255 / 52)))
+    result = Image.composite(lit, colour, printed).convert("RGBA")
+    result.putalpha(image.getchannel("A"))
+    return result
+
+
+@lru_cache(maxsize=8)
+def holo_frame(size: tuple[int, int]) -> tuple[Image.Image, int]:
+    """An iridescent rim around a card of `size`, with a faint glow so it also stands out on the
+    light mats. Returns the image and how far it reaches beyond the card on every side."""
+    width, height = size
+    border = max(3, round(width * .022))
+    pad = border * 3
+    outer = (width + pad * 2, height + pad * 2)
+    ring = Image.new("L", outer, 0)
+    ring.paste(rounded_mask((width + border * 2, height + border * 2), width * .045 + border), (pad - border, pad - border))
+    ring.paste(0, (pad, pad), rounded_mask(size, width * .045))
+    colours = rainbow(outer, cycles=2.2, saturation=.78)
+    frame = Image.new("RGBA", outer, (0, 0, 0, 0))
+    glow = ring.filter(ImageFilter.GaussianBlur(border * .9)).point(lambda value: int(value * .7))
+    frame.paste(colours, (0, 0), glow)
+    frame.paste(ImageChops.screen(colours, Image.new("RGB", outer, "#3c3c3c")), (0, 0), ring)
+    return frame, pad
+
+
+# Print files: a 63 x 88 mm card with 3 mm bleed on every side. Publishers that put those files
+# online show more border than the cut card has.
+PRINT_BLEED = (3 / 69, 3 / 94)
+CUT_CARD_RATIO = 63 / 88
+
+
+def trim_bleed(image: Image.Image, bleed: tuple[float, float] | None) -> Image.Image:
+    """Cuts the bleed (fractions of width and height per side) off an image -- but only off one
+    that is wider in proportion than a cut card, so an already trimmed image is never cut twice."""
+    if not bleed or image.width / image.height < CUT_CARD_RATIO + .008:
+        return image
+    left, top = round(image.width * bleed[0]), round(image.height * bleed[1])
+    return image.crop((left, top, image.width - left, image.height - top))
+
+
 def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
     """The card's own image, or a labelled stand-in when no image is available."""
     width, height = size
@@ -182,12 +280,12 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
     if path and Path(path).is_file():
         try:
             with Image.open(path) as source:
-                image = source.convert("RGBA")
+                image = trim_bleed(source.convert("RGBA"), card.get("bleed"))
             image = image.resize(size, Image.LANCZOS)
             # Scans come with square or with already-rounded, transparent corners; clipping to
             # the same rounded shape makes both look alike.
             image.putalpha(ImageChops.multiply(image.getchannel("A"), rounded_mask(size, radius)))
-            return image
+            return holo_sheen(image) if card.get("holo") else image
         except OSError:
             pass
     tile = Image.new("RGBA", size, "#1b2230")
@@ -204,7 +302,7 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
 def render_page(cards: list[dict], columns: int, rows: int, *, background: str = DEFAULT_BACKGROUND, kind: str = "WTS",
                 title: str = "", subtitle: str = "", page: tuple[int, int] = (1, 1), scale: float = 1.0) -> Image.Image:
     """One page of a sheet. `cards` are dicts with image_path, name, set_code, number, quantity,
-    label -- already sorted and cut to this page."""
+    label, holo and bleed -- already sorted and cut to this page."""
     card_w = max(60, round(CARD_WIDTH * scale))
     card_h = round(card_w * CARD_RATIO)
     gap = round(card_w * .09)
@@ -255,6 +353,9 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
         y = top + row * (row_h + gap)
         canvas.alpha_composite(shadow, (x - blur * 3, y - blur * 3 + blur))
         canvas.alpha_composite(card_tile(card, (card_w, card_h)), (x, y))
+        if card.get("holo"):
+            frame, reach = holo_frame((card_w, card_h))
+            canvas.alpha_composite(frame, (x - reach, y - reach))
         quantity = int(card.get("quantity") or 1)
         if quantity > 1:
             text = f"×{quantity}"

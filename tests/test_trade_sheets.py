@@ -111,6 +111,88 @@ def test_every_background_renders():
     assert sheet_render.swatch("water").size == (240, 150)
 
 
+@pytest.mark.parametrize("finish, variant_code, rarity, game, parallel, holo", [
+    ("Normal", "normal", "Uncommon", "vcard", 0, False),
+    ("1st Edition", "1st-edition-regular", "Secret Rare", "vcard", 0, False),
+    ("Holo", "unlimited-holo", "Uncommon", "vcard", 0, True),
+    ("1st Edition Holo", "1st-edition-holo", "Common", "vcard", 0, True),
+    ("Silver", "silver", "Rare", "lorcana", 1, True),
+    ("Magma", "magma", "Rare", "lorcana", 1, True),             # named after its pattern: known by the flag
+    ("Normal", "normal", "Enchanted", "lorcana", 0, True),
+    ("standard", "normal", "R", "one-piece", 0, False),
+    ("parallel", "parallel", "R", "one-piece", 1, True),
+    ("standard", "normal", "SEC", "one-piece", 0, True),
+    ("SR", "normal", "SR", "hololive", 0, True),
+    ("C", "normal", "C", "hololive", 0, False),
+    (None, None, None, None, None, False),
+])
+def test_which_cards_count_as_holo(finish, variant_code, rarity, game, parallel, holo):
+    assert sheet_render.is_holo(finish, variant_code, rarity, game, parallel) is holo
+
+
+def test_holo_cards_are_marked_in_the_image(tmp_path):
+    """A holo gets a rainbow rim outside the card and a sheen on it; a regular card neither."""
+    scan = tmp_path / "card.png"
+    Image.new("RGB", (300, 420), "#3a6ea5").save(scan)
+    card = {"image_path": str(scan), "name": "Karte", "set_code": "1", "number": "001", "quantity": 1, "label": ""}
+    regular = sheet_render.render_page([card], 1, 1).convert("RGB")
+    holo = sheet_render.render_page([{**card, "holo": True}], 1, 1).convert("RGB")
+    assert regular.size == holo.size
+    left, top = (regular.width - 300) // 2, round(300 * .34) + round(300 * .44)
+    saturation = lambda image, point: (lambda pixel: max(pixel) - min(pixel))(image.getpixel(point))
+    rim = [(left - 4, top + 210), (left + 303, top + 210), (left + 150, top - 4), (left + 150, top + 423)]
+    assert all(saturation(holo, point) > 90 for point in rim), "rainbow rim on all four sides"
+    assert all(saturation(regular, point) < 40 for point in rim), "the mat itself is nearly grey there"
+    inside = [(left + x, top + y) for x in (40, 150, 260) for y in (60, 210, 360)]
+    assert {regular.getpixel(point) for point in inside} == {(58, 110, 165)}
+    assert len({holo.getpixel(point) for point in inside}) > 3, "the sheen varies across the card"
+    assert all(sum(holo.getpixel(point)) >= sum(regular.getpixel(point)) for point in inside), "it only adds light"
+
+
+@pytest.mark.parametrize("size, trimmed", [((690, 940), True), ((734, 1000), True), ((630, 880), False), ((500, 700), False)])
+def test_bleed_is_cut_off_print_files_only(tmp_path, size, trimmed):
+    """VCard's images are print files: 3 mm of bleed around a 63 x 88 mm card."""
+    scan = tmp_path / "card.png"
+    image = Image.new("RGB", size, "#ff0000")
+    bleed = (round(size[0] * 3 / 69), round(size[1] * 3 / 94))
+    image.paste("#0000ff", (bleed[0], bleed[1], size[0] - bleed[0], size[1] - bleed[1]))
+    image.save(scan)
+    tile = sheet_render.card_tile({"image_path": str(scan), "bleed": sheet_render.PRINT_BLEED}, (300, 420)).convert("RGB")
+    edge_is_red = tile.getpixel((2, 210))[0] > 200
+    assert edge_is_red is not trimmed
+    assert tile.getpixel((150, 210)) == (0, 0, 255)
+    untouched = sheet_render.card_tile({"image_path": str(scan)}, (300, 420)).convert("RGB")
+    assert untouched.getpixel((2, 210))[0] > 200, "without a bleed setting nothing is cut"
+
+
+def test_only_vcard_images_are_trimmed(client, sheet, monkeypatch):
+    seen = []
+    monkeypatch.setattr(sheet_render, "render_page", lambda tiles, *args, **kwargs: seen.extend(tiles) or Image.new("RGB", (10, 10)))
+    add(client, sheet, EMBER8)
+    client.get(f"/api/trade-sheets/{sheet}/image/1.jpg")
+    lorcana = client.post("/api/trade-sheets", json={"game_id": "lorcana", "name": "L"}).get_json()["id"]
+    add(client, lorcana, ELSA)
+    client.get(f"/api/trade-sheets/{lorcana}/image/1.jpg")
+    assert [tile["bleed"] for tile in seen] == [sheet_render.PRINT_BLEED, None]
+
+
+def test_holo_sheen_leaves_black_areas_alone():
+    image = Image.new("RGBA", (300, 420), "#000000")
+    assert sheet_render.holo_sheen(image).convert("RGB").getcolors() == [(300 * 420, (0, 0, 0))]
+
+
+def test_sheet_image_marks_the_holo_variant(client, sheet):
+    add(client, sheet, EMBER8)
+    plain = client.get(f"/api/trade-sheets/{sheet}/image/1.png").get_data()
+    client.post(f"/api/trade-sheets/{sheet}/cards", json={"variant_id": EMBER8, "quantity": 0})
+    add(client, sheet, EMBER8_HOLO)
+    holo = Image.open(io.BytesIO(client.get(f"/api/trade-sheets/{sheet}/image/1.png").get_data())).convert("RGB")
+    plain = Image.open(io.BytesIO(plain)).convert("RGB")
+    left, top = (holo.width - 300) // 2, round(300 * .34) + round(300 * .44)
+    spread = lambda image: (lambda pixel: max(pixel) - min(pixel))(image.getpixel((left - 4, top + 210)))
+    assert spread(holo) > 90 and spread(plain) < 40
+
+
 def test_bundled_font_has_the_glyphs_labels_need():
     face = sheet_render.font(40)
     assert all(face.getmask(glyph).getbbox() for glyph in "×–€äöüß")

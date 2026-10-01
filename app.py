@@ -2625,6 +2625,8 @@ def collection_browser():
 SHEET_KINDS = ("WTS", "WTT")
 SHEET_SORTS = ("number", "rarity")
 SHEET_CARD_LIMIT = 400
+# Games whose card images are the print files, bleed included (see sheet_render.trim_bleed).
+SHEET_IMAGE_BLEED = {"vcard": sheet_render.PRINT_BLEED}
 
 
 def own_sheet(sheet_id):
@@ -2633,7 +2635,7 @@ def own_sheet(sheet_id):
 
 def sheet_cards(sheet):
     rows = [dict(row) for row in db().execute(
-        f"""SELECT e.variant_id,e.quantity,e.label,v.finish,v.variant_code,v.game_id,v.attributes variant_attributes,
+        f"""SELECT e.variant_id,e.quantity,e.label,v.finish,v.variant_code,v.is_parallel,v.game_id,v.attributes variant_attributes,
               i.id identity_id,i.canonical_name,p.collector_number,p.language,p.rarity,
               s.code set_code,s.name set_name,s.release_date,{latest_price_sql('v')} price,
               COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) owned
@@ -2804,7 +2806,9 @@ def trade_sheet_image(sheet_id, page, fmt):
         except Exception as error:  # an unreachable image source must not fail the whole sheet
             app.logger.warning("Sheet image for %s unavailable: %s", card["variant_id"], error)
         tiles.append({"image_path": image_path, "name": card["canonical_name"], "set_code": card["set_code"],
-                      "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"]})
+                      "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"],
+                      "bleed": SHEET_IMAGE_BLEED.get(card["game_id"]),
+                      "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
     image = sheet_render.render_page(
         tiles, columns, rows, background=sheet["background"], kind=sheet["kind"], title=sheet["name"],
         subtitle=sheet["subtitle"], page=(page, len(pages)), scale=scale * sheet_render.scale_for(columns),
