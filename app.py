@@ -2038,6 +2038,10 @@ def update_collection():
     if not isinstance(payload, dict):
         return jsonify({"error": "Ungültige Anfrage."}), 400
     uid = user_id()
+    # Read-modify-write: two quick clicks arrive as two requests on two threads. Without taking
+    # the write lock before reading, both read the same old quantity and the second overwrites
+    # the first (or both try to insert the row and one fails).
+    db().execute("BEGIN IMMEDIATE")
     # An offline client cannot tell "never arrived" from "arrived, answer lost" and sends the
     # change again. With a request_id the repeat returns the first answer instead of counting twice.
     request_id = str(payload.get("request_id") or "")[:64]
@@ -2900,6 +2904,7 @@ def update_deck_card(deck_id):
     deck=db().execute("SELECT * FROM decks WHERE id=? AND user_id=?",(deck_id,user_id())).fetchone()
     if not deck:return jsonify({"error":"deck not found"}),404
     p=request.get_json(force=True);variant_id=p.get("variant_id")
+    db().execute("BEGIN IMMEDIATE")  # same read-modify-write as update_collection: quick clicks must not overwrite each other
     card=db().execute("""SELECT v.game_id,i.card_type,s.set_type,pr.rarity FROM variants v JOIN printings pr ON pr.id=v.printing_id
       JOIN card_identities i ON i.id=pr.identity_id JOIN sets s ON s.id=pr.set_id WHERE v.id=?""",(variant_id,)).fetchone()
     if not card or card["game_id"]!=deck["game_id"]:return jsonify({"error":"Karte gehört nicht zu diesem TCG."}),400

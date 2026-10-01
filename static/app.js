@@ -213,8 +213,10 @@ async function reRenderPreservingFocus(selector,renderFn){
   }
 }
 
-function toast(message, actionLabel, action) {
-  const node=document.createElement('div'); node.className='toast';
+function toast(message, actionLabel, action, key) {
+  // A keyed toast replaces its predecessor: five quick "+1" clicks leave one message, not five.
+  if(key)$$('.toast',$('#toast-stack')).filter(old=>old.dataset.key===key).forEach(old=>old.remove());
+  const node=document.createElement('div'); node.className='toast'; if(key)node.dataset.key=key;
   node.innerHTML=`<span>${escapeHtml(message)}</span>${actionLabel?`<button>${escapeHtml(actionLabel)}</button>`:''}`;
   if(actionLabel) $('button',node).onclick=async()=>{ await action?.(); node.remove(); };
   $('#toast-stack').append(node); setTimeout(()=>node.remove(),5000);
@@ -1340,7 +1342,30 @@ window.addEventListener('offline',updateOfflineIndicator);
 // the collection page) stays stale until the next real sync -- acceptable
 // since the offline indicator already tells the user a sync is pending.
 function patchLocalQuantity(variantId,delta,sourceButton){
-  $$(`.quantity-control[data-variant="${variantId}"] b`).forEach(el=>{el.textContent=String(Math.max(0,(parseInt(el.textContent,10)||0)+delta))});
+  $$(`.quantity-control[data-variant="${variantId}"]`).forEach(control=>{
+    const el=$('b',control),before=parseInt(el.textContent,10)||0,after=Math.max(0,before+delta);
+    el.textContent=String(after);
+    // The tile's own "owned" look and ×N pill, so the card reads as added right away instead of
+    // only after the next full reload of the view.
+    const tile=control.closest('.card-tile'),badges=tile&&$('.variant-badges',tile);
+    if(!tile||!badges)return;
+    if($('.variant-badge',badges)){
+      // Lorcana shows one ×N badge per finish tier instead of a single pill.
+      const badge=control.classList.contains('foil')?$('.variant-badge.tier-foil',badges):($('.variant-badge.tier-normal',badges)||$('.variant-badge.tier-premium',badges));
+      if(badge){
+        const count=Math.max(0,(parseInt(badge.textContent.slice(1),10)||0)+(after-before));
+        badge.textContent=`×${count}`;badge.classList.toggle('owned',count>0);badge.classList.toggle('missing',count===0);
+      }
+      const any=$$('.variant-badge',badges).some(item=>(parseInt(item.textContent.slice(1),10)||0)>0);
+      tile.classList.toggle('owned',any);tile.classList.toggle('missing',!any);
+      return;
+    }
+    const pill=$('.owned-pill',badges),total=Math.max(0,(pill?parseInt(pill.textContent.slice(1),10)||0:0)+(after-before));
+    if(pill&&total)pill.textContent=`×${total}`;
+    else if(pill)pill.remove();
+    else if(total)badges.insertAdjacentHTML('beforeend',`<span class="owned-pill">×${total}</span>`);
+    tile.classList.toggle('owned',total>0);tile.classList.toggle('missing',total===0);
+  });
   if(sourceButton){
     const b=sourceButton.parentElement?.querySelector('b');
     if(b)b.textContent=String(Math.max(0,(parseInt(b.textContent,10)||0)+delta));
@@ -1360,9 +1385,14 @@ function patchLocalQuantity(variantId,delta,sourceButton){
 // burst of rapid clicks triggers exactly one real refresh shortly after the burst ends, while
 // patchLocalQuantity gives instant feedback on every individual click in the meantime.
 let refreshDebounceTimer=null;
-function scheduleRefresh(delayMs=500){
+// The views that hold a whole game or collection take seconds to rebuild; a set is quick.
+const refreshDelay=()=>['game-cards','collection'].includes(state.route)?4000:1500;
+function scheduleRefresh(delayMs=refreshDelay()){
   clearTimeout(refreshDebounceTimer);
   refreshDebounceTimer=setTimeout(async()=>{
+    // Rebuilding replaces every button on the page -- a click landing during that is lost, and
+    // a reload that starts before the last change has been saved shows the old number again.
+    if(quantityChains.size){scheduleRefresh(delayMs);return}
     await refreshCurrentView();
     if(state.modalCard) await openCard(state.modalCard.id,state.modalVariant?.id,true);
   },delayMs);
@@ -1372,31 +1402,48 @@ function scheduleRefresh(delayMs=500){
 // change that is replayed after a lost answer cannot be counted twice.
 const newRequestId=()=>globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+// Changes to one card are sent strictly one after the other, in click order; different cards
+// do not wait for each other.
+const quantityChains=new Map();
+function inQuantityOrder(variantId,task){
+  const next=(quantityChains.get(variantId)||Promise.resolve()).then(task,task);
+  quantityChains.set(variantId,next);
+  const done=()=>{if(quantityChains.get(variantId)===next)quantityChains.delete(variantId)};
+  next.then(done,done);
+  return next;
+}
+
 async function changeQuantity(variantId,delta,quick=false){
   // any_condition: the tile shows one total across conditions, so its minus button may take a
   // copy from another ungraded condition when there is no Near Mint one left.
   const payload={variant_id:variantId,delta,condition:'Near Mint',any_condition:true,request_id:newRequestId()};
+  // The number changes on the click itself, not once the server has answered.
+  patchLocalQuantity(variantId,delta);
+  scheduleRefresh();
   if(!navigator.onLine){
     await queueOfflineMutation(payload);
-    patchLocalQuantity(variantId,delta);
     await updateOfflineIndicator();
-    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
+    toast('Offline gespeichert · wird bei Verbindung synchronisiert',null,null,'offline-saved');
     return;
   }
-  let r;
-  try{
-    r=await post('/api/collection',payload);
-  }catch(error){
-    if(!error.isNetworkError)throw error; // a real server error, not connectivity -- don't mask it as "syncing"
-    await queueOfflineMutation(payload);
-    patchLocalQuantity(variantId,delta);
-    await updateOfflineIndicator();
-    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
-    return;
-  }
-  patchLocalQuantity(variantId,delta);
-  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:r.condition||'Near Mint'});await refreshCurrentView();if(state.modalCard)await openCard(state.modalCard.id,variantId,true)});
-  scheduleRefresh();
+  return inQuantityOrder(variantId,async()=>{
+    let r;
+    try{
+      r=await post('/api/collection',payload);
+    }catch(error){
+      if(error.isNetworkError){
+        await queueOfflineMutation(payload);
+        await updateOfflineIndicator();
+        toast('Offline gespeichert · wird bei Verbindung synchronisiert',null,null,'offline-saved');
+        return;
+      }
+      patchLocalQuantity(variantId,-delta); // the server refused: take the optimistic change back
+      if(!error.isAuthError)toast(error.message||'Änderung fehlgeschlagen');
+      return;
+    }
+    toast(quick?`Karte hinzugefügt · jetzt ${r.quantity}`:`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:r.condition||'Near Mint'});await refreshCurrentView();if(state.modalCard)await openCard(state.modalCard.id,variantId,true)},`quantity-${variantId}`);
+    scheduleRefresh();
+  });
 }
 
 // Lives outside `state` on purpose -- it's transient UI state for the currently open modal,
@@ -1417,21 +1464,32 @@ async function changeCollectionEntry(variantId,{condition='Near Mint',delta=0,qu
     toast('Offline gespeichert · wird bei Verbindung synchronisiert');
     return;
   }
-  try{
-    await post('/api/collection',payload);
-  }catch(error){
-    if(!isPureDelta||!error.isNetworkError){toast(error.message||'Änderung fehlgeschlagen');return}
-    await queueOfflineMutation(payload);
-    patchLocalQuantity(variantId,delta,sourceButton);
-    await updateOfflineIndicator();
-    toast('Offline gespeichert · wird bei Verbindung synchronisiert');
-    return;
-  }
   if(isPureDelta){
     // Same rapid-click case as changeQuantity -- the condition/graded steppers in the
     // Erweitert panel are just as prone to being clicked repeatedly in quick succession.
     patchLocalQuantity(variantId,delta,sourceButton);
     scheduleRefresh();
+    return inQuantityOrder(variantId,async()=>{
+      try{
+        await post('/api/collection',payload);
+      }catch(error){
+        if(error.isNetworkError){
+          await queueOfflineMutation(payload);
+          await updateOfflineIndicator();
+          toast('Offline gespeichert · wird bei Verbindung synchronisiert',null,null,'offline-saved');
+          return;
+        }
+        patchLocalQuantity(variantId,-delta,sourceButton);
+        if(!error.isAuthError)toast(error.message||'Änderung fehlgeschlagen');
+        return;
+      }
+      scheduleRefresh();
+    });
+  }
+  try{
+    await post('/api/collection',payload);
+  }catch(error){
+    toast(error.message||'Änderung fehlgeschlagen');
     return;
   }
   // Absolute-value writes (price override, initial quantity on a new graded copy) are

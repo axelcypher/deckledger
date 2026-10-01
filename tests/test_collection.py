@@ -80,3 +80,37 @@ def test_sale_list_uses_the_games_playset_size(client):
         sale = next(item for item in client.get(f"/api/watchlists?game_id={game}").get_json() if item["is_sale_list"])
         surplus[game] = [card["desired_quantity"] for card in client.get(f"/api/watchlists/{sale['id']}/cards").get_json()["cards"]]
     assert surplus == {"vcard": [2], "lorcana": [1]}
+
+
+def click_concurrently(url, payload, clicks=8, per_click=5):
+    """Fires the same request from several threads at once, each with its own session."""
+    import threading
+
+    clients = [login() for _ in range(clicks)]
+    barrier = threading.Barrier(clicks)
+    statuses = []
+
+    def run(c):
+        barrier.wait()
+        for _ in range(per_click):
+            statuses.append(c.post(url, json=payload).status_code)
+
+    threads = [threading.Thread(target=run, args=(c,)) for c in clients]
+    [thread.start() for thread in threads]
+    [thread.join() for thread in threads]
+    return statuses
+
+
+def test_simultaneous_adds_all_count():
+    """Regression: two quick clicks read the same old quantity and overwrote each other, or both
+    tried to insert the row and one failed -- a double click added one copy or none."""
+    statuses = click_concurrently("/api/collection", {"variant_id": EMBER8, "delta": 1})
+    assert set(statuses) == {200}
+    assert quantity(EMBER8) == 40
+
+
+def test_simultaneous_deck_adds_all_count(client):
+    deck_id = client.post("/api/decks", json={"game_id": "vcard", "name": "Schnell"}).get_json()["id"]
+    statuses = click_concurrently(f"/api/decks/{deck_id}/cards", {"variant_id": EMBER8, "zone": "auto", "delta": 1})
+    assert set(statuses) == {200}
+    assert query("SELECT quantity q FROM deck_cards WHERE deck_id=?", (deck_id,))[0]["q"] == 40
