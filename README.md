@@ -34,6 +34,7 @@ An administrator demo account is also available as `admin` / `admin`.
 - Persistent global TCG context across collection, search, watchlists and decks
 - Multiple named watchlists per TCG with catalogue-style filters and sorting
 - Saved decklists with module-defined zones, formats and official-rule validation
+- Trade and sale sheets: pick cards from the collection, set quantities and price labels, and download the sheet as an image collage on a playmat-style background, with a ready-to-paste text list for the post
 
 There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
 

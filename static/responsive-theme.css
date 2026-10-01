@@ -241,7 +241,7 @@
   body.dark.mobile-modern .hero-summary div+div { border-left:1px solid var(--line); }
   body.dark.mobile-modern .hero-summary b { font:600 26px/1 var(--font-display);color:var(--ink); }
   body.dark.mobile-modern .hero-summary span { margin-top:7px;color:var(--muted);font-size:9px;letter-spacing:.1em; }
-  body.dark.mobile-modern .dashboard-quick-nav { grid-area:quick;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:min(100%,560px);justify-self:center; }
+  body.dark.mobile-modern .dashboard-quick-nav { grid-area:quick;display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:min(100%,700px);justify-self:center; }
   body.dark.mobile-modern .dashboard-quick-nav button {
     display:grid;grid-template-rows:26px auto auto;place-items:center;min-width:0;padding:15px 8px;border:1px solid transparent;border-radius:18px;background:var(--surface-2);color:var(--muted);cursor:pointer;transition:.2s ease;
   }
