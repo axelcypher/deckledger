@@ -251,7 +251,7 @@ function setActiveGame(gameId, persist=true) {
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
   const iconName={'one-piece':'one-piece',lorcana:'lorcana',hololive:'hololive',vcard:'vcard'}[gameId]||'generic';
-  if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=2')`);
+  if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=3')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
   state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null; state.sheetId=null;
   if(changed||isInitial){

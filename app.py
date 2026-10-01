@@ -4570,9 +4570,11 @@ def card_back(game_id):
     uploaded = CARD_BACK_UPLOAD_DIR / f"{game_id}.jpg"
     if uploaded.is_file():
         return send_file(uploaded, mimetype="image/jpeg", conditional=True, etag=True, max_age=0)
-    path = PUBLIC_DIR / f"{game_id}-back.jpg"
-    if path.is_file():
-        return send_file(path, mimetype="image/jpeg", conditional=True, etag=True, max_age=604800)
+    # An admin's upload wins, then the public folder (a mount in most deployments), then the
+    # back that ships with the app.
+    for path in (PUBLIC_DIR / f"{game_id}-back.jpg", Path(app.static_folder) / "assets" / game_id / f"{game_id}-back.jpg"):
+        if path.is_file():
+            return send_file(path, mimetype="image/jpeg", conditional=True, etag=True, max_age=604800)
     game_row = db().execute("SELECT short_name, name, accent FROM games WHERE id=?", (game_id,)).fetchone()
     if not game_row:
         return Response(status=404)

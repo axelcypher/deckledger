@@ -97,3 +97,11 @@ def test_large_json_answers_are_compressed(client):
 def test_small_answers_and_images_are_left_alone(client):
     assert "Content-Encoding" not in client.get("/api/watchlists?game_id=vcard", headers={"Accept-Encoding": "gzip"}).headers
     assert "Content-Encoding" not in client.get(f"/art/{EMBER8}.svg", headers={"Accept-Encoding": "gzip"}).headers
+
+
+def test_card_back_that_ships_with_the_app_is_served(anonymous):
+    """Deployments mount their own public folder, so a bundled back must not depend on it."""
+    response = anonymous.get("/card-back/vcard")
+    assert response.status_code == 200 and response.mimetype == "image/jpeg"
+    assert len(response.get_data()) == (deckledger.Path(deckledger.app.static_folder) / "assets" / "vcard" / "vcard-back.jpg").stat().st_size
+    assert anonymous.get("/card-back/unknown-game").status_code == 404
