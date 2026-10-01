@@ -2918,10 +2918,18 @@ def parse_json_backup(entries):
         set_name_field = str(entry.get("set_name") or "").strip()
         name = str(entry.get("canonical_name") or "").strip()
         label = name or number or f"Zeile {idx}"
-        if not (lang and finish and game_name and set_code and name):
+        # Backups since format_version 2 carry the exact variant id. It is only trusted while the
+        # print it points at still looks like the exported one; otherwise the descriptive match
+        # below decides, exactly as for an older backup without ids.
+        pinned = db().execute(
+            f"SELECT {JSON_BACKUP_MATCH_COLUMNS} {JSON_BACKUP_MATCH_FROM} WHERE v.id=?", (str(entry.get("variant_id") or ""),)
+        ).fetchone()
+        if pinned and (lang, finish) not in ((pinned["language"], pinned["finish"]), ("", "")):
+            pinned = None
+        if not pinned and not (lang and finish and game_name and set_code and name):
             results.append({"line":idx,"original":label,"number":number,"language":lang,"status":"not_found","message":"Unvollständiger Eintrag"})
             continue
-        candidates = db().execute(
+        candidates = [pinned] if pinned else db().execute(
             f"""SELECT {JSON_BACKUP_MATCH_COLUMNS} {JSON_BACKUP_MATCH_FROM}
                WHERE g.name=? AND (s.code=? OR s.name=?) AND UPPER(p.collector_number)=UPPER(?) AND p.language=? AND v.finish=? AND i.canonical_name=?""",
             (game_name, set_code, set_name_field, number, lang, finish, name)
@@ -2945,11 +2953,21 @@ def parse_json_backup(entries):
             else:
                 message = "Karte nicht im Katalog gefunden"
         status = "matched" if selected else ("ambiguous" if candidates or message.startswith("Mehrdeutig") else "not_found")
+        is_graded = 1 if entry.get("is_graded") else 0
+        try:
+            price_override = float(entry["price_override"]) if entry.get("price_override") not in (None, "") else None
+        except (TypeError, ValueError):
+            price_override = None
         results.append({
-            "line": idx, "original": label, "number": number, "language": lang,
+            "line": idx, "original": label, "number": number, "language": selected["language"] if selected else lang,
             "quantity": int(entry.get("quantity") or 0),
             "condition": entry.get("condition") or "Near Mint",
             "notes": entry.get("notes"),
+            "is_graded": is_graded,
+            "grade_label": str(entry.get("grade_label") or "").strip() if is_graded else "",
+            "price_override": price_override,
+            "created_at": str(entry.get("created_at") or ""),
+            "last_added_at": str(entry.get("last_added_at") or ""),
             "status": status,
             "message": None if selected and not message else message,
             "match": selected,
@@ -2975,18 +2993,24 @@ def import_json_apply():
     for row in rows:
         if row["status"] != "matched" or not row.get("match"): continue
         vid, cond, qty, notes = row["match"]["variant_id"], row["condition"], row["quantity"], row.get("notes")
-        old = db().execute("SELECT quantity,notes,last_added_at FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=0 AND grade_label=''", (user_id(),vid,cond)).fetchone()
-        before, notes_before = (old["quantity"], old["notes"]) if old else (0, None)
+        graded, grade, override = row["is_graded"], row["grade_label"], row["price_override"]
+        old = db().execute("SELECT quantity,notes,price_override,last_added_at FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?", (user_id(),vid,cond,graded,grade)).fetchone()
+        before, notes_before, override_before = (old["quantity"], old["notes"], old["price_override"]) if old else (0, None, None)
         after = qty if strategy == "replace" else before + qty
         last_added_at = import_stamp if after > before else (old["last_added_at"] if old else import_stamp)
+        if not old and row["last_added_at"]:
+            # Restoring into an empty slot keeps the backup's own timestamps, so "zuletzt
+            # hinzugefügt" still reflects when the cards were collected, not when they were restored.
+            last_added_at = row["last_added_at"]
         db().execute(
-            """INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,created_at,last_added_at)
-               VALUES(?,?,?,?,?,0,'',?,?)
+            """INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(user_id,variant_id,condition,is_graded,grade_label) DO UPDATE SET
-                 quantity=excluded.quantity,notes=COALESCE(excluded.notes,collection_entries.notes),last_added_at=excluded.last_added_at""",
-            (user_id(), vid, cond, after, notes, import_stamp, last_added_at)
+                 quantity=excluded.quantity,notes=COALESCE(excluded.notes,collection_entries.notes),
+                 price_override=COALESCE(excluded.price_override,collection_entries.price_override),last_added_at=excluded.last_added_at""",
+            (user_id(), vid, cond, after, notes, graded, grade, override, row["created_at"] or import_stamp, last_added_at)
         )
-        changes.append({"variant_id":vid,"condition":cond,"before":before,"after":after,"notes_before":notes_before})
+        changes.append({"variant_id":vid,"condition":cond,"is_graded":graded,"grade_label":grade,"before":before,"after":after,"notes_before":notes_before,"price_override_before":override_before})
     games = sorted({row["match"]["game_id"] for row in rows if row.get("match")})
     cur = db().execute(
         "INSERT INTO import_operations(user_id,created_at,game_id,source_text,changes) VALUES(?,?,?,?,?)",
@@ -3029,12 +3053,18 @@ def undo_import(operation_id):
     op = db().execute("SELECT * FROM import_operations WHERE id=? AND user_id=?", (operation_id,user_id())).fetchone()
     if not op or op["undone_at"]: return jsonify({"error":"operation unavailable"}), 404
     for change in jload(op["changes"],[]):
+        # An import only ever touches one row of the variant: this condition and this grading.
+        # Operations recorded before grading was tracked only wrote ungraded rows, hence the defaults.
+        row_key = (user_id(), change["variant_id"], change["condition"], change.get("is_graded", 0), change.get("grade_label", ""))
+        row_filter = "user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?"
         if change["before"] == 0:
-            db().execute("DELETE FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=?", (user_id(),change["variant_id"],change["condition"]))
+            db().execute(f"DELETE FROM collection_entries WHERE {row_filter}", row_key)
+        elif "price_override_before" in change:
+            db().execute(f"UPDATE collection_entries SET quantity=?,notes=?,price_override=? WHERE {row_filter}", (change["before"],change["notes_before"],change["price_override_before"],*row_key))
         elif "notes_before" in change:
-            db().execute("UPDATE collection_entries SET quantity=?,notes=? WHERE user_id=? AND variant_id=? AND condition=?", (change["before"],change["notes_before"],user_id(),change["variant_id"],change["condition"]))
+            db().execute(f"UPDATE collection_entries SET quantity=?,notes=? WHERE {row_filter}", (change["before"],change["notes_before"],*row_key))
         else:
-            db().execute("UPDATE collection_entries SET quantity=? WHERE user_id=? AND variant_id=? AND condition=?", (change["before"],user_id(),change["variant_id"],change["condition"]))
+            db().execute(f"UPDATE collection_entries SET quantity=? WHERE {row_filter}", (change["before"],*row_key))
     db().execute("UPDATE import_operations SET undone_at=? WHERE id=?", (now_iso(),operation_id)); db().commit()
     return jsonify({"undone":True})
 
@@ -3113,16 +3143,44 @@ def unlink_account_oauth():
 @app.get("/api/export.<fmt>")
 @login_required
 def export_collection(fmt):
+    """Every collection row exactly as stored -- one line per variant + condition + grading, the
+    same key collection_entries itself is unique on -- so a backup restores to the identical
+    collection. variant_id pins the exact print; the descriptive columns next to it keep the file
+    readable and let parse_json_backup() re-match a row should an id ever change upstream."""
+    uid = user_id()
     rows = db().execute(
-        f"""SELECT g.name game,s.code set_code,s.name set_name,p.collector_number,i.canonical_name,p.language,v.finish,
-          c.condition,c.quantity,c.notes,{latest_price_sql('v')} unit_price
+        f"""SELECT v.id variant_id,g.name game,s.code set_code,s.name set_name,p.collector_number,i.canonical_name,p.language,v.finish,
+          c.condition,c.quantity,c.notes,c.is_graded,c.grade_label,c.price_override,c.created_at,c.last_added_at,
+          {latest_price_sql('v')} unit_price
           FROM collection_entries c JOIN variants v ON v.id=c.variant_id JOIN printings p ON p.id=v.printing_id
           JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
-          WHERE c.user_id=? AND c.quantity>0 ORDER BY g.name,s.release_date,p.collector_number""", (user_id(),)
+          WHERE c.user_id=? AND c.quantity>0
+          ORDER BY g.name,s.release_date,p.collector_number,v.id,c.condition,c.is_graded,c.grade_label""", (uid,)
     ).fetchall()
     data = [dict(r) for r in rows]
     if fmt == "json":
-        return Response(json.dumps({"exported_at":now_iso(),"collection":data},indent=2),mimetype="application/json",headers={"Content-Disposition":"attachment; filename=deckledger-collection.json"})
+        # Decks and watchlists ride along so one file holds everything a user entered by hand.
+        # Only "collection" is read back by the importer so far.
+        card_columns = """v.id variant_id,g.name game,s.code set_code,s.name set_name,p.collector_number,i.canonical_name,p.language,v.finish"""
+        card_joins = """JOIN variants v ON v.id=e.variant_id JOIN printings p ON p.id=v.printing_id
+          JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id"""
+        decks = []
+        for deck in db().execute("SELECT d.*,g.name game FROM decks d JOIN games g ON g.id=d.game_id WHERE d.user_id=? ORDER BY d.id", (uid,)):
+            cards = db().execute(f"SELECT {card_columns},e.zone,e.quantity FROM deck_cards e {card_joins} WHERE e.deck_id=? ORDER BY e.zone,p.collector_number,v.id", (deck["id"],))
+            decks.append({
+                "name": deck["name"], "game": deck["game"], "format_id": deck["format_id"], "notes": deck["notes"],
+                "cover_variant_id": deck["cover_variant_id"], "created_at": deck["created_at"], "updated_at": deck["updated_at"],
+                "cards": [dict(card) for card in cards],
+            })
+        watchlists = []
+        for watchlist in db().execute("SELECT w.*,g.name game FROM named_watchlists w JOIN games g ON g.id=w.game_id WHERE w.user_id=? ORDER BY w.id", (uid,)):
+            entries = db().execute(f"SELECT {card_columns},e.quantity,e.source,e.created_at FROM named_watchlist_entries e {card_joins} WHERE e.list_id=? ORDER BY e.id", (watchlist["id"],))
+            watchlists.append({
+                "name": watchlist["name"], "game": watchlist["game"], "is_default": watchlist["is_default"],
+                "is_sale_list": watchlist["is_sale_list"], "entries": [dict(entry) for entry in entries],
+            })
+        payload = {"format_version": 2, "exported_at": now_iso(), "collection": data, "decks": decks, "watchlists": watchlists}
+        return Response(json.dumps(payload,indent=2,ensure_ascii=False),mimetype="application/json",headers={"Content-Disposition":"attachment; filename=deckledger-collection.json"})
     out = io.StringIO(); writer = csv.DictWriter(out,fieldnames=data[0].keys() if data else ["game","set_code","collector_number","canonical_name","language","finish","condition","quantity"]); writer.writeheader(); writer.writerows(data)
     return Response(out.getvalue(),mimetype="text/csv",headers={"Content-Disposition":"attachment; filename=deckledger-collection.csv"})
 
