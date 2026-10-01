@@ -18,7 +18,7 @@ An administrator demo account is also available as `admin` / `admin`.
 ## Included in the MVP
 
 - Local accounts with user/admin roles
-- Global collection dashboard for Lorcana, One Piece and hololive OCG
+- Global collection dashboard for Lorcana, One Piece, hololive OCG and VCard TCG
 - Set-first catalogue navigation with filters, sorting, language selection and zoom
 - Variant-aware card details, source links and relationships
 - Persistent collection quantities, conditions and watchlist entries
@@ -35,7 +35,7 @@ An administrator demo account is also available as `admin` / `admin`.
 - Multiple named watchlists per TCG with catalogue-style filters and sorting
 - Saved decklists with module-defined zones, formats and official-rule validation
 
-There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
+There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
 
 Promotional reprints are linked to their base gameplay identity and remain assigned to their physical promo group. To refresh from all live card sources, run:
 
@@ -50,6 +50,8 @@ docker compose exec deckledger python price_sync.py
 ```
 
 Cardmarket product IDs are persisted separately from internal variant IDs. One Piece Western and Japanese expansions are resolved and priced separately: the Western expansion is anchored by Bandai's official release date, while the corresponding Japanese match must use a distinct Cardmarket expansion ID with the same set/number/name fingerprint. Ambiguous matches remain empty; the importer never resolves them by card name alone.
+
+VCard TCG (Gamer Supps) is imported from the public set pages of vcardtcg.com. Every card is tracked per edition and finish (Unlimited/Limited and 1st Edition, each regular and Holo). The 1-of-1 God Rares are left out by default (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`), and no marketplace price feed carries VCard yet, so its prices stay empty.
 
 hololive mappings are language-locked: EN variants use TCGplayer's daily USD export through TCGCSV; JP variants use Yuyutei's JPY retail listings. Original quotes and the daily ECB exchange rate are retained, while EUR conversions are used for collection totals. Ambiguous set/number/rarity matches remain empty.
 

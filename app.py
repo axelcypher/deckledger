@@ -13,7 +13,7 @@ import xml.sax.saxutils as xml_escape
 from datetime import datetime, timezone
 from functools import cmp_to_key, wraps
 from pathlib import Path
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote, quote_plus, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -63,6 +63,7 @@ GAME_LOGOS = {
     "lorcana": "https://www.disneylorcana.com/_nuxt/logo-br-2x.Sweb4xgr.png",
     "one-piece": "https://en.onepiece-cardgame.com/renewal/images/common/logo_op_white.png",
     "hololive": "https://en.hololive-official-cardgame.com/wp-content/themes/tcg_en/assets/img/global/logo_w.svg",
+    "vcard": "https://cdn.gamersupps.gg/images/Nav-Logo.png",
 }
 
 LORCANA_PRODUCT_PATHS = {
@@ -227,6 +228,9 @@ FORMAT_PROFILES = {
     "hololive": [
         {"id": "standard", "name": "Official Standard", "description": "Offizielles Constructed-Regelset", "zones": [{"id":"oshi","name":"Oshi","target":1},{"id":"main","name":"Main Deck","target":50},{"id":"cheer","name":"Cheer Deck","target":20}], "rules_url": "https://en.hololive-official-cardgame.com/wp-content/themes/tcg_en/assets/img/rule/official_rule_book_ver1_02.pdf"},
     ],
+    "vcard": [
+        {"id": "standard", "name": "Official Standard", "description": "Offizielles Constructed-Regelset", "zones": [{"id":"main","name":"Deck","target":50}], "rules_url": "https://cdn.gamersupps.gg/VCARD/files/VCard+Game+Rules.pdf"},
+    ],
 }
 
 
@@ -323,6 +327,38 @@ def validate_hololive_deck(deck, cards, counts):
     return errors, warnings
 
 
+VCARD_PLAYABLE_TYPES = ("VT", "Mascot", "Support", "World")
+
+
+def validate_vcard_deck(deck, cards, counts):
+    errors, warnings = [], []
+    if counts.get("main", 0) != 50:
+        errors.append(f'Deck: {counts.get("main",0)}/50 Karten.')
+    copies, elements, has_pl8 = {}, set(), False
+    for c in cards:
+        attrs = jload(c["attributes"], {})
+        if c["card_type"] not in VCARD_PLAYABLE_TYPES:
+            errors.append(f'{c["canonical_name"]} ({c["rarity"]}) ist eine Sammelkarte und nicht spielbar.')
+            continue
+        # A Secret Rare or Paradox is the same card as its regular printing, so copies are counted
+        # per name (which carries the Power Level for VTs) and type, not per printing.
+        key = (c["canonical_name"].lower(), c["card_type"], attrs.get("cost"))
+        copies.setdefault(key, [c["canonical_name"], 0])[1] += c["quantity"]
+        has_pl8 = has_pl8 or (c["card_type"] == "VT" and attrs.get("cost") == 8)
+        # Supports carry no element and Neutral Worlds fit every deck.
+        if attrs.get("color") and attrs["color"] != "Neutral":
+            elements.add(attrs["color"])
+    for (_, card_type, _), (name, qty) in copies.items():
+        limit = 2 if card_type == "Mascot" else 3
+        if qty > limit:
+            errors.append(f'{name}: maximal {limit} Exemplare erlaubt.')
+    if len(elements) > 2:
+        errors.append(f'Das Deck enthält {len(elements)} Elemente ({", ".join(sorted(elements))}); maximal 2 sind erlaubt.')
+    if cards and not has_pl8:
+        errors.append("Das Deck braucht mindestens 1 PL8 VT.")
+    return errors, warnings
+
+
 # Bespoke deck-legality rules per game stay code (they're real business logic,
 # not data), but which ruleset a game uses is a `games.deck_ruleset` value,
 # not a hardcoded game_id check -- see deck_validation() / zone_for_card_type().
@@ -333,6 +369,7 @@ DECK_RULESETS = {
         "zone_for_card_type": {"Oshi": "oshi", "Oshi holomem": "oshi", "推しホロメン": "oshi", "Cheer": "cheer", "エール": "cheer"},
         "validate": validate_hololive_deck,
     },
+    "vcard-standard": {"zone_for_card_type": {}, "validate": validate_vcard_deck},
 }
 
 
@@ -350,6 +387,7 @@ GAME_DATA = [
     ("lorcana", "disney-lorcana", "Disney Lorcana", "Lorcana", "1.0.0", ["DE", "EN"], "#8b5cf6"),
     ("one-piece", "one-piece-card-game", "One Piece Card Game", "One Piece", "1.0.0", ["EN", "JP"], "#ef4444"),
     ("hololive", "hololive-ocg", "hololive Official Card Game", "hololive", "0.9.0", ["EN", "JP"], "#06b6d4"),
+    ("vcard", "vcard-tcg", "VCard Trading Card Game", "VCard", "0.9.0", ["EN"], "#f5c451"),
 ]
 
 # Ordinal rarity rank per game, least to most rare. Printings carry the rarity label in the
@@ -377,8 +415,23 @@ RARITY_ORDER = {
     "hololive": {
         "C": 0, "U": 1, "R": 2, "RR": 3, "SR": 4, "OSR": 5, "SEC": 6, "HR": 6,
     },
+    # VCard's official checklist groups by a label that is part card type, part rarity. Mascot,
+    # Support and World are the common-slot cards, so they sort ahead of the VT rarity ladder.
+    "vcard": {
+        "Mascot": 0, "Support": 1, "World": 2, "Uncommon": 3, "Rare": 4, "Ultra Rare": 5,
+        "Secret Rare": 6, "Paradox": 7, "Box Topper": 8, "Promo": 9, "God Rare": 10,
+    },
 }
 RARITY_FALLBACK_RANK = 900
+
+# Copies of one card that make a full playset -- the constructed copy limit. Drives Playset%
+# and what the Verkaufsliste treats as surplus stock.
+PLAYSET_SIZES = {"vcard": 3}
+DEFAULT_PLAYSET_SIZE = 4
+
+
+def playset_size(game_id):
+    return PLAYSET_SIZES.get(game_id, DEFAULT_PLAYSET_SIZE)
 
 # Language-independent keys for Lorcana's icon-based rarity filter (one key covers both the
 # English and German printed label, since a single card can appear under either depending on
@@ -443,6 +496,7 @@ DEFAULT_PROVIDERS = {
     "lorcana": (15, 2500, 300),
     "one-piece": (20, 1000, 600),
     "hololive": (10, 500, 600),
+    "vcard": (4, 1200, 300),
 }
 
 
@@ -472,7 +526,9 @@ def seed_default_providers(connection):
             )
 
 
-DEFAULT_DECK_RULESETS = {"lorcana": "lorcana-standard", "one-piece": "one-piece-standard", "hololive": "hololive-standard"}
+DEFAULT_DECK_RULESETS = {"lorcana": "lorcana-standard", "one-piece": "one-piece-standard", "hololive": "hololive-standard", "vcard": "vcard-standard"}
+# VCard has no entry on purpose: neither Cardmarket nor TCGplayer lists it, so its prices stay
+# empty rather than estimated (an admin can still assign a method once a marketplace carries it).
 DEFAULT_PRICE_METHODS = {"lorcana": "cardmarket", "one-piece": "cardmarket", "hololive": "tcgcsv"}
 DEFAULT_PRICE_OVERRIDES = [("hololive", "JP", "yuyutei")]
 # Cardmarket's numeric idGame per bootstrapped game -- unauthenticated and stable,
@@ -914,6 +970,7 @@ def bootstrap():
         "one-piece": ("booster set",),
         "lorcana": ("expansion",),
         "hololive": ("booster", "boosters"),
+        "vcard": ("booster set",),
     }
     games = []
     for row in db().execute("SELECT * FROM games WHERE enabled=1 ORDER BY name"):
@@ -1436,9 +1493,9 @@ def game_sets(game_id):
                 LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
                 WHERE p.set_id=?
                 GROUP BY p.identity_id
-                HAVING qty>=4
+                HAVING qty>=?
             )""",
-            (uid, s["id"]),
+            (uid, s["id"], playset_size(game_id)),
         ).fetchone()[0]
         if not values["total"]:
             # A `sets` row can exist (announced/synced set metadata) before any of its cards
@@ -1661,9 +1718,12 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     # the separate premium-tier bucket (see premium_cards above), not the base+foil ladder.
     if game_id == "lorcana":
         foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal" and rarity_rank(game_id, variant["rarity"]) not in LORCANA_PREMIUM_RANKS]
+    elif game_id == "vcard":
+        # Every card also exists as a non-holo First Edition print, which is not "Normal" either.
+        foil_variants = [variant for variant in all_variants if "Holo" in variant["finish"]]
     else:
         foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal"]
-    playset_owned = sum(1 for card in unfiltered_cards if card["quantity"] >= 4)
+    playset_owned = sum(1 for card in unfiltered_cards if card["quantity"] >= playset_size(game_id))
     stats = {
         "owned": owned,
         "total": total,
@@ -1832,6 +1892,13 @@ def card_detail(identity_id):
             variant["price_url"] = (market_mapping or {}).get("source_url") or f"https://www.cardmarket.com/en/OnePiece/Products/Search?searchString={quote_plus(search_term)}"
             variant["image_source"] = variant_attrs.get("imageSource") or "Offizieller One Piece Card-Katalog"
             variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://en.onepiece-cardgame.com/cardlist/"
+        elif variant["game_id"] == "vcard":
+            # No marketplace price feed carries VCard yet, so the market tab links to a plain
+            # eBay search for the exact print instead of a mapped product page.
+            variant["price_source"] = "eBay"
+            variant["price_url"] = (market_mapping or {}).get("source_url") or f"https://www.ebay.com/sch/i.html?_nkw={quote_plus('VCard ' + search_term)}"
+            variant["image_source"] = "Offizielle VCard-Kartendatenbank"
+            variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://www.vcardtcg.com/cards"
         else:
             provider_labels = {"tcgplayer": "TCGplayer", "yuyutei": "Yuyutei"}
             variant["price_source"] = provider_labels.get(variant.get("price_provider")) or ("Yuyutei" if variant["language"] == "JP" else "TCGplayer")
@@ -1947,7 +2014,8 @@ def variant_price_history(variant_id):
 
 def reconcile_sale_list(list_id, uid, game_id):
     """Keeps the fixed Verkaufsliste's auto-managed entries in sync with actual surplus stock
-    (more than 4 owned copies of a variant, summed across every condition/grading) every time
+    (more than a playset -- playset_size(), 4 for most games -- of owned copies of a variant,
+    summed across every condition/grading) every time
     the list is actually viewed -- cheap enough to run on every GET, and far more robust than
     hooking every one of the several places collection_entries.quantity can change (the main
     quantity endpoint, collection import, import-undo, offline-sync replay, ...) individually.
@@ -1961,9 +2029,9 @@ def reconcile_sale_list(list_id, uid, game_id):
     surplus_rows = db().execute(
         """SELECT v.id variant_id, SUM(c.quantity) owned FROM collection_entries c
            JOIN variants v ON v.id=c.variant_id WHERE c.user_id=? AND v.game_id=?
-           GROUP BY v.id HAVING SUM(c.quantity)>4""", (uid, game_id),
+           GROUP BY v.id HAVING SUM(c.quantity)>?""", (uid, game_id, playset_size(game_id)),
     ).fetchall()
-    surplus_map = {row["variant_id"]: row["owned"] - 4 for row in surplus_rows}
+    surplus_map = {row["variant_id"]: row["owned"] - playset_size(game_id) for row in surplus_rows}
     existing_auto = db().execute(
         "SELECT id,variant_id FROM named_watchlist_entries WHERE list_id=? AND source='auto'", (list_id,),
     ).fetchall()
@@ -2262,6 +2330,10 @@ def deck_catalog():
     values = [game_id]
     if game_id == "lorcana":
         filters.append("lower(s.set_type)<>'quest'")
+    if game_id == "vcard":
+        # Box Toppers, Promos and God Rares are collectibles without a gameplay role.
+        filters.append(f"i.card_type IN ({','.join('?' for _ in VCARD_PLAYABLE_TYPES)})")
+        values.extend(VCARD_PLAYABLE_TYPES)
     if q:
         # Matches the English name, the localized (DE/JP/...) name and rules text for this
         # printing, and the English rules text -- a search box that only understood the English
@@ -2690,10 +2762,11 @@ def update_deck_card(deck_id):
     deck=db().execute("SELECT * FROM decks WHERE id=? AND user_id=?",(deck_id,user_id())).fetchone()
     if not deck:return jsonify({"error":"deck not found"}),404
     p=request.get_json(force=True);variant_id=p.get("variant_id")
-    card=db().execute("""SELECT v.game_id,i.card_type,s.set_type FROM variants v JOIN printings pr ON pr.id=v.printing_id
+    card=db().execute("""SELECT v.game_id,i.card_type,s.set_type,pr.rarity FROM variants v JOIN printings pr ON pr.id=v.printing_id
       JOIN card_identities i ON i.id=pr.identity_id JOIN sets s ON s.id=pr.set_id WHERE v.id=?""",(variant_id,)).fetchone()
     if not card or card["game_id"]!=deck["game_id"]:return jsonify({"error":"Karte gehört nicht zu diesem TCG."}),400
     if deck["game_id"]=="lorcana" and str(card["set_type"] or "").lower()=="quest":return jsonify({"error":"Quest-Karten sind nicht für Lorcana-Constructed-Decks zulässig."}),400
+    if deck["game_id"]=="vcard" and card["card_type"] not in VCARD_PLAYABLE_TYPES and int(p.get("quantity",p.get("delta",0)) or 0)>0:return jsonify({"error":f'{card["rarity"]}-Karten sind Sammelkarten und nicht spielbar.'}),400
     profile=next((item for item in FORMAT_PROFILES.get(deck["game_id"],[]) if item["id"]==deck["format_id"]),None)
     allowed_zones={item["id"] for item in (profile or {}).get("zones",[])} or {"main"}
     suggested_zone=zone_for_card_type(game_deck_ruleset(deck["game_id"]),card["card_type"])
@@ -3120,6 +3193,27 @@ def cached_real_image(row, variant_id):
             return legacy_data, legacy_mime.read_text().strip(), f"variant-{safe_id}"
         return None
 
+    # A provider may name stand-in images for a print whose own scan is not published yet (VCard
+    # uploads a new set's First Edition scans before the Unlimited ones). Anything already cached
+    # wins before the network is touched, so a missing primary is requested once, not per view.
+    candidates = [url, *(attributes.get("imageFallbackUrls") or [])]
+    for candidate in candidates:
+        source_key = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+        data_path, mime_path = IMAGE_SOURCE_CACHE / f"{source_key}.img", IMAGE_SOURCE_CACHE / f"{source_key}.mime"
+        if data_path.exists() and mime_path.exists():
+            return data_path, mime_path.read_text().strip(), source_key
+    for candidate in candidates[:-1]:
+        try:
+            downloaded = download_real_image(candidate, legacy_data, legacy_mime)
+        except OSError:
+            # urllib's HTTPError/URLError are OSErrors: the next stand-in gets its turn.
+            downloaded = None
+        if downloaded:
+            return downloaded
+    return download_real_image(candidates[-1], legacy_data, legacy_mime)
+
+
+def download_real_image(url, legacy_data, legacy_mime):
     source_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
     data_path = IMAGE_SOURCE_CACHE / f"{source_key}.img"
     mime_path = IMAGE_SOURCE_CACHE / f"{source_key}.mime"
@@ -3429,6 +3523,12 @@ def remote_set_visual(set_row):
                 if image:
                     return urljoin(base, image.group(1))
         return None
+
+    if set_row["game_id"] == "vcard":
+        # The set id is "vcard-<official slug>"; each official set page embeds its own logo path.
+        page_url = f"https://www.vcardtcg.com/cards/{set_row['id'].removeprefix('vcard-')}"
+        logo = re.search(r'\\"logo\\":\{\\"main\\":\\"(.*?)\\"', provider_html(page_url))
+        return urljoin(page_url, quote(logo.group(1), safe=":/%")) if logo else None
 
     code = re.sub(r"[^a-z0-9]", "", set_row["code"].lower())
     category = "decks" if set_row["code"].startswith("ST-") else "boosters"

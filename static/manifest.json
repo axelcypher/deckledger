@@ -1,7 +1,7 @@
 {
   "name": "DeckLedger",
   "short_name": "DeckLedger",
-  "description": "TCG-Sammlungstracker für Lorcana, One Piece und hololive",
+  "description": "TCG-Sammlungstracker für Lorcana, One Piece, hololive und VCard",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

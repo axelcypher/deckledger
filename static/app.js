@@ -238,7 +238,7 @@ function setActiveGame(gameId, persist=true) {
   const isInitial=!previousGameId;
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
-  const iconName={'one-piece':'one-piece',lorcana:'lorcana',hololive:'hololive'}[gameId]||'generic';
+  const iconName={'one-piece':'one-piece',lorcana:'lorcana',hololive:'hololive',vcard:'vcard'}[gameId]||'generic';
   if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=2')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
   state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null;
@@ -313,7 +313,7 @@ function statPill(items,{className='',columns=items.length,mobileColumns=Math.mi
     return `<div data-stat${itemClass}><span>${escapeHtml(item.label)}</span><b>${item.value}</b></div>`;
   }).join('')}</deckledger-stat-pill>`;
 }
-function symbol(game){return {'lorcana':'✦','one-piece':'☠','hololive':'◈'}[game]||'◆'}
+function symbol(game){return {'lorcana':'✦','one-piece':'☠','hololive':'◈','vcard':'✪'}[game]||'◆'}
 
 const SET_GROUP_ORDER=['Booster','Decks','Promos','Quests','Sammlungen','Produkte','Zubehör'];
 function setGroup(set){
@@ -1105,6 +1105,16 @@ function lorcanaVariantBadges(languageVariants){
   }).join('');
 }
 
+// Mirrors playset_size() in app.py: the constructed copy limit a full playset is measured against.
+function playsetSize(gameId){return gameId==='vcard'?3:4}
+
+// VCard prints every card in up to four edition/finish combinations; show all of them, base first.
+function tileChipVariants(variants,gameId){
+  if(gameId!=='vcard')return variants.slice(0,3);
+  const order=finishFilterOptions(gameId),rank=x=>{const index=order.indexOf(x.finish);return index<0?order.length:index};
+  return [...variants].sort((a,b)=>rank(a)-rank(b)).slice(0,4);
+}
+
 function watchlistIcon(active=false){
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"${active?' fill="currentColor"':''}/></svg>`;
 }
@@ -1133,14 +1143,15 @@ function cardTile(card,foilDisplayActive=false){
     :`<img loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}">`;
   // A playset (4 copies) gets its own badge per finish -- base and foil count
   // separately, so a 4x foil playset doesn't need 4 base copies too to show.
+  const playset=playsetSize(v.game_id||state.activeGameId);
   const ribbons=isLorcana
     ?`${v.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓</span>`:''}${foil&&foil.quantity>=4?`<span class="playset-badge foil" title="Foil-Playset komplett · 4 Exemplare">✓</span>`:''}`
-    :(card.quantity>=4?`<span class="playset-badge" title="Playset komplett · 4 Exemplare">✓</span>`:'');
+    :(card.quantity>=playset?`<span class="playset-badge" title="Playset komplett · ${playset} Exemplare">✓</span>`:'');
   const playsetHtml=ribbons?`<div class="playset-ribbons">${ribbons}</div>`:'';
   return `<article class="card-tile ${card.quantity?'owned':'missing'}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
     <div class="card-image-wrap card-finish-frame ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.variant_id)}')">${imageHtml}<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><button class="watchlist-action watchlist-action-icon watch-button ${card.watchlisted?'active':''}" title="Watchlist" aria-label="${card.watchlisted?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen'}" aria-pressed="${Boolean(card.watchlisted)}">${watchlistIcon(card.watchlisted)}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
     ${playsetHtml}
-    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${languageVariants.slice(0,3).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
+    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${tileChipVariants(languageVariants,v.game_id||state.activeGameId).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
 
 // Keeps the heart icon in sync everywhere a card can be watchlist-toggled from. The card modal
@@ -1549,7 +1560,7 @@ async function renderWatchlist(preserve=false){
         <button type="button" class="icon-button" data-filter-toggle="watch-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
         <div class="toolbar-filter-popup hidden" id="watch-view-popup">
           <label>Sprache<select id="watch-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
-          <label>Ausführung<select id="watch-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
+          <label>Ausführung<select id="watch-finish" class="select-control"><option value="">Alle Varianten</option>${finishFilterOptions(game.id).map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
           <label>Sortierung<select id="watch-sort" class="select-control"><option value="added">Zuletzt hinzugefügt</option><option value="name">Name</option><option value="number">Nummer</option><option value="price_high">Preis absteigend</option><option value="price_low">Preis aufsteigend</option></select></label>
         </div>
       </div>
@@ -1662,8 +1673,13 @@ function updateWatchTotals(){
   if(activeTabSpan)activeTabSpan.textContent=`${state.cards.length} · ${money(total)}`;
 }
 
+function finishFilterOptions(gameId){
+  if(gameId==='vcard')return ['Normal','Holo','1st Edition','1st Edition Holo'];
+  return ['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'];
+}
 function collectionRarityOptions(gameId,language){
   if(gameId==='one-piece')return ['C','UC','R','SR','SEC','L','P','DON!!','SP CARD','TR'];
+  if(gameId==='vcard')return ['Mascot','Support','World','Uncommon','Rare','Ultra Rare','Secret Rare','Paradox','Box Topper','Promo'];
   if(gameId==='hololive')return ['C','U','R','RR','SR','S','OSR','OC','SY','P','HR'];
   if(gameId==='lorcana'){
     const de=['Gewöhnlich','Ungewöhnlich','Selten','Episch','Legendär','Mythisch','Verzaubert','Ikonisch','Speziell'];
@@ -1692,7 +1708,7 @@ async function renderCollection(preserve=false){
         <button type="button" class="icon-button" data-filter-toggle="collection-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
         <div class="toolbar-filter-popup hidden" id="collection-view-popup">
           <label>Sprache<select id="collection-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
-          <label>Ausführung<select id="collection-finish" class="select-control"><option value="">Alle Varianten</option>${['Normal','Foil','Parallel','Enchanted','Manga','OSR','OUR'].map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
+          <label>Ausführung<select id="collection-finish" class="select-control"><option value="">Alle Varianten</option>${finishFilterOptions(game.id).map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
           <label>Bestand<select id="collection-mode" class="select-control"><option value="all">Alle Karten</option><option value="duplicates">Nur Duplikate</option><option value="watchlisted">Auf Watchlist</option></select></label>
           <label>Sortierung<select id="collection-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="set">Set</option><option value="rarity">Seltenheit</option><option value="value">Wert</option><option value="quantity">Menge</option></select></label>
         </div>
@@ -1772,7 +1788,7 @@ function bindDeckImagePreviews(){
 function deckCatalogCard(c,profile,quantities={}){
   const zone=profile.zones.find(item=>item.id===c.suggested_zone)||profile.zones[0];
   const quantity=Number(quantities[c.variant_id])||0;
-  const maximum=zone.id==='cheer'?20:zone.id==='don'?10:zone.id==='leader'||zone.id==='oshi'?1:4;
+  const maximum=zone.id==='cheer'?20:zone.id==='don'?10:zone.id==='leader'||zone.id==='oshi'?1:deckCopyLimit(c);
   const counter=`<div class="catalog-deck-counter" title="Menge im Deck"><button data-catalog-delta="-1" ${quantity<1?'disabled':''}>−</button><b>${quantity}</b><button data-catalog-delta="1" ${quantity>=maximum?'disabled':''}>＋</button></div>`;
   if(state.deckView==='grid')return `<article class="catalog-card-grid" data-catalog-variant="${c.variant_id}" data-identity="${c.identity_id}"><div class="catalog-grid-image card-finish-frame ${finishPresentation(c).effect}"><img loading="lazy" decoding="async" fetchpriority="low" data-deck-preview data-full-src="${artUrl(c.variant_id,'full')}" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}">${counter}</div><b>${escapeHtml(c.canonical_name)}</b><small>${escapeHtml(c.collector_number)} · ${c.language}</small><span>${escapeHtml(zone.name)}</span></article>`;
   return `<div class="catalog-card" data-catalog-variant="${c.variant_id}" data-identity="${c.identity_id}"><img loading="lazy" decoding="async" fetchpriority="low" data-deck-preview data-full-src="${artUrl(c.variant_id,'full')}" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}"><div><b>${escapeHtml(c.canonical_name)}</b><small>${escapeHtml(c.collector_number)} · ${c.language} · ${escapeHtml(c.rarity)}${c.owned?` · ${c.owned}× vorhanden`:''}</small><span>${escapeHtml(zone.name)}</span></div>${counter}</div>`;
@@ -1879,10 +1895,23 @@ function hololiveCardFilterGroups(filters,scope='card'){
 function hololiveCardFilterBar(filters,prefix,rarityOptions,scope='card'){
   return `${gameRarityPopup(rarityOptions,filters,prefix,scope)}${hololiveCardFilterGroups(filters,scope)}`;
 }
+const VCARD_ELEMENT_FILTERS=[['Fire','#e2572b'],['Water','#2f8fd8'],['Grass','#3aa65a'],['Electric','#e9c530'],['Platinum','#b9c2cc'],['Divine','#f1e2a6'],['Chaos','#7a3fb4']];
+const VCARD_TYPE_FILTERS=[['VT','VT'],['Mascot','Mascot'],['Support','Support'],['World','World']];
+const VCARD_POWER_LEVELS=[8,9,10];
+function vcardCardFilterGroups(filters,scope='card'){
+  const active=(key,value)=>(filters[key]||[]).includes(String(value));
+  return `
+    <div class="op-filter-group op-types"><div>${VCARD_POWER_LEVELS.map(level=>`<button type="button" class="op-filter-chip ${active('costs',level)?'active':''}" ${filterData(scope,'costs',level)} aria-label="Power Level ${level}" title="Power Level ${level}">PL${level}</button>`).join('')}</div></div>
+    <div class="op-filter-group op-colors"><div>${VCARD_ELEMENT_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" ${filterData(scope,'colors',name)} aria-label="${name}" title="${name}">${opColorIcon(color,index*51)}</button>`).join('')}</div></div>`;
+}
+function vcardCardFilterBar(filters,prefix,rarityOptions,scope='card'){
+  return `${gameRarityPopup(rarityOptions,filters,prefix,scope)}${vcardCardFilterGroups(filters,scope)}`;
+}
 function catalogGameFilterBar(game,filters,prefix,rarityOptions,scope='card'){
   if(game.id==='lorcana')return lorcanaCardFilterBar(filters,prefix,scope);
   if(game.id==='one-piece')return opCardFilterBar(filters,prefix,rarityOptions,scope);
   if(game.id==='hololive')return hololiveCardFilterBar(filters,prefix,rarityOptions,scope);
+  if(game.id==='vcard')return vcardCardFilterBar(filters,prefix,rarityOptions,scope);
   return gameRarityPopup(rarityOptions,filters,prefix,scope);
 }
 function setAbbreviation(name){
@@ -1942,12 +1971,14 @@ function deckOverviewCard(deck,game,formats){
   </button>`;
 }
 
+// Copy limit of a regular deck card (leader/DON-style zones have their own fixed sizes).
+function deckCopyLimit(card){return state.activeGameId==='vcard'?(card.card_type==='Mascot'?2:3):4}
 function closeDeckAddPopup(){const modal=$('#deck-add-modal');if(modal)modal.remove();document.body.style.overflow='';}
 
 function openDeckAddPopup(card,profile){
   closeDeckAddPopup();
   const zone=profile.zones.find(item=>item.id===card.suggested_zone)||profile.zones[0];
-  const maximum=zone.id==='cheer'?20:zone.id==='don'?10:zone.id==='leader'||zone.id==='oshi'?1:4;
+  const maximum=zone.id==='cheer'?20:zone.id==='don'?10:zone.id==='leader'||zone.id==='oshi'?1:deckCopyLimit(card);
   const modal=document.createElement('div');modal.id='deck-add-modal';modal.className='overlay deck-add-overlay';
   modal.innerHTML=`<div class="deck-add-dialog"><button class="close-button" data-deck-add-close>×</button><div class="deck-add-image card-finish-frame ${finishPresentation(card).effect}"><img src="${artUrl(card.variant_id,'full')}" alt="${escapeHtml(card.canonical_name)}"></div><div class="deck-add-copy"><span class="eyebrow">KARTE HINZUFÜGEN</span><h2>${escapeHtml(card.canonical_name)}</h2><p>${escapeHtml(card.collector_number)} · ${card.language} · ${escapeHtml(card.rarity)}</p><div class="automatic-zone"><span>Automatischer Bereich</span><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(card.card_type)} wird nach dem Regelprofil einsortiert.</small></div><label>Menge<select id="deck-add-quantity" class="select-control">${Array.from({length:maximum},(_,index)=>`<option value="${index+1}">${index+1}</option>`).join('')}</select></label><div class="dialog-actions"><button class="secondary-button" data-deck-add-close>Abbrechen</button><button class="primary-button" id="confirm-deck-add">Zu ${escapeHtml(zone.name)} hinzufügen</button></div></div></div>`;
   document.body.append(modal);document.body.style.overflow='hidden';
@@ -1979,7 +2010,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   }
   if(myDeckRenderToken!==deckRenderToken)return;
   if(!decks.some(deck=>deck.id===state.deckId)){state.deckId=null;return renderDeckbuilder(true)}
-  const f=state.deckFilters,isOnePiece=game.id==='one-piece',isLorcana=game.id==='lorcana',isHololive=game.id==='hololive';
+  const f=state.deckFilters,isOnePiece=game.id==='one-piece',isLorcana=game.id==='lorcana',isHololive=game.id==='hololive',isVcard=game.id==='vcard';
   const initialCatalogLimit=Math.max(72,Math.min(20000,Number(catalogPosition?.loadedCount)||72));
   const params=new URLSearchParams({game_id:state.activeGameId,q:f.q||'',sort:f.sort||'number',limit:String(initialCatalogLimit),offset:'0'});
   if(f.rarity)params.set('rarity',f.rarity);
@@ -1995,6 +2026,9 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     }
     if(isHololive){
       ['colors','kinds','bloomLevels'].forEach(key=>{if(f[key]?.length)params.set(key,f[key].join(','))});
+    }
+    if(isVcard){
+      ['colors','types','costs'].forEach(key=>{if(f[key]?.length)params.set(key,f[key].join(','))});
     }
   }
   const [detail,catalog]=await Promise.all([api(`/api/decks/${state.deckId}`),api(`/api/deckbuilder/catalog?${params}`)]),profile=formats.find(x=>x.id===detail.deck.format_id)||formats[0];
@@ -2030,6 +2064,10 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     deckWorkspace=`<div class="op-deck-overview"><div class="op-leader-panel"><div class="op-section-label"><span>Oshi</span><b>${count(oshiCards)} / 1</b></div><div class="op-leader-card">${oshiCards.length?oshiCards.map(card=>deckContentCard(card,true,coverVariantId)).join(''):'<div class="op-leader-empty"><span>＋</span><small>Oshi im Katalog wählen</small></div>'}</div></div><div class="op-deck-stats">${deckStatChips}</div></div>${validationNotice}
       <section class="op-deck-section"><div class="op-section-head"><div><span class="eyebrow">MAIN DECK</span><h2>Holomem & Support</h2></div><b>${count(mainCards)} / 50</b></div><div class="deck-card-list ${state.deckView==='grid'?'deck-card-grid':''}">${mainCards.length?mainCards.map(card=>deckContentCard(card,false,coverVariantId)).join(''):'<div class="deck-zone-empty">Noch keine Main-Deck-Karten hinzugefügt.</div>'}</div></section>
       <section class="op-deck-section"><div class="op-section-head"><div><span class="eyebrow">CHEER DECK</span><h2>Cheer-Karten</h2></div><b>${count(cheerCards)} / 20</b></div><div class="deck-card-list ${state.deckView==='grid'?'deck-card-grid':''}">${cheerCards.length?cheerCards.map(card=>deckContentCard(card,false,coverVariantId)).join(''):'<div class="deck-zone-empty">Noch keine Cheer-Karten hinzugefügt.</div>'}</div></section>`;
+  }else if(isVcard){
+    const mainCards=detail.cards.filter(card=>card.zone==='main'),mainCount=mainCards.reduce((total,card)=>total+card.quantity,0);
+    deckWorkspace=`<div class="generic-deck-overview"><div class="op-deck-stats">${deckStatChips}</div></div>${validationNotice}
+      <section class="op-deck-section"><div class="op-section-head"><div><span class="eyebrow">DECK</span><h2>VCard-Karten</h2></div><b>${mainCount} / 50</b></div><div class="deck-card-list ${state.deckView==='grid'?'deck-card-grid':''}">${mainCards.length?mainCards.map(card=>deckContentCard(card,false,coverVariantId)).join(''):'<div class="deck-zone-empty">Noch keine Karten hinzugefügt.</div>'}</div></section>`;
   }else{
     deckWorkspace=`${purchaseSummary}${validationNotice}<nav class="zone-tabs">${profile.zones.map(z=>`<button data-zone="${z.id}" class="${z.id===state.deckZone?'active':''}"><span>${escapeHtml(z.name)}</span><b>${validation.counts[z.id]||0} / ${z.target}</b></button>`).join('')}</nav><div class="deck-zone-head"><div><span class="eyebrow">${escapeHtml(currentZone.name).toUpperCase()}</span><h2>${zoneCards.reduce((a,c)=>a+c.quantity,0)} Karten</h2></div><div class="deck-errors">${validation.errors.slice(0,3).map(x=>`<span>! ${escapeHtml(x)}</span>`).join('')}${validation.warnings.slice(0,2).map(x=>`<span class="warning">△ ${escapeHtml(x)}</span>`).join('')}</div></div><div class="deck-card-list ${state.deckView==='grid'?'deck-card-grid':''}">${zoneCards.length?zoneCards.map(card=>deckContentCard(card,false,coverVariantId)).join(''):'<div class="deck-zone-empty">Noch keine Karten in diesem Bereich.</div>'}</div>`;
   }
@@ -2038,9 +2076,10 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   const deckTypes=isOnePiece
     ?`<div class="op-filter-group op-types"><div>${deckFilterPills(OP_TYPE_FILTERS,'types',f)}</div></div>`
     :isLorcana?`<div class="op-filter-group op-types"><div>${deckFilterPills(LORCANA_TYPE_FILTERS,'types',f)}</div></div>`
-    :isHololive?`<div class="op-filter-group op-types"><div>${deckFilterPills(HOLOLIVE_KIND_FILTERS,'kinds',f)}</div></div>`:'';
+    :isHololive?`<div class="op-filter-group op-types"><div>${deckFilterPills(HOLOLIVE_KIND_FILTERS,'kinds',f)}</div></div>`
+    :isVcard?`<div class="op-filter-group op-types"><div>${deckFilterPills(VCARD_TYPE_FILTERS,'types',f)}</div></div>`:'';
   const deckSecondaryTypes=isHololive?`<div class="op-filter-group"><div>${deckFilterPills(HOLOLIVE_BLOOM_FILTERS,'bloomLevels',f)}</div></div>`:'';
-  const sharedGameFilters=isOnePiece?opCardFilterGroups(f,'deck'):isLorcana?lorcanaCardFilterGroups(f,'deck'):isHololive?hololiveCardFilterGroups(f,'deck'):'';
+  const sharedGameFilters=isOnePiece?opCardFilterGroups(f,'deck'):isLorcana?lorcanaCardFilterGroups(f,'deck'):isHololive?hololiveCardFilterGroups(f,'deck'):isVcard?vcardCardFilterGroups(f,'deck'):'';
   const deckAttributes=isOnePiece?`<div class="op-filter-group op-attributes"><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${(f.attributes||[]).includes(value)?'active':''}" ${filterData('deck','attributes',value)} aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`:'';
   const filters=`<div class="op-catalog-filterbar catalog-filter-mobile deck-catalog-filter-mobile">
     <div class="deck-catalog-filter-row deck-catalog-filter-primary">
@@ -2440,7 +2479,7 @@ function modalTabContent(card,v){
     const historyPanel=v.price==null?'':`<div class="price-history" id="price-history-panel"><div class="price-history-loading">Preisverlauf wird geladen …</div></div>`;
     return `<div class="price-hero"><span>${escapeHtml(v.price_source)} Marktpreis</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${escapeHtml(v.price_source)}</b></div></div>`}${historyPanel}<a class="price-source-link market-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(modalIsLorcana?lorcanaFinishLabel(v.finish,v.rarity):v.finish)} · direkte Produktseite</small></div><span>→</span></a><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
   }
-  if(state.modalTab==='card')return `<div class="detail-section modal-rules-section"><p class="rules-text">${rulesTextHtml(card.rules_text)}</p></div><div class="detail-grid modal-info-grid"><div class="detail-field"><span>Kartentyp</span><b>${escapeHtml(card.card_type)}</b></div><div class="detail-field"><span>Farbe</span><b>${escapeHtml(card.attributes.color)}</b></div><div class="detail-field"><span>Kosten</span><b>${card.attributes.cost}</b></div><div class="detail-field modal-info-legality"><span>Legalität</span><b>${escapeHtml(card.attributes.legality)}</b></div><div class="detail-field modal-info-set"><span>Set</span><b>${escapeHtml(v.set_name)}</b></div><div class="detail-field modal-info-rarity"><span>Seltenheit</span><b>${escapeHtml(v.rarity)}</b></div></div><a class="price-source-link modal-info-source" href="${escapeHtml(v.image_source_url)}" target="_blank" rel="noopener noreferrer"><span>▧</span><div><b>Bildquelle öffnen</b><small>${escapeHtml(v.image_source)}</small></div><span>→</span></a>`;
+  if(state.modalTab==='card')return `<div class="detail-section modal-rules-section"><p class="rules-text">${rulesTextHtml(card.rules_text)}</p></div><div class="detail-grid modal-info-grid"><div class="detail-field"><span>Kartentyp</span><b>${escapeHtml(card.card_type)}</b></div><div class="detail-field"><span>${card.game_id==='vcard'?'Element':'Farbe'}</span><b>${escapeHtml(card.attributes.color)}</b></div><div class="detail-field"><span>${card.game_id==='vcard'?'Power Level':'Kosten'}</span><b>${card.game_id==='vcard'?(card.attributes.cost??'–'):card.attributes.cost}</b></div><div class="detail-field modal-info-legality"><span>Legalität</span><b>${escapeHtml(card.attributes.legality)}</b></div><div class="detail-field modal-info-set"><span>Set</span><b>${escapeHtml(v.set_name)}</b></div><div class="detail-field modal-info-rarity"><span>Seltenheit</span><b>${escapeHtml(v.rarity)}</b></div></div><a class="price-source-link modal-info-source" href="${escapeHtml(v.image_source_url)}" target="_blank" rel="noopener noreferrer"><span>▧</span><div><b>Bildquelle öffnen</b><small>${escapeHtml(v.image_source)}</small></div><span>→</span></a>`;
   return modalRelationshipContent(card,v);
 }
 
