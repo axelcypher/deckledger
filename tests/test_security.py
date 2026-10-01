@@ -67,15 +67,30 @@ def test_sso_links_a_user_by_verified_email():
     assert query("SELECT oauth_subject s FROM users WHERE username='demo'")[0]["s"] == "subject-1"
 
 
-def test_sso_ignores_an_unverified_email():
+def test_sso_does_not_hand_over_or_duplicate_an_account_for_an_unverified_email():
     query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
-    assert resolve("email", "demo@example.com", verified=False) is None
+    for mode in ("email", "auto_provision"):
+        assert resolve(mode, "demo@example.com", verified=False) is None, mode
+    assert query("SELECT COUNT(*) n FROM users")[0]["n"] == 2
+    assert query("SELECT oauth_subject s FROM users WHERE username='demo'")[0]["s"] == ""
 
 
-def test_sso_never_claims_an_admin_account_by_email():
+def test_sso_links_an_admin_by_email_like_any_other_account():
     query("UPDATE users SET email='admin@example.com' WHERE username='admin'")
-    assert resolve("email", "admin@example.com") is None
-    assert query("SELECT oauth_subject s FROM users WHERE username='admin'")[0]["s"] == ""
+    assert resolve("auto_provision", "admin@example.com")["username"] == "admin"
+    assert query("SELECT COUNT(*) n FROM users")[0]["n"] == 2, "no second account next to the admin"
+
+
+def test_sso_auto_provision_creates_a_ready_to_use_account_for_an_unknown_identity():
+    created = resolve("auto_provision", "neu@example.com")
+    assert (created["username"], created["role"], created["email"]) == ("neu", "user", "neu@example.com")
+    lists = query("SELECT COUNT(*) n FROM named_watchlists WHERE user_id=?", (created["id"],))[0]["n"]
+    assert lists == 2 * query("SELECT COUNT(*) n FROM games")[0]["n"], "default watchlist and sale list for every game"
+
+
+def test_sso_email_mode_links_but_never_creates():
+    assert resolve("email", "ganz-neu@example.com") is None
+    assert query("SELECT COUNT(*) n FROM users")[0]["n"] == 2
 
 
 def test_sso_manual_mode_only_accepts_linked_identities():

@@ -13,7 +13,9 @@ Open <http://localhost:18081> and sign in with:
 - User: `demo`
 - Password: `deckledger`
 
-An administrator demo account is also available as `admin` / `admin`.
+An administrator demo account is also available as `admin` / `admin`. Change both
+passwords under **Admin → Benutzer** before more than one person uses the instance;
+the demo hint on the login page disappears once the `demo` password has been changed.
 
 ## Included in the MVP
 
@@ -74,6 +76,15 @@ password always requires the current one, except for an account that has no
 local password yet (e.g. one created through SSO auto-provisioning below) —
 that account can set its first password directly.
 
+## User management
+
+Admins manage accounts under **Admin → Benutzer**: create accounts, change
+name, username, email and role, reset a password, detach an SSO identity, and
+delete an account together with its collection, decks, lists and sheets. The
+last remaining admin can be neither demoted nor deleted, and nobody deletes
+their own account there. A deleted account's open sessions stop working
+immediately.
+
 ## OAuth / SSO login
 
 DeckLedger supports logging in through one external OAuth2/OIDC identity
@@ -114,10 +125,13 @@ each level including the ones before it:
   own account themselves from **Settings → Single Sign-On** while signed in
   with a password.
 - `email`: additionally, if the provider's email matches an existing local
-  account's email and that account isn't linked to anything yet, it's linked
-  automatically on first login.
-- `auto_provision`: additionally, an unmatched identity gets a brand-new
-  local account (`user` role, never `admin`) created automatically.
+  account's email (admin accounts included) and that account isn't linked to
+  anything yet, it's linked automatically on first login. The provider has to
+  report the address as verified.
+- `auto_provision`: additionally, an identity whose email belongs to no
+  account gets a brand-new local account (`user` role, never `admin`) created
+  automatically. An unverified address that matches an existing account is
+  turned away instead of getting a second account next to it.
 
 Running behind a TLS-terminating reverse proxy (Traefik, Nginx, Caddy, …)?
 Most OAuth/OIDC providers require an `https://` redirect URI. Set

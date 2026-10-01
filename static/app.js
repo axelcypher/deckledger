@@ -687,9 +687,9 @@ function openAdminPriceSources(games){
 
 async function renderAdmin(){
   content.innerHTML='<div class="page-loader"><span></span><p>Admin-Bereich wird geladen …</p></div>';
-  const [games,providers,oauth]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers'),api('/api/admin/oauth')]);
+  const [games,providers,oauth,users]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers'),api('/api/admin/oauth'),api('/api/admin/users')]);
   const oauthLocked=oauth.source==='file',ro=oauthLocked?'disabled':'';
-  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">VERWALTUNG</span><h1>Admin</h1><p>TCGs, Katalog-Provider und Zuordnungen verwalten.</p></div></div>
+  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">VERWALTUNG</span><h1>Admin</h1><p>Benutzer, TCGs, Katalog-Provider und Zuordnungen verwalten.</p></div></div>
     <details class="settings-section oauth-admin-card ${oauthLocked?'is-locked':''}">
       <summary class="oauth-admin-summary">
         <div class="oauth-admin-head">
@@ -745,6 +745,38 @@ async function renderAdmin(){
       </div>
       </div>
     </details>
+    <section class="settings-section admin-settings-card">
+      <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.5-3.6 3-5.6 6.2-5.6s5.700 2 6.200 5.600M16 5.200a3.200 3.200 0 0 1 0 6M18.200 14.800c1.800.700 2.800 2.400 3 5.200"/></svg></span><div><span class="eyebrow">ZUGANG</span><h2>Benutzer</h2><p>Konten anlegen, Rollen vergeben, Passwörter zurücksetzen.</p></div></div>
+      <div class="admin-table">${users.map(u=>`<div class="admin-row" data-user-row="${u.id}">
+        <div class="admin-row-head"><b>${escapeHtml(u.display_name)}${u.is_self?' <span class="muted">(du)</span>':''}</b><span class="muted">${escapeHtml(u.username)}${u.email?` · ${escapeHtml(u.email)}`:''} · ${u.copies} Karten · ${u.decks} Decks</span></div>
+        <div class="admin-status"><span class="admin-status-badge status-${u.role==='admin'?'ok':'none'}">${u.role==='admin'?'Admin':'Benutzer'}</span><span class="muted">${u.oauth_linked?'SSO verknüpft':'kein SSO'}${u.password_set?'':' · kein Passwort'}</span></div>
+        <div class="admin-row-actions">
+          <button class="secondary-button" data-edit-user="${u.id}">Bearbeiten</button>
+          ${u.is_self?'':`<button class="icon-button" data-delete-user="${u.id}" data-user-name="${escapeHtml(u.username)}" title="Konto löschen">✕</button>`}
+        </div>
+        <div class="admin-config-editor hidden" data-user-editor="${u.id}">
+          <div class="admin-form-grid admin-user-fields">
+            <label>Anzeigename<input data-user-field="display_name" value="${escapeHtml(u.display_name)}"></label>
+            <label>Benutzername<input data-user-field="username" value="${escapeHtml(u.username)}"></label>
+            <label>E-Mail<input data-user-field="email" type="email" value="${escapeHtml(u.email)}"></label>
+            <label>Rolle<select data-user-field="role" class="select-control"><option value="user" ${u.role==='user'?'selected':''}>Benutzer</option><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option></select></label>
+            <label>Neues Passwort<input data-user-field="password" type="password" autocomplete="new-password" placeholder="leer lassen = unverändert"></label>
+            ${u.oauth_linked?`<label class="radio-label"><input type="checkbox" data-user-field="unlink_oauth"> SSO-Verknüpfung lösen</label>`:''}
+          </div>
+          <button class="primary-button" data-save-user="${u.id}">Speichern</button>
+        </div>
+      </div>`).join('')}</div>
+      <details class="admin-add"><summary>+ Neues Konto anlegen</summary>
+        <div class="admin-form admin-user-fields">
+          <label>Benutzername<input id="admin-new-user-name" autocomplete="off" placeholder="3–32 Zeichen"></label>
+          <label>Anzeigename<input id="admin-new-user-display" placeholder="optional"></label>
+          <label>E-Mail<input id="admin-new-user-email" type="email" placeholder="optional, für SSO-Zuordnung"></label>
+          <label>Passwort<input id="admin-new-user-password" type="password" autocomplete="new-password" placeholder="mindestens 8 Zeichen"></label>
+          <label>Rolle<select id="admin-new-user-role" class="select-control"><option value="user">Benutzer</option><option value="admin">Admin</option></select></label>
+          <button class="primary-button" id="admin-create-user">Konto anlegen</button>
+        </div>
+      </details>
+    </section>
     <section class="settings-section admin-settings-card">
       <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg></span><div><span class="eyebrow">KATALOG</span><h2>TCGs</h2><p>Spiele, Cardbacks und Preisquellen verwalten.</p></div><button class="primary-button admin-price-source-button" type="button" id="admin-price-source-open"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M10.5 9.5 13.5 14.5M15.5 5.5l3 3M5.5 15.5l3 3"/></svg>Preisquellen</button></div>
       <div class="admin-table">${games.map(g=>`<div class="admin-row admin-game-row" data-game-row="${g.id}">
@@ -850,6 +882,27 @@ def fetch_catalog() -&gt; dict:
     const response=await fetch(`/api/admin/games/${input.dataset.cardBack}/card-back`,{method:'POST',body:form});
     if(response.ok)toast('Card-Back hochgeladen'); else toast('Upload fehlgeschlagen');
   });
+  $$('[data-edit-user]',content).forEach(button=>button.onclick=()=>$(`[data-user-editor="${button.dataset.editUser}"]`,content).classList.toggle('hidden'));
+  $$('[data-save-user]',content).forEach(button=>button.onclick=async()=>{
+    const editor=$(`[data-user-editor="${button.dataset.saveUser}"]`,content),payload={};
+    $$('[data-user-field]',editor).forEach(field=>{
+      if(field.type==='checkbox'){if(field.checked)payload[field.dataset.userField]=true}
+      else if(field.dataset.userField!=='password'||field.value)payload[field.dataset.userField]=field.value;
+    });
+    try{await api(`/api/admin/users/${button.dataset.saveUser}`,{method:'PATCH',body:JSON.stringify(payload)});toast('Konto gespeichert');renderAdmin()}
+    catch(error){toast(error.message)}
+  });
+  $$('[data-delete-user]',content).forEach(button=>button.onclick=async()=>{
+    if(!confirm(`Konto „${button.dataset.userName}“ mit seiner Sammlung, seinen Decks und Listen endgültig löschen?`))return;
+    try{await api(`/api/admin/users/${button.dataset.deleteUser}`,{method:'DELETE'});toast('Konto gelöscht');renderAdmin()}
+    catch(error){toast(error.message)}
+  });
+  $('#admin-create-user').onclick=async()=>{
+    try{
+      await post('/api/admin/users',{username:$('#admin-new-user-name').value,display_name:$('#admin-new-user-display').value,email:$('#admin-new-user-email').value,password:$('#admin-new-user-password').value,role:$('#admin-new-user-role').value});
+      toast('Konto angelegt');renderAdmin();
+    }catch(error){toast(error.message)}
+  };
   $('#admin-create-game').onclick=async()=>{
     const name=$('#admin-new-game-name').value.trim();
     if(!name){toast('Name ist erforderlich');return}

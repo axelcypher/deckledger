@@ -42,7 +42,7 @@
         <label>Benutzername<input name="username" value="demo" autocomplete="username" required></label>
         <label>Passwort<input name="password" type="password" value="deckledger" autocomplete="current-password" required></label>
         <button class="primary-button login-button" type="submit">Anmelden <span>→</span></button>
-        <div class="demo-hint"><span>Demo-Zugang</span><code>demo</code><span>/</span><code>deckledger</code></div>
+        {% if show_demo_hint %}<div class="demo-hint"><span>Demo-Zugang</span><code>demo</code><span>/</span><code>deckledger</code></div>{% endif %}
       </form>
       {% if oauth_enabled %}
       <div class="login-oauth-divider"><span>oder</span></div>

@@ -680,6 +680,22 @@ def seed_database(connection):
     seed_default_cardmarket_game_ids(connection)
 
 
+def ensure_user_lists(connection, user_id=None):
+    """Every account has a default watchlist and the fixed sale list for every game. Idempotent;
+    runs for all accounts at start-up and for one account right after it is created -- an account
+    made while the app is running (admin, SSO auto-provisioning) used to have neither until the
+    next restart, so its first "add to watchlist" failed."""
+    stamp = now_iso()
+    scope, args = ("WHERE u.id=?", (user_id,)) if user_id else ("", ())
+    connection.execute(f"""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,created_at)
+      SELECT u.id,g.id,'Merkliste',1,? FROM users u CROSS JOIN games g {scope}""", (stamp, *args))
+    # Fixed, per-game "Verkaufsliste" -- can't be renamed or deleted (see manage_watchlist),
+    # populated by reconcile_sale_list() with anything over a playset plus whatever's been
+    # manually added to it.
+    connection.execute(f"""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,is_sale_list,created_at)
+      SELECT u.id,g.id,'Verkaufsliste',0,1,? FROM users u CROSS JOIN games g {scope}""", (stamp, *args))
+
+
 def init_database():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
@@ -782,17 +798,11 @@ def init_database():
     seed_database(connection)
     # Preserve the original single watchlist while upgrading to named,
     # game-scoped lists. The INSERTs are idempotent for every worker restart.
-    connection.execute("""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,created_at)
-      SELECT u.id,g.id,'Merkliste',1,? FROM users u CROSS JOIN games g""", (now_iso(),))
+    ensure_user_lists(connection)
     connection.execute("""INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,created_at)
       SELECT nw.id,w.variant_id,w.created_at FROM watchlist_entries w
       JOIN variants v ON v.id=w.variant_id
       JOIN named_watchlists nw ON nw.user_id=w.user_id AND nw.game_id=v.game_id AND nw.is_default=1""")
-    # Fixed, per-game "Verkaufsliste" -- can't be renamed or deleted (see manage_watchlist),
-    # populated by reconcile_sale_list() with anything over a 4-copy playset plus whatever's
-    # been manually added to it. Same idempotent per-worker-restart seed as Merkliste above.
-    connection.execute("""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,is_sale_list,created_at)
-      SELECT u.id,g.id,'Verkaufsliste',0,1,? FROM users u CROSS JOIN games g""", (now_iso(),))
     connection.commit()
     connection.close()
 
@@ -803,6 +813,10 @@ init_database()
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
+        # The cookie is only a claim: an account an admin has deleted must stop working at once,
+        # not when its session cookie happens to be dropped.
+        if session.get("user_id") and not db().execute("SELECT 1 FROM users WHERE id=?", (session["user_id"],)).fetchone():
+            session.clear()
         if not session.get("user_id"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "authentication required"}), 401
@@ -882,13 +896,15 @@ def resolve_oauth_identity(config, subject, email, display_name, email_verified=
     if matched:
         return matched
     mode = config.get("account_matching") or "manual"
-    if mode in ("email", "auto_provision") and email and email_verified:
-        # An address the provider itself reports as unverified proves nothing about who is
-        # logging in. Admin accounts are never claimed by address at all: an admin links SSO
-        # from Settings while signed in with their password.
+    if mode in ("email", "auto_provision") and email:
         candidate = connection.execute(
-            "SELECT * FROM users WHERE oauth_subject='' AND role!='admin' AND lower(email)=lower(?)", (email,),
+            "SELECT * FROM users WHERE oauth_subject='' AND lower(email)=lower(?)", (email,),
         ).fetchone()
+        if candidate and not email_verified:
+            # An address the provider itself reports as unverified proves nothing about who is
+            # logging in. Neither is the existing account handed over, nor a second account
+            # created next to it under the same address.
+            return None
         if candidate:
             connection.execute(
                 "UPDATE users SET oauth_provider=?, oauth_subject=? WHERE id=?", (OAUTH_PROVIDER_KEY, subject, candidate["id"]),
@@ -901,6 +917,7 @@ def resolve_oauth_identity(config, subject, email, display_name, email_verified=
             "INSERT INTO users(username,display_name,password_hash,role,created_at,email,oauth_provider,oauth_subject) VALUES(?,?,?,?,?,?,?,?)",
             (username, display_name or username, "", "user", now_iso(), email, OAUTH_PROVIDER_KEY, subject),
         )
+        ensure_user_lists(connection, connection.execute("SELECT id FROM users WHERE oauth_provider=? AND oauth_subject=?", (OAUTH_PROVIDER_KEY, subject)).fetchone()["id"])
         connection.commit()
         return connection.execute(
             "SELECT * FROM users WHERE oauth_provider=? AND oauth_subject=?", (OAUTH_PROVIDER_KEY, subject),
@@ -911,7 +928,11 @@ def resolve_oauth_identity(config, subject, email, display_name, email_verified=
 @app.route("/login", methods=["GET", "POST"])
 def login():
     oauth_config = resolve_oauth_config()
-    oauth_context = {"oauth_enabled": oauth_config["enabled"], "oauth_provider_name": oauth_config["provider_name"]}
+    demo = db().execute("SELECT password_hash FROM users WHERE username='demo'").fetchone()
+    oauth_context = {
+        "oauth_enabled": oauth_config["enabled"], "oauth_provider_name": oauth_config["provider_name"],
+        "show_demo_hint": bool(demo and demo["password_hash"] and check_password_hash(demo["password_hash"], "deckledger")),
+    }
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -1235,6 +1256,128 @@ def refresh_prices():
         "counts": jload(counts[0], {}) if counts else {},
         "synced_at": jload(synced[0]) if synced else None,
     })
+
+
+# ---- User management (admin) -------------------------------------------------------------------
+USERNAME_PATTERN = r"[a-zA-Z0-9._-]{3,32}"
+EMAIL_PATTERN = r"[^@\s]+@[^@\s]+\.[^@\s]+"
+USER_ROLES = ("user", "admin")
+
+
+def user_fields_error(connection, payload, user_id_to_skip=0, require=()):
+    """Validates the account fields present in `payload`; returns an error text or None."""
+    for field in require:
+        if not str(payload.get(field) or "").strip():
+            return {"username": "Benutzername ist erforderlich.", "password": "Passwort ist erforderlich."}[field]
+    if "username" in payload:
+        username = str(payload["username"] or "").strip()
+        if not re.fullmatch(USERNAME_PATTERN, username):
+            return "Benutzername muss 3-32 Zeichen lang sein (Buchstaben, Zahlen, . _ -)."
+        if connection.execute("SELECT 1 FROM users WHERE lower(username)=lower(?) AND id!=?", (username, user_id_to_skip)).fetchone():
+            return "Benutzername ist bereits vergeben."
+    if payload.get("email"):
+        email = str(payload["email"]).strip()
+        if not re.fullmatch(EMAIL_PATTERN, email):
+            return "E-Mail-Adresse ist ungültig."
+        if connection.execute("SELECT 1 FROM users WHERE email!='' AND lower(email)=lower(?) AND id!=?", (email, user_id_to_skip)).fetchone():
+            return "E-Mail-Adresse wird bereits von einem anderen Konto verwendet."
+    if payload.get("password") and len(str(payload["password"])) < 8:
+        return "Das Passwort muss mindestens 8 Zeichen lang sein."
+    if "role" in payload and payload["role"] not in USER_ROLES:
+        return "Unbekannte Rolle."
+    return None
+
+
+def other_admins(connection, uid):
+    return connection.execute("SELECT COUNT(*) FROM users WHERE role='admin' AND id!=?", (uid,)).fetchone()[0]
+
+
+@app.get("/api/admin/users")
+@admin_required
+def admin_list_users():
+    rows = db().execute(
+        """SELECT u.id,u.username,u.display_name,u.email,u.role,u.created_at,
+                  u.oauth_subject!='' oauth_linked, u.password_hash!='' password_set,
+                  (SELECT COALESCE(SUM(quantity),0) FROM collection_entries c WHERE c.user_id=u.id) copies,
+                  (SELECT COUNT(*) FROM decks d WHERE d.user_id=u.id) decks
+           FROM users u ORDER BY lower(u.username)"""
+    ).fetchall()
+    return jsonify([{**dict(row), "is_self": row["id"] == user_id()} for row in rows])
+
+
+@app.post("/api/admin/users")
+@admin_required
+def admin_create_user():
+    p = request.get_json(force=True)
+    if not isinstance(p, dict):
+        return jsonify({"error": "Ungültige Anfrage."}), 400
+    error = user_fields_error(db(), p, require=("username", "password"))
+    if error:
+        return jsonify({"error": error}), 400
+    username = str(p["username"]).strip()
+    cur = db().execute(
+        "INSERT INTO users(username,display_name,password_hash,role,created_at,email) VALUES(?,?,?,?,?,?)",
+        (username, str(p.get("display_name") or "").strip() or username, generate_password_hash(str(p["password"])),
+         p.get("role") or "user", now_iso(), str(p.get("email") or "").strip()),
+    )
+    ensure_user_lists(db(), cur.lastrowid)
+    db().commit()
+    return jsonify({"id": cur.lastrowid}), 201
+
+
+@app.patch("/api/admin/users/<int:target_id>")
+@admin_required
+def admin_update_user(target_id):
+    target = db().execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+    if not target:
+        return jsonify({"error": "Konto nicht gefunden."}), 404
+    p = request.get_json(force=True)
+    if not isinstance(p, dict):
+        return jsonify({"error": "Ungültige Anfrage."}), 400
+    error = user_fields_error(db(), p, user_id_to_skip=target_id)
+    if error:
+        return jsonify({"error": error}), 400
+    if p.get("role") == "user" and target["role"] == "admin" and not other_admins(db(), target_id):
+        return jsonify({"error": "Das letzte Admin-Konto kann nicht herabgestuft werden."}), 400
+    fields, values = [], []
+    for key in ("username", "display_name", "email", "role"):
+        if key in p:
+            value = str(p[key] or "").strip()
+            if key == "display_name" and not value:
+                continue
+            fields.append(f"{key}=?")
+            values.append(value)
+    if p.get("password"):
+        fields.append("password_hash=?")
+        values.append(generate_password_hash(str(p["password"])))
+    if p.get("unlink_oauth"):
+        fields += ["oauth_provider=''", "oauth_subject=''"]
+    if not fields:
+        return jsonify({"error": "Keine Änderungen übermittelt."}), 400
+    db().execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", (*values, target_id))
+    db().commit()
+    return jsonify({"saved": True})
+
+
+@app.delete("/api/admin/users/<int:target_id>")
+@admin_required
+def admin_delete_user(target_id):
+    target = db().execute("SELECT role FROM users WHERE id=?", (target_id,)).fetchone()
+    if not target:
+        return jsonify({"error": "Konto nicht gefunden."}), 404
+    if target_id == user_id():
+        return jsonify({"error": "Das eigene Konto kann hier nicht gelöscht werden."}), 400
+    if target["role"] == "admin" and not other_admins(db(), target_id):
+        return jsonify({"error": "Das letzte Admin-Konto kann nicht gelöscht werden."}), 400
+    # Everything the account entered goes with it; the catalogue and prices are shared.
+    db().execute("DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE user_id=?)", (target_id,))
+    db().execute("DELETE FROM named_watchlist_entries WHERE list_id IN (SELECT id FROM named_watchlists WHERE user_id=?)", (target_id,))
+    db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id IN (SELECT id FROM trade_sheets WHERE user_id=?)", (target_id,))
+    for table in ("decks", "named_watchlists", "trade_sheets", "watchlist_entries", "collection_entries", "import_operations", "user_settings", "applied_requests"):
+        db().execute(f"DELETE FROM {table} WHERE user_id=?", (target_id,))
+    db().execute("DELETE FROM users WHERE id=?", (target_id,))
+    db().commit()
+    return jsonify({"deleted": True})
 
 
 @app.get("/api/admin/games")

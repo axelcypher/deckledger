@@ -237,6 +237,10 @@ body.editing .edit-indicator { display:block; }
 .admin-form textarea { font-family:ui-monospace,monospace;font-size:11px;padding:10px;border-radius:8px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink); }
 .admin-form:has(.admin-form-grid) { max-width:none; }
 .admin-config-editor .admin-form-grid,.admin-form .admin-form-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px; }
+.admin-user-fields :is(input:not([type=checkbox]),.select-control) { width:100%;min-width:0;height:38px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:11px;font-weight:600;outline:none; }
+.admin-user-fields :is(input,.select-control):focus { border-color:color-mix(in srgb,var(--brand) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 10%,transparent); }
+.admin-user-fields .radio-label { flex-direction:row;align-items:center;gap:8px;align-self:end;min-height:38px; }
+.admin-user-fields~.primary-button,.admin-user-fields>.primary-button { align-self:flex-start; }
 .admin-config-editor h4,.admin-form h4 { margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line);font-size:12px; }
 .admin-config-editor label,.admin-form-grid label { display:flex;flex-direction:column;gap:5px;font-size:10px;font-weight:700; }
 .secondary-button.small { min-height:30px;padding:0 12px;font-size:10px;align-self:flex-start; }
