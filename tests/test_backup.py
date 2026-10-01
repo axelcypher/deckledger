@@ -135,7 +135,7 @@ def decks_and_lists():
 def wipe_user_data():
     for table in ("deck_cards", "decks", "named_watchlist_entries", "collection_entries"):
         query(f"DELETE FROM {table}")
-    query("DELETE FROM named_watchlists WHERE is_default=0 AND is_sale_list=0")
+    query("DELETE FROM named_watchlists WHERE is_default=0")
 
 
 def test_restore_brings_back_decks_and_watchlists(client):

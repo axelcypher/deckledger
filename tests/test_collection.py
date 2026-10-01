@@ -71,17 +71,6 @@ def test_watchlist_rejects_unknown_and_foreign_game_cards(client):
     assert client.post("/api/watchlist", json={"variant_id": EMBER8, "list_id": vcard_list}).get_json()["active"] is True
 
 
-def test_sale_list_uses_the_games_playset_size(client):
-    """VCard allows 3 copies of a card, the default playset is 4."""
-    for variant in (EMBER8, ELSA):
-        client.post("/api/collection", json={"variant_id": variant, "delta": 5})
-    surplus = {}
-    for game in ("vcard", "lorcana"):
-        sale = next(item for item in client.get(f"/api/watchlists?game_id={game}").get_json() if item["is_sale_list"])
-        surplus[game] = [card["desired_quantity"] for card in client.get(f"/api/watchlists/{sale['id']}/cards").get_json()["cards"]]
-    assert surplus == {"vcard": [2], "lorcana": [1]}
-
-
 def click_concurrently(url, payload, clicks=8, per_click=5):
     """Fires the same request from several threads at once, each with its own session."""
     import threading

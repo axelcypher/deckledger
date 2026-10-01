@@ -512,7 +512,7 @@ RARITY_ORDER = {
 RARITY_FALLBACK_RANK = 900
 
 # Copies of one card that make a full playset -- the constructed copy limit. Drives Playset%
-# and what the Verkaufsliste treats as surplus stock.
+# and what the trade sheet picker offers as surplus.
 PLAYSET_SIZES = {"vcard": 3}
 DEFAULT_PLAYSET_SIZE = 4
 
@@ -681,19 +681,56 @@ def seed_database(connection):
 
 
 def ensure_user_lists(connection, user_id=None):
-    """Every account has a default watchlist and the fixed sale list for every game. Idempotent;
-    runs for all accounts at start-up and for one account right after it is created -- an account
-    made while the app is running (admin, SSO auto-provisioning) used to have neither until the
-    next restart, so its first "add to watchlist" failed."""
+    """Every account has a default watchlist for every game. Idempotent; runs for all accounts at
+    start-up and for one account right after it is created -- an account made while the app is
+    running (admin, SSO auto-provisioning) used to have none until the next restart, so its first
+    "add to watchlist" failed."""
     stamp = now_iso()
     scope, args = ("WHERE u.id=?", (user_id,)) if user_id else ("", ())
     connection.execute(f"""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,created_at)
       SELECT u.id,g.id,'Merkliste',1,? FROM users u CROSS JOIN games g {scope}""", (stamp, *args))
-    # Fixed, per-game "Verkaufsliste" -- can't be renamed or deleted (see manage_watchlist),
-    # populated by reconcile_sale_list() with anything over a playset plus whatever's been
-    # manually added to it.
-    connection.execute(f"""INSERT OR IGNORE INTO named_watchlists(user_id,game_id,name,is_default,is_sale_list,created_at)
-      SELECT u.id,g.id,'Verkaufsliste',0,1,? FROM users u CROSS JOIN games g {scope}""", (stamp, *args))
+
+
+SALE_LIST_NAME = "Verkaufsliste"
+
+
+def migrate_sale_lists(connection):
+    """The fixed per-game "Verkaufsliste" among the watchlists was the forerunner of the trade
+    sheets (is_sale_list=1; its entries were tagged 'auto' when the app had put them there for
+    stock beyond a playset, 'manual' otherwise). Every such list that holds cards becomes a WTS
+    sheet of the same name with the same cards and quantities, then the list is removed. An 'auto'
+    entry is only taken over while its card is still surplus -- the list dropped those the next
+    time it was opened.
+
+    List names are unique per account and game, so where an account already had a list of its own
+    called "Verkaufsliste" the fixed one was never created next to it and that list served as the
+    sale list. It is taken over the same way -- once, marked in app_settings, so a watchlist given
+    that name later stays a watchlist.
+
+    Runs inside init_database's start-up transaction, so concurrently starting workers do it once."""
+    stamp = now_iso()
+    by_name = not connection.execute("SELECT 1 FROM app_settings WHERE key='sale_lists_migrated'").fetchone()
+    connection.execute("INSERT OR IGNORE INTO app_settings(key,value) VALUES('sale_lists_migrated',?)", (stamp,))
+    for list_id, uid, game_id, name, created_at in connection.execute(
+        "SELECT id,user_id,game_id,name,created_at FROM named_watchlists WHERE is_sale_list=1 OR (? AND is_default=0 AND name=?) ORDER BY id",
+        (by_name, SALE_LIST_NAME),
+    ).fetchall():
+        entries = connection.execute(
+            """SELECT e.variant_id,e.quantity FROM named_watchlist_entries e WHERE e.list_id=? AND (e.source!='auto' OR
+                 (SELECT COALESCE(SUM(c.quantity),0) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=e.variant_id)>?)
+               ORDER BY e.id""", (list_id, uid, playset_size(game_id)),
+        ).fetchall()
+        if entries:
+            sheet_id = connection.execute(
+                "INSERT INTO trade_sheets(user_id,game_id,name,kind,created_at,updated_at) VALUES(?,?,?,'WTS',?,?)",
+                (uid, game_id, name, created_at or stamp, stamp),
+            ).lastrowid
+            connection.executemany(
+                "INSERT OR IGNORE INTO trade_sheet_cards(sheet_id,variant_id,quantity) VALUES(?,?,?)",
+                [(sheet_id, variant_id, max(1, min(99, quantity))) for variant_id, quantity in entries],
+            )
+        connection.execute("DELETE FROM named_watchlist_entries WHERE list_id=?", (list_id,))
+        connection.execute("DELETE FROM named_watchlists WHERE id=?", (list_id,))
 
 
 def init_database():
@@ -741,11 +778,8 @@ def init_database():
     if "quantity" not in watchlist_entry_columns:
         connection.execute("ALTER TABLE named_watchlist_entries ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
     if "source" not in watchlist_entry_columns:
-        # 'auto': created by reconcile_sale_list() for surplus stock (>4 owned copies) -- only
-        # entries tagged this way are ever silently added/removed again by that reconciliation.
-        # 'manual' (the default): everything added through the normal watchlist toggle/move --
-        # including a card moved onto the fixed sale list, or one added there despite not (yet)
-        # being surplus. Never touched by reconciliation.
+        # Both this column and is_sale_list below belong to the former fixed sale list. Nothing
+        # writes them any more; they stay so migrate_sale_lists() can read a database of any age.
         connection.execute("ALTER TABLE named_watchlist_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
     watchlist_columns = {row[1] for row in connection.execute("PRAGMA table_info(named_watchlists)")}
     if "is_sale_list" not in watchlist_columns:
@@ -803,6 +837,7 @@ def init_database():
       SELECT nw.id,w.variant_id,w.created_at FROM watchlist_entries w
       JOIN variants v ON v.id=w.variant_id
       JOIN named_watchlists nw ON nw.user_id=w.user_id AND nw.game_id=v.game_id AND nw.is_default=1""")
+    migrate_sale_lists(connection)
     connection.commit()
     connection.close()
 
@@ -1151,6 +1186,7 @@ def bootstrap():
             "completion": round(stats["unique_cards"] / total * 100) if total else 0,
             "main_completion": round(main_owned / main_total * 100) if main_total else 0,
             "set_count": set_count, "deck_count": deck_count, "watch_count": watch_count, "sheet_count": sheet_count,
+            "playset_size": playset_size(game_id),
         })
         games.append(game)
     imports = [dict(r) for r in db().execute("SELECT id,created_at,game_id,undone_at FROM import_operations WHERE user_id=? ORDER BY id DESC LIMIT 4", (uid,))]
@@ -2353,47 +2389,6 @@ def variant_price_history(variant_id):
     return jsonify({"variant_id": variant_id, "metric": metric, "points": points})
 
 
-def reconcile_sale_list(list_id, uid, game_id):
-    """Keeps the fixed Verkaufsliste's auto-managed entries in sync with actual surplus stock
-    (more than a playset -- playset_size(), 4 for most games -- of owned copies of a variant,
-    summed across every condition/grading) every time
-    the list is actually viewed -- cheap enough to run on every GET, and far more robust than
-    hooking every one of the several places collection_entries.quantity can change (the main
-    quantity endpoint, collection import, import-undo, offline-sync replay, ...) individually.
-
-    Only touches its own 'auto' rows: adds one (at the current surplus count) for a newly-
-    surplus variant that doesn't already have ANY entry here (so it never clobbers a 'manual'
-    row for the same card), and removes an 'auto' row once its variant is no longer surplus at
-    all. An existing 'auto' row's quantity is deliberately left alone once created -- the surplus
-    count at creation time is just a sensible starting point, not something that should silently
-    overwrite a quantity the user has since adjusted (e.g. because they already sold some)."""
-    surplus_rows = db().execute(
-        """SELECT v.id variant_id, SUM(c.quantity) owned FROM collection_entries c
-           JOIN variants v ON v.id=c.variant_id WHERE c.user_id=? AND v.game_id=?
-           GROUP BY v.id HAVING SUM(c.quantity)>?""", (uid, game_id, playset_size(game_id)),
-    ).fetchall()
-    surplus_map = {row["variant_id"]: row["owned"] - playset_size(game_id) for row in surplus_rows}
-    existing_auto = db().execute(
-        "SELECT id,variant_id FROM named_watchlist_entries WHERE list_id=? AND source='auto'", (list_id,),
-    ).fetchall()
-    existing_auto_ids = {row["variant_id"] for row in existing_auto}
-    stamp = now_iso()
-    for variant_id, surplus in surplus_map.items():
-        if variant_id in existing_auto_ids:
-            continue
-        already = db().execute("SELECT 1 FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id, variant_id)).fetchone()
-        if already:
-            continue  # a manual entry already covers this card -- don't add a second, conflicting row
-        db().execute(
-            "INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,source,created_at) VALUES(?,?,?,?,?)",
-            (list_id, variant_id, surplus, "auto", stamp),
-        )
-    for row in existing_auto:
-        if row["variant_id"] not in surplus_map:
-            db().execute("DELETE FROM named_watchlist_entries WHERE id=?", (row["id"],))
-    db().commit()
-
-
 @app.post("/api/watchlist")
 @login_required
 def toggle_watchlist():
@@ -2508,9 +2503,7 @@ def manage_watchlist(list_id):
     if not row:return jsonify({"error":"watchlist not found"}),404
     if request.method=="DELETE":
         if row["is_default"]: return jsonify({"error":"Die Standardliste kann nicht gelöscht werden."}),400
-        if row["is_sale_list"]: return jsonify({"error":"Die Verkaufsliste kann nicht gelöscht werden."}),400
         db().execute("DELETE FROM named_watchlists WHERE id=?",(list_id,));db().commit();return jsonify({"deleted":True})
-    if row["is_sale_list"]: return jsonify({"error":"Die Verkaufsliste kann nicht umbenannt werden."}),400
     name=request.get_json(force=True).get("name","").strip()[:80]
     if not name:return jsonify({"error":"name required"}),400
     db().execute("UPDATE named_watchlists SET name=? WHERE id=?",(name,list_id));db().commit();return jsonify({"saved":True})
@@ -2521,7 +2514,6 @@ def manage_watchlist(list_id):
 def watchlist_cards(list_id):
     owned=db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?",(list_id,user_id())).fetchone()
     if not owned:return jsonify({"error":"watchlist not found"}),404
-    if owned["is_sale_list"]: reconcile_sale_list(list_id, user_id(), owned["game_id"])
     q=request.args.get("q","").strip(); language=request.args.get("language","all"); set_id=request.args.get("set_id",""); finish=request.args.get("finish",""); sort=request.args.get("sort","added")
     rarity=request.args.get("rarity","")
     selected_rarities=[value for value in request.args.get("rarities","").split(",") if value]
@@ -2531,7 +2523,7 @@ def watchlist_cards(list_id):
     rows = db().execute(
         f"""SELECT v.id variant_id,v.finish,i.id identity_id,i.canonical_name,i.rules_text,p.collector_number,p.language,
             p.rarity,i.card_type,i.attributes identity_attrs,p.attributes printing_attrs,s.id set_id,s.name set_name,g.id game_id,g.short_name game_name,g.accent,{latest_price_sql('v')} price,
-            COALESCE(SUM(c.quantity),0) quantity,nwe.quantity desired_quantity,nwe.source entry_source,nwe.created_at
+            COALESCE(SUM(c.quantity),0) quantity,nwe.quantity desired_quantity,nwe.created_at
             FROM named_watchlist_entries nwe JOIN variants v ON v.id=nwe.variant_id JOIN printings p ON p.id=v.printing_id
             JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
             LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? WHERE nwe.list_id=? GROUP BY v.id""", (user_id(),list_id)
@@ -2556,9 +2548,9 @@ def watchlist_cards(list_id):
 def export_watchlist(list_id):
     """Plain-text export of one watchlist -- same "<qty>x <name>" format as the deck missing-
     list export (export_deck_missing_list), aggregated by name and sorted alphabetically. A
-    watchlist is already a want-to-buy list (or, on the fixed Verkaufsliste, a want-to-sell
-    list), so unlike the deck exports there's no separate "list vs. missing-only" distinction --
-    one format, straight from each entry's own quantity column."""
+    watchlist is already a want-to-buy list, so unlike the deck exports there's no separate
+    "list vs. missing-only" distinction -- one format, straight from each entry's own quantity
+    column."""
     watchlist=db().execute("SELECT * FROM named_watchlists WHERE id=? AND user_id=?",(list_id,user_id())).fetchone()
     if not watchlist:return jsonify({"error":"watchlist not found"}),404
     rows=db().execute(
@@ -3592,7 +3584,10 @@ def import_json_preview():
     rows = parse_json_backup(p.get("collection") or [])
     games = {row["name"] for row in db().execute("SELECT name FROM games")}
     # One summary line per deck and watchlist in the backup, in the same shape as a card row.
-    for kind, label, items, cards_key in (("deck", "Deck", p.get("decks") or [], "cards"), ("watchlist", "Watchlist", p.get("watchlists") or [], "entries")):
+    for kind, label, items, cards_key in (
+        ("deck", "Deck", p.get("decks") or [], "cards"), ("watchlist", "Watchlist", backup_watchlists(p), "entries"),
+        ("sheet", "Sheet", backup_sheets(p), "cards"),
+    ):
         for item in items:
             entries = item.get(cards_key) or []
             if not entries:
@@ -3605,6 +3600,27 @@ def import_json_preview():
                 "message": f'{item.get("game")} · {found} von {len(entries)} Karten gefunden' if known_game else f'Spiel „{item.get("game")}“ gibt es hier nicht',
             })
     return jsonify(rows)
+
+
+def is_legacy_sale_list(item):
+    """A backup from before the trade sheets marks every watchlist with is_sale_list; newer ones
+    no longer have the key. In such a backup the sale list is the flagged list or, where the
+    account had its own list of that name instead, that one -- see migrate_sale_lists()."""
+    return "is_sale_list" in item and bool(item["is_sale_list"] or (not item.get("is_default") and item.get("name") == SALE_LIST_NAME))
+
+
+def backup_watchlists(payload):
+    return [item for item in payload.get("watchlists") or [] if not is_legacy_sale_list(item)]
+
+
+def backup_sheets(payload):
+    """The sheets of a backup, including an older backup's sale list, which is read as the WTS
+    sheet it has since become."""
+    legacy = [
+        {"name": item.get("name"), "game": item.get("game"), "kind": "WTS", "cards": item.get("entries") or []}
+        for item in payload.get("watchlists") or [] if is_legacy_sale_list(item)
+    ]
+    return list(payload.get("trade_sheets") or []) + legacy
 
 
 def restore_backup_decks(decks, strategy, changes):
@@ -3659,10 +3675,7 @@ def restore_backup_watchlists(watchlists, strategy, changes):
         entries = watchlist.get("entries") or []
         if not game_id or not name or not entries:
             continue
-        if watchlist.get("is_sale_list"):
-            target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? AND is_sale_list=1", (uid, game_id)).fetchone()
-        else:
-            target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? AND name=? AND is_sale_list=0", (uid, game_id, name)).fetchone()
+        target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? AND name=?", (uid, game_id, name)).fetchone()
         if target:
             list_id = target["id"]
         else:
@@ -3680,17 +3693,73 @@ def restore_backup_watchlists(watchlists, strategy, changes):
                 db().execute("UPDATE named_watchlist_entries SET quantity=? WHERE id=?", (quantity, existing["id"]))
             else:
                 entry_id = db().execute(
-                    "INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,source,created_at) VALUES(?,?,?,?,?)",
-                    (list_id, variant_id, quantity, "auto" if entry.get("source") == "auto" else "manual", entry.get("created_at") or stamp),
+                    "INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,?,?)",
+                    (list_id, variant_id, quantity, entry.get("created_at") or stamp),
                 ).lastrowid
                 changes.append({"kind": "watchlist_entry_added", "entry_id": entry_id})
             summary["watchlist_entries_restored"] += 1
     return summary
 
 
+def restore_backup_sheets(sheets, strategy, changes):
+    """Like decks: a sheet is created when none of that name exists for the game, and an existing
+    one keeps its cards unless the import runs with "replace"."""
+    uid, stamp, summary = user_id(), now_iso(), {"sheets_restored": 0, "sheets_skipped": 0}
+    games = {row["name"]: row["id"] for row in db().execute("SELECT id,name FROM games")}
+    for sheet in sheets:
+        game_id, name = games.get(sheet.get("game")), str(sheet.get("name") or "").strip()[:80]
+        entries = sheet.get("cards") or []
+        cards = {}
+        for entry, row in zip(entries, parse_json_backup(entries)):
+            if row["status"] == "matched" and row["quantity"] > 0:
+                cards[row["match"]["variant_id"]] = (min(99, row["quantity"]), str(entry.get("label") or "").strip()[:24])
+        if not game_id or not name or not cards:
+            continue
+        existing = db().execute("SELECT id FROM trade_sheets WHERE user_id=? AND game_id=? AND name=?", (uid, game_id, name)).fetchone()
+        if existing and strategy != "replace":
+            summary["sheets_skipped"] += 1
+            continue
+        if existing:
+            sheet_id = existing["id"]
+            before = [dict(row) for row in db().execute("SELECT variant_id,quantity,label FROM trade_sheet_cards WHERE sheet_id=? ORDER BY id", (sheet_id,))]
+            changes.append({"kind": "sheet_replaced", "sheet_id": sheet_id, "cards_before": before})
+            db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id=?", (sheet_id,))
+            db().execute("UPDATE trade_sheets SET updated_at=? WHERE id=?", (stamp, sheet_id))
+        else:
+            layout = sheet.get("layout")
+            sheet_id = db().execute(
+                "INSERT INTO trade_sheets(user_id,game_id,name,kind,subtitle,background,sort,layout,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    uid, game_id, name, sheet.get("kind") if sheet.get("kind") in SHEET_KINDS else "WTS",
+                    str(sheet.get("subtitle") or "").strip()[:80],
+                    sheet.get("background") if sheet.get("background") in sheet_render.BACKGROUNDS else "midnight",
+                    sheet.get("sort") if sheet.get("sort") in SHEET_SORTS else "number",
+                    layout if isinstance(layout, str) and sheet_render.parse_layout(layout) else "auto",
+                    sheet.get("created_at") or stamp, stamp,
+                ),
+            ).lastrowid
+            changes.append({"kind": "sheet_created", "sheet_id": sheet_id})
+        db().executemany(
+            "INSERT INTO trade_sheet_cards(sheet_id,variant_id,quantity,label) VALUES(?,?,?,?)",
+            [(sheet_id, variant_id, quantity, label) for variant_id, (quantity, label) in cards.items()],
+        )
+        summary["sheets_restored"] += 1
+    return summary
+
+
 def undo_restored_item(change):
-    """Reverts one deck/watchlist step of a backup import; every statement is scoped to the user."""
+    """Reverts one deck/watchlist/sheet step of a backup import; every statement is scoped to the user."""
     uid, kind = user_id(), change["kind"]
+    own_sheet_row = "id=? AND user_id=?"
+    if kind == "sheet_created":
+        db().execute(f"DELETE FROM trade_sheets WHERE {own_sheet_row}", (change["sheet_id"], uid))
+    elif kind == "sheet_replaced" and db().execute(f"SELECT 1 FROM trade_sheets WHERE {own_sheet_row}", (change["sheet_id"], uid)).fetchone():
+        db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id=?", (change["sheet_id"],))
+        db().executemany(
+            "INSERT INTO trade_sheet_cards(sheet_id,variant_id,quantity,label) VALUES(?,?,?,?)",
+            [(change["sheet_id"], card["variant_id"], card["quantity"], card["label"]) for card in change["cards_before"]],
+        )
+        db().execute("UPDATE trade_sheets SET updated_at=? WHERE id=?", (now_iso(), change["sheet_id"]))
     own_deck = "id=? AND user_id=?"
     own_entry = "id=? AND list_id IN (SELECT id FROM named_watchlists WHERE user_id=?)"
     if kind == "deck_created":
@@ -3701,7 +3770,7 @@ def undo_restored_item(change):
         db().executemany("INSERT INTO deck_cards(deck_id,variant_id,zone,quantity) VALUES(?,?,?,?)", [(change["deck_id"], card["variant_id"], card["zone"], card["quantity"]) for card in change["cards_before"]])
         db().execute("UPDATE decks SET cover_variant_id=? WHERE id=?", (change["cover_before"], change["deck_id"]))
     elif kind == "watchlist_created":
-        db().execute("DELETE FROM named_watchlists WHERE id=? AND user_id=? AND is_default=0 AND is_sale_list=0", (change["list_id"], uid))
+        db().execute("DELETE FROM named_watchlists WHERE id=? AND user_id=? AND is_default=0", (change["list_id"], uid))
     elif kind == "watchlist_entry_added":
         db().execute(f"DELETE FROM named_watchlist_entries WHERE {own_entry}", (change["entry_id"], uid))
     elif kind == "watchlist_entry_updated":
@@ -3738,7 +3807,10 @@ def import_json_apply():
         )
         changes.append({"variant_id":vid,"condition":cond,"is_graded":graded,"grade_label":grade,"before":before,"after":after,"notes_before":notes_before,"price_override_before":override_before,"last_added_at_before":old["last_added_at"] if old else None})
     applied = len(changes)
-    summary = {**restore_backup_decks(p.get("decks") or [], strategy, changes), **restore_backup_watchlists(p.get("watchlists") or [], strategy, changes)}
+    summary = {
+        **restore_backup_decks(p.get("decks") or [], strategy, changes), **restore_backup_watchlists(backup_watchlists(p), strategy, changes),
+        **restore_backup_sheets(backup_sheets(p), strategy, changes),
+    }
     games = sorted({row["match"]["game_id"] for row in rows if row.get("match")})
     cur = db().execute(
         "INSERT INTO import_operations(user_id,created_at,game_id,source_text,changes) VALUES(?,?,?,?,?)",
@@ -3895,8 +3967,7 @@ def export_collection(fmt):
     ).fetchall()
     data = [dict(r) for r in rows]
     if fmt == "json":
-        # Decks and watchlists ride along so one file holds everything a user entered by hand.
-        # Only "collection" is read back by the importer so far.
+        # Decks, watchlists and sheets ride along so one file holds everything a user entered by hand.
         card_columns = """v.id variant_id,g.name game,s.code set_code,s.name set_name,p.collector_number,i.canonical_name,p.language,v.finish"""
         card_joins = """JOIN variants v ON v.id=e.variant_id JOIN printings p ON p.id=v.printing_id
           JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id"""
@@ -3910,10 +3981,10 @@ def export_collection(fmt):
             })
         watchlists = []
         for watchlist in db().execute("SELECT w.*,g.name game FROM named_watchlists w JOIN games g ON g.id=w.game_id WHERE w.user_id=? ORDER BY w.id", (uid,)):
-            entries = db().execute(f"SELECT {card_columns},e.quantity,e.source,e.created_at FROM named_watchlist_entries e {card_joins} WHERE e.list_id=? ORDER BY e.id", (watchlist["id"],))
+            entries = db().execute(f"SELECT {card_columns},e.quantity,e.created_at FROM named_watchlist_entries e {card_joins} WHERE e.list_id=? ORDER BY e.id", (watchlist["id"],))
             watchlists.append({
                 "name": watchlist["name"], "game": watchlist["game"], "is_default": watchlist["is_default"],
-                "is_sale_list": watchlist["is_sale_list"], "entries": [dict(entry) for entry in entries],
+                "entries": [dict(entry) for entry in entries],
             })
         sheets = []
         for sheet in db().execute("SELECT t.*,g.name game FROM trade_sheets t JOIN games g ON g.id=t.game_id WHERE t.user_id=? ORDER BY t.id", (uid,)):

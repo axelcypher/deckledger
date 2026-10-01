@@ -37,6 +37,7 @@ the demo hint on the login page disappears once the `demo` password has been cha
 - Multiple named watchlists per TCG with catalogue-style filters and sorting
 - Saved decklists with module-defined zones, formats and official-rule validation
 - Trade and sale sheets: pick cards from the collection, set quantities and price labels, and download the sheet as an image collage on a playmat-style background, with a ready-to-paste text list for the post
+- JSON backups carry collection, decks, watchlists and sheets, and restore all four
 
 There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
 
@@ -67,6 +68,13 @@ generated wordmarks. Prefer the internal set ID as filename, for example
 `one-piece-op-01.webp`; AVIF, WebP, PNG, JPEG, and SVG are supported. The public
 folder is mounted read-only into the container, so adding an asset needs no
 image rebuild.
+
+The fixed "Verkaufsliste" that older versions kept among the watchlists has been
+replaced by the trade sheets. On the first start after the update every such list
+that holds cards becomes a WTS sheet of the same name with the same cards and
+quantities; a backup that still contains one restores it as a sheet as well. What
+that list collected automatically is now the "Über Playset" source when adding cards
+to a sheet.
 
 ## Account settings
 

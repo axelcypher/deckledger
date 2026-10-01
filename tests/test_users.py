@@ -27,7 +27,7 @@ def test_created_account_can_sign_in_and_use_the_app(admin):
     assert games["user"]["display_name"] == "Mia" and games["user"]["role"] == "user"
     # Regression: accounts made while the app runs had no default lists until the next restart.
     assert mia.post("/api/watchlist", json={"variant_id": EMBER8}).get_json()["active"] is True
-    assert {item["name"] for item in mia.get("/api/watchlists?game_id=vcard").get_json()} == {"Merkliste", "Verkaufsliste"}
+    assert {item["name"] for item in mia.get("/api/watchlists?game_id=vcard").get_json()} == {"Merkliste"}
 
 
 def test_creation_validates_its_input(admin):

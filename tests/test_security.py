@@ -85,7 +85,7 @@ def test_sso_auto_provision_creates_a_ready_to_use_account_for_an_unknown_identi
     created = resolve("auto_provision", "neu@example.com")
     assert (created["username"], created["role"], created["email"]) == ("neu", "user", "neu@example.com")
     lists = query("SELECT COUNT(*) n FROM named_watchlists WHERE user_id=?", (created["id"],))[0]["n"]
-    assert lists == 2 * query("SELECT COUNT(*) n FROM games")[0]["n"], "default watchlist and sale list for every game"
+    assert lists == query("SELECT COUNT(*) n FROM games")[0]["n"], "a default watchlist for every game"
 
 
 def test_sso_email_mode_links_but_never_creates():

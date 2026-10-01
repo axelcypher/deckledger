@@ -3,7 +3,7 @@ const state = {
   edit: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
   filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
   modalFoilLayerMeta: null, modalFoilLayerMetaVariantId: null,
-  activeGameId: null, watchlistId: null, activeWatchlists: [], watchSelection: new Set(), watchSelectionMode: false, watchIsSaleList: false, deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
+  activeGameId: null, watchlistId: null, activeWatchlists: [], watchSelection: new Set(), watchSelectionMode: false,  deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
   collapsedSetGroups: {},
   cardFilters: {rarity:'', rarities:[], costs:[], colors:[], inkwell:'', finish:'normal', foilMode:''},
   collectionFilters: {q:'',set_id:'',language:'all',rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'},
@@ -1768,26 +1768,23 @@ async function renderWatchlist(preserve=false){
   if(!state.watchlistId){content.innerHTML='<div class="empty-state"><b>Noch keine Watchlist</b></div>';return}
   const f=state.watchFilters, params=new URLSearchParams(f), data=await api(`/api/watchlists/${state.watchlistId}/cards?${params}`), sets=await api(`/api/games/${state.activeGameId}/sets`);
   const currentSet=sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
-  state.watchIsSaleList=Boolean(data.list.is_sale_list);
   state.cards=data.cards.map(r=>({...r,variants:[r],variant_count:1,owned_variants:r.quantity?1:0,watchlisted:true,value:r.quantity*r.price}));
   // Selections don't survive a list switch (they're indices into a variant set that only makes
   // sense within the list they were made on) -- drop anything that isn't in the current view.
   const visibleVariantIds=new Set(state.cards.map(c=>c.variant_id));
   [...state.watchSelection].forEach(id=>{if(!visibleVariantIds.has(id))state.watchSelection.delete(id)});
   const otherLists=lists.filter(l=>l.id!==state.watchlistId);
-  // Marktwert = Preis × gewünschte/zu verkaufende Menge, nicht 1× pro Karte -- auf der
-  // Verkaufsliste ist das der geschätzte Erlös, sonst die Summe, die es kosten würde, die
-  // Liste komplett zu erfüllen. Same label used in updateWatchTotals()'s lookup below.
-  const valueLabel=state.watchIsSaleList?'Verkaufswert':'Marktwert';
+  // Marktwert = Preis × gewünschte Menge, nicht 1× pro Karte: die Summe, die es kosten würde,
+  // die Liste komplett zu erfüllen. Same label used in updateWatchTotals()'s lookup below.
+  const valueLabel='Marktwert';
   const watchStats=statPill([
     {label:'Liste',value:escapeHtml(data.list.name)},
     {label:'Varianten',value:data.cards.length},
     {label:valueLabel,value:money(data.cards.reduce((a,c)=>a+(c.price||0)*(c.desired_quantity||1),0))},
   ],{className:'browser-summary',columns:3,mobileColumns:3});
-  const saleListSubtitle='Feste Liste für überschüssige Karten: alles über 4 Exemplaren landet automatisch hier (4 bleiben immer im Bestand) -- du kannst zusätzlich jederzeit selbst Karten hinzufügen.';
-  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · PREISBEOBACHTUNG</span><h1>Watchlists</h1><p>${state.watchIsSaleList?saleListSubtitle:'Getrennte Listen für Kaufziele, Deckprojekte und Preisalarme.'}</p></div><div class="page-head-actions"><button class="primary-button" id="new-watchlist">＋ Neue Watchlist</button></div></div>
-    <div class="list-tabs">${lists.map(l=>`<button data-list="${l.id}" class="${l.id===state.watchlistId?'active':''}">${l.is_sale_list?'<i class="list-tab-icon" aria-hidden="true">₴</i>':''}<b>${escapeHtml(l.name)}</b><span>${l.count} · ${money(l.value)}</span></button>`).join('')}</div>
-    <div class="browser-summary-row">${watchStats}<div class="browser-summary-actions"><button class="secondary-button watch-selection-toggle ${state.watchSelectionMode?'active':''}" id="watch-selection-toggle" aria-pressed="${state.watchSelectionMode}"><span aria-hidden="true">${state.watchSelectionMode?'✓':'⌗'}</span>${state.watchSelectionMode?'Fertig':'Mehrfachauswahl'}</button><a class="secondary-button watch-export-link" id="export-watchlist" href="/api/watchlists/${state.watchlistId}/export.txt" download>Exportieren</a>${data.list.is_sale_list?'':`<button class="secondary-button" id="rename-watchlist">Umbenennen</button>${data.list.is_default?'':`<button class="danger-button" id="delete-watchlist">Löschen</button>`}`}</div></div>
+  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · PREISBEOBACHTUNG</span><h1>Watchlists</h1><p>Getrennte Listen für Kaufziele, Deckprojekte und Preisalarme.</p></div><div class="page-head-actions"><button class="primary-button" id="new-watchlist">＋ Neue Watchlist</button></div></div>
+    <div class="list-tabs">${lists.map(l=>`<button data-list="${l.id}" class="${l.id===state.watchlistId?'active':''}"><b>${escapeHtml(l.name)}</b><span>${l.count} · ${money(l.value)}</span></button>`).join('')}</div>
+    <div class="browser-summary-row">${watchStats}<div class="browser-summary-actions"><button class="secondary-button watch-selection-toggle ${state.watchSelectionMode?'active':''}" id="watch-selection-toggle" aria-pressed="${state.watchSelectionMode}"><span aria-hidden="true">${state.watchSelectionMode?'✓':'⌗'}</span>${state.watchSelectionMode?'Fertig':'Mehrfachauswahl'}</button><a class="secondary-button watch-export-link" id="export-watchlist" href="/api/watchlists/${state.watchlistId}/export.txt" download>Exportieren</a><button class="secondary-button" id="rename-watchlist">Umbenennen</button>${data.list.is_default?'':`<button class="danger-button" id="delete-watchlist">Löschen</button>`}</div></div>
     ${state.watchSelectionMode?`<div class="watch-bulkbar"><label class="watch-bulkbar-all"><input type="checkbox" id="watch-select-all" ${state.cards.length&&state.watchSelection.size===state.cards.length?'checked':''}> Alle auswählen</label><span class="watch-bulkbar-count" id="watch-bulkbar-count">${state.watchSelection.size?`${state.watchSelection.size} ausgewählt`:'Karten zum Auswählen anklicken'}</span><select id="watch-move-target" class="select-control" ${state.watchSelection.size&&otherLists.length?'':'disabled'}><option value="">Verschieben nach …</option>${otherLists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button" id="watch-move-btn" ${state.watchSelection.size&&otherLists.length?'':'disabled'}>Verschieben</button><button class="danger-button" id="watch-remove-btn" ${state.watchSelection.size?'':'disabled'}>Entfernen</button></div>`:''}
     <div class="card-toolbar-sticky watch-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile watch-filter-mobile">
       <div class="filter-search"><span>⌕</span><input id="watch-q" value="${escapeHtml(f.q)}" placeholder="Watchlist durchsuchen"></div>
@@ -1878,10 +1875,7 @@ function enhanceWatchlistTiles(){
       tile.setAttribute('aria-pressed',String(state.watchSelection.has(item.variant_id)));
       tile.setAttribute('aria-label',`${item.canonical_name||'Karte'} ${state.watchSelection.has(item.variant_id)?'ausgewählt':'auswählen'}`);
     }
-    const sourceTag=state.watchIsSaleList&&item.entry_source?`<i class="watch-source-tag ${item.entry_source}" title="${item.entry_source==='auto'?'Automatisch erkannt: mehr als 4 Exemplare im Bestand':'Manuell hinzugefügt'}">${item.entry_source==='auto'?'auto':'manuell'}</i>`:'';
-    const desiredLabel=state.watchIsSaleList?'Verkaufen':'Gewünscht';
-    const desiredTitle=state.watchIsSaleList?`Zum Verkauf vorgemerkte Anzahl${item.quantity!=null?` · Bestand: ${item.quantity}`:''}`:'Gewünschte Anzahl Exemplare';
-    info.insertAdjacentHTML('beforeend',`<div class="watch-desired" title="${escapeHtml(desiredTitle)}">${sourceTag}<span>${desiredLabel}</span><button type="button" data-desired-delta="-1" aria-label="Weniger">−</button><b>${item.desired_quantity||1}</b><button type="button" data-desired-delta="1" aria-label="Mehr">＋</button></div>`);
+    info.insertAdjacentHTML('beforeend',`<div class="watch-desired" title="Gewünschte Anzahl Exemplare"><span>Gewünscht</span><button type="button" data-desired-delta="-1" aria-label="Weniger">−</button><b>${item.desired_quantity||1}</b><button type="button" data-desired-delta="1" aria-label="Mehr">＋</button></div>`);
     $('.watch-desired',tile).onclick=e=>e.stopPropagation();
     $$('.watch-desired [data-desired-delta]',tile).forEach(btn=>btn.onclick=()=>changeDesiredQuantity(item,Number(btn.dataset.desiredDelta),tile));
   });
@@ -2804,13 +2798,15 @@ function setIeMode(mode){
 
 async function handleImportJsonFile(file){
   const nameLabel=$('#import-json-filename');
-  importJsonExtras={decks:[],watchlists:[]};
+  importJsonExtras={decks:[],watchlists:[],trade_sheets:[]};
   if(!file){importJsonData=null;nameLabel.textContent='';return}
   try{
     const parsed=JSON.parse(await file.text());
     importJsonData=Array.isArray(parsed)?parsed:(parsed.collection||[]);
-    if(!Array.isArray(parsed))importJsonExtras={decks:parsed.decks||[],watchlists:(parsed.watchlists||[]).filter(list=>list.entries?.length)};
-    const extras=[importJsonExtras.decks.length&&`${importJsonExtras.decks.length} Decks`,importJsonExtras.watchlists.length&&`${importJsonExtras.watchlists.length} Watchlists`].filter(Boolean);
+    if(!Array.isArray(parsed))importJsonExtras={decks:parsed.decks||[],watchlists:(parsed.watchlists||[]).filter(list=>list.entries?.length),trade_sheets:(parsed.trade_sheets||[]).filter(sheet=>sheet.cards?.length)};
+    // Older backups carry the former fixed sale list among the watchlists; the server restores it as a sheet.
+    const saleLists=importJsonExtras.watchlists.filter(list=>'is_sale_list' in list&&(list.is_sale_list||(!list.is_default&&list.name==='Verkaufsliste'))).length,watchCount=importJsonExtras.watchlists.length-saleLists,sheetCount=importJsonExtras.trade_sheets.length+saleLists;
+    const extras=[importJsonExtras.decks.length&&`${importJsonExtras.decks.length} Decks`,watchCount&&`${watchCount} Watchlists`,sheetCount&&`${sheetCount} Sheets`].filter(Boolean);
     nameLabel.textContent=`${file.name} · ${importJsonData.length} Einträge${extras.length?` · ${extras.join(' · ')}`:''}`;
   }catch(error){
     importJsonData=null;nameLabel.textContent='';
@@ -2822,7 +2818,7 @@ async function handleImportJsonFile(file){
 // Pick cards from the collection, group them into a sheet, get the sheet as images for a
 // "want to sell" / "want to trade" post. The images are rendered by the server (sheet_render.py);
 // this page is selection, options and preview.
-const sheetView={options:null,payload:null,picker:{source:'collection',q:'',cards:null,saleCards:null},previewTimer:null};
+const sheetView={options:null,payload:null,picker:{source:'collection',q:'',cards:null},previewTimer:null};
 const SHEET_PICKER_LIMIT=80;
 
 async function renderSheets(){
@@ -2867,7 +2863,7 @@ async function renderSheets(){
     </section>
     <aside class="sheet-picker">
       <div class="sheet-section-head"><b>Karten hinzufügen</b></div>
-      <div class="segmented sheet-source">${[['collection','Sammlung'],['duplicates','Doppelte'],['sale','Verkaufsliste']].map(([id,label])=>`<button type="button" data-sheet-source="${id}" class="${sheetView.picker.source===id?'active':''}">${label}</button>`).join('')}</div>
+      <div class="segmented sheet-source">${[['collection','Sammlung'],['duplicates','Doppelte'],['surplus','Über Playset']].map(([id,label])=>`<button type="button" data-sheet-source="${id}" class="${sheetView.picker.source===id?'active':''}">${label}</button>`).join('')}</div>
       <div class="filter-search"><span>⌕</span><input id="sheet-picker-q" value="${escapeHtml(sheetView.picker.q)}" placeholder="Name, Nummer oder Set"></div>
       <div id="sheet-picker-list" class="sheet-picker-list"></div>
     </aside></div>`;
@@ -2885,7 +2881,7 @@ async function renderSheets(){
   $$('[data-sheet-source]',content).forEach(button=>button.onclick=()=>{sheetView.picker.source=button.dataset.sheetSource;$$('[data-sheet-source]',content).forEach(item=>item.classList.toggle('active',item===button));renderSheetPicker()});
   let searchTimer;$('#sheet-picker-q').oninput=event=>{sheetView.picker.q=event.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(renderSheetPicker,150)};
   applySheetPayload(payload,true);
-  sheetView.picker.cards=null;sheetView.picker.saleCards=null;
+  sheetView.picker.cards=null;
   renderSheetPicker();
 }
 
@@ -2938,27 +2934,24 @@ async function renderSheetPicker(){
   const box=$('#sheet-picker-list');if(!box)return;
   const picker=sheetView.picker,gameId=state.activeGameId;
   try{
-    if(picker.source==='sale'){
-      if(!picker.saleCards){
-        box.innerHTML='<div class="page-loader compact"><span></span></div>';
-        const lists=await api(`/api/watchlists?game_id=${encodeURIComponent(gameId)}`),sale=lists.find(list=>list.is_sale_list);
-        picker.saleCards=sale?(await api(`/api/watchlists/${sale.id}/cards`)).cards:[];
-      }
-    }else if(!picker.cards){
+    if(!picker.cards){
       box.innerHTML='<div class="page-loader compact"><span></span></div>';
       picker.cards=(await api(`/api/collection?game_id=${encodeURIComponent(gameId)}&sort=number`)).cards;
     }
   }catch(error){box.innerHTML=`<div class="deck-zone-empty">${escapeHtml(error.message)}</div>`;return}
   if(!$('#sheet-picker-list'))return;
   const query=picker.q.trim().toLowerCase();
-  let cards=picker.source==='sale'?picker.saleCards.map(card=>({...card,pick_quantity:card.desired_quantity||1})):picker.cards.filter(card=>picker.source!=='duplicates'||card.quantity>1);
+  // "Über Playset": what is owned beyond a full playset, offered with exactly that surplus.
+  const playset=state.boot.games.find(game=>game.id===gameId)?.playset_size||4;
+  let cards=picker.source==='surplus'?picker.cards.filter(card=>card.quantity>playset).map(card=>({...card,pick_quantity:card.quantity-playset}))
+    :picker.cards.filter(card=>picker.source!=='duplicates'||card.quantity>1);
   if(query)cards=cards.filter(card=>[card.canonical_name,card.collector_number,card.set_name,card.set_code].some(value=>String(value||'').toLowerCase().includes(query)));
   const shown=cards.slice(0,SHEET_PICKER_LIMIT);
-  box.innerHTML=(picker.source==='sale'&&cards.length?`<button type="button" class="secondary-button sheet-take-all" id="sheet-take-all">Alle ${cards.length} übernehmen</button>`:'')
+  box.innerHTML=(picker.source==='surplus'&&cards.length?`<button type="button" class="secondary-button sheet-take-all" id="sheet-take-all">Alle ${cards.length} übernehmen</button>`:'')
     +(shown.length?shown.map(card=>`<button type="button" class="sheet-pick" data-pick="${escapeHtml(card.variant_id)}" data-quantity="${card.pick_quantity||1}">
         ${finishThumb(card,artUrl(card.variant_id),card.canonical_name,'sheet-thumb')}
         <span class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_name||card.set_code||'')} · ${escapeHtml(card.collector_number)} · ${escapeHtml(variantName({...card,game_id:gameId}))} · ${card.quantity}× im Besitz</small><small class="sheet-picked"></small></span><i>＋</i></button>`).join('')
-      :`<div class="deck-zone-empty">${picker.source==='sale'?'Die Verkaufsliste ist leer.':query?'Keine Treffer.':'Keine Karten in der Sammlung.'}</div>`)
+      :`<div class="deck-zone-empty">${query?'Keine Treffer.':picker.source==='surplus'?`Keine Karte liegt öfter als ${playset}× in der Sammlung.`:picker.source==='duplicates'?'Keine doppelten Karten in der Sammlung.':'Keine Karten in der Sammlung.'}</div>`)
     +(cards.length>shown.length?`<div class="sheet-picker-more">${cards.length-shown.length} weitere – Suche eingrenzen</div>`:'');
   $$('[data-pick]',box).forEach(row=>{markPickedRow(row);row.onclick=()=>changeSheetCard({variant_id:row.dataset.pick,delta:Number(row.dataset.quantity)||1})});
   $('#sheet-take-all')?.addEventListener('click',()=>changeSheetCard({entries:cards.map(card=>({variant_id:card.variant_id,quantity:Math.min(99,card.pick_quantity||1)}))}));
@@ -3200,7 +3193,7 @@ function wireGlobalEvents(){
       const r=importMode==='json'
         ?await post('/api/import/json/apply',{collection:importJsonData||[],...importJsonExtras,strategy})
         :await post('/api/import/apply',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy});
-      const restored=[r.decks_restored&&`${r.decks_restored} Decks`,r.watchlist_entries_restored&&`${r.watchlist_entries_restored} Watchlist-Einträge`,r.decks_skipped&&`${r.decks_skipped} vorhandene Decks übersprungen`].filter(Boolean);
+      const restored=[r.decks_restored&&`${r.decks_restored} Decks`,r.watchlist_entries_restored&&`${r.watchlist_entries_restored} Watchlist-Einträge`,r.sheets_restored&&`${r.sheets_restored} Sheets`,r.decks_skipped&&`${r.decks_skipped} vorhandene Decks übersprungen`,r.sheets_skipped&&`${r.sheets_skipped} vorhandene Sheets übersprungen`].filter(Boolean);
       closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert${restored.length?` · ${restored.join(' · ')}`:''}.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
     }catch(error){
       toast(error.message);
