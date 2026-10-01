@@ -384,13 +384,17 @@ body.editing .edit-indicator { display:block; }
 .owned-pill,.watch-button{z-index:4}
 .card-tile.missing .card-image-wrap img:not(.cycle-img) { filter:grayscale(.78);opacity:.46; }.card-tile.missing:hover .card-image-wrap img:not(.cycle-img){filter:grayscale(.25);opacity:.75}
 .card-tile.missing .cycle-img.front{filter:grayscale(.78);opacity:.46;}.card-tile.missing .cycle-img.back{filter:grayscale(.78);}.card-tile.missing:hover .cycle-img.front{filter:grayscale(.25);opacity:.75;}.card-tile.missing:hover .cycle-img.back{filter:grayscale(.25);}
-.owned-pill { position:absolute;right:.7em;top:.7em;display:grid;place-items:center;min-width:2.4em;height:2.4em;padding:0 .6em;border-radius:2em;background:rgba(10,16,29,.87);color:#fff;font-size:1em;font-weight:800;backdrop-filter:blur(5px); }
+/* No backdrop-filter on anything that exists once per tile: behind an 87% opaque fill the blur is
+   invisible, but each one is a separate blur pass the browser redoes while scrolling. */
+.owned-pill { position:absolute;right:.7em;top:.7em;display:grid;place-items:center;min-width:2.4em;height:2.4em;padding:0 .6em;border-radius:2em;background:rgba(10,16,29,.87);color:#fff;font-size:1em;font-weight:800; }
 .variant-badges { position:absolute;right:.7em;top:.7em;z-index:4;display:flex;flex-direction:column;align-items:flex-end;gap:.3em; }
 .variant-badges:empty { display:none; }
-.variant-badge { display:flex;align-items:center;gap:.2em;padding:.2em .6em;border-radius:2em;background:rgba(10,16,29,.87);color:#fff;font-size:.8em;font-weight:800;letter-spacing:.02em;backdrop-filter:blur(5px);white-space:nowrap; }
+.variant-badge { display:flex;align-items:center;gap:.2em;padding:.2em .6em;border-radius:2em;background:rgba(10,16,29,.87);color:#fff;font-size:.8em;font-weight:800;letter-spacing:.02em;white-space:nowrap; }
 .variant-badge.missing { opacity:.42; }
 .variant-badge.tier-foil { background:linear-gradient(120deg,#a86a1c,#f7d67a 45%,#a86a1c 55%,#f2b93b);color:#3a2604;box-shadow:0 0 0 1px rgba(255,224,140,.5) inset; }
-.variant-badge.tier-premium { background:linear-gradient(90deg,#ff5f6d,#ffc371,#5bd1ff,#c86bff,#ff5f6d);background-size:320% 100%;color:#160822;animation:premiumShimmer 3.2s linear infinite;box-shadow:0 0 0 1px rgba(255,255,255,.55) inset; }
+.variant-badge.tier-premium { background:linear-gradient(90deg,#ff5f6d,#ffc371,#5bd1ff,#c86bff,#ff5f6d);background-size:320% 100%;color:#160822;box-shadow:0 0 0 1px rgba(255,255,255,.55) inset; }
+/* Animated background-position repaints every frame; the badge shimmers while its card is hovered. */
+.card-tile:hover .variant-badge.tier-premium { animation:premiumShimmer 3.2s linear infinite; }
 @keyframes premiumShimmer{to{background-position:320% 0}}
 .watch-button { position:absolute;left:.7em;top:.7em;display:grid;place-items:center;width:2.5em;height:2.5em;padding:0;border:0;border-radius:50%;background:rgba(12,18,33,.72);color:#fff;font-size:1.5em;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s}.card-tile:hover .watch-button,.watch-button:focus-visible{opacity:1;pointer-events:auto}.watch-button.active{background:#fff;color:#ef476f}
 .watchlist-action svg { display:block;width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;pointer-events:none; }
@@ -750,7 +754,7 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .deck-ownership-dot { position:absolute;right:6px;top:6px;z-index:4;display:grid;min-width:30px;height:22px;padding:0 7px;place-items:center;border-radius:999px;background:rgba(20,68,49,.94);color:#a7e7c6;font-size:9px;font-weight:900;box-shadow:0 4px 12px rgba(0,0,0,.38); }
 .deck-missing .deck-ownership-dot { background:rgba(91,35,41,.95);color:#ffb5ba; }
 .deck-number-badge { position:absolute;right:6px;bottom:6px;z-index:4;max-width:calc(100% - 12px);padding:4px 7px;border-radius:6px;background:rgba(9,12,16,.88);color:#eef4fb;font-size:8px;font-weight:850;line-height:1;box-shadow:0 3px 10px rgba(0,0,0,.42);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.deck-cover-button { display:grid;width:25px;height:25px;padding:0;place-items:center;border:0;border-radius:50%;background:rgba(9,12,16,.86);color:#d8e3ef;font-size:14px;line-height:1;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.4);backdrop-filter:blur(4px); }.deck-cover-button:hover { color:#fff;transform:scale(1.06); }.deck-cover-button.active { background:#dbe7f3;color:#10161d; }.deck-card-tile-image>.deck-cover-button { position:absolute;left:6px;top:6px;z-index:5; }.deck-card-row>.deck-cover-button { position:static;flex:0 0 25px; }
+.deck-cover-button { display:grid;width:25px;height:25px;padding:0;place-items:center;border:0;border-radius:50%;background:rgba(9,12,16,.86);color:#d8e3ef;font-size:14px;line-height:1;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.4); }.deck-cover-button:hover { color:#fff;transform:scale(1.06); }.deck-cover-button.active { background:#dbe7f3;color:#10161d; }.deck-card-tile-image>.deck-cover-button { position:absolute;left:6px;top:6px;z-index:5; }.deck-card-row>.deck-cover-button { position:static;flex:0 0 25px; }
 .deck-auto-label { display:block;margin-top:8px;padding:7px;border-radius:6px;background:var(--surface-3);color:var(--muted);font-size:8px;font-weight:800;text-align:center; }
 .deck-auto-card { opacity:.86; }
 .catalog-card div>span { display:block;margin-top:3px;color:var(--brand-2);font-size:7px; }
@@ -838,7 +842,7 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .op-catalog-filterbar + .catalog-card-list { max-height:calc(100vh - 285px); }
 
 /* Direct deck counter in catalogue */
-.catalog-deck-counter { z-index:5;display:flex!important;align-items:center!important;overflow:hidden;border-radius:7px;background:rgba(10,14,18,.92)!important;color:#f3f6fa;box-shadow:0 5px 15px rgba(0,0,0,.48);backdrop-filter:blur(4px); }
+.catalog-deck-counter { z-index:5;display:flex!important;align-items:center!important;overflow:hidden;border-radius:7px;background:rgba(10,14,18,.92)!important;color:#f3f6fa;box-shadow:0 5px 15px rgba(0,0,0,.48); }
 .catalog-grid-image .catalog-deck-counter { position:absolute;left:50%;bottom:7px;transform:translateX(-50%); }
 .catalog-card .catalog-deck-counter { flex:0 0 auto!important; }
 .catalog-deck-counter button { position:static!important;width:27px!important;height:28px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:#fff!important;font-size:15px!important;cursor:pointer;box-shadow:none!important; }

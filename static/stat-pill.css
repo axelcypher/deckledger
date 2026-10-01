@@ -36,7 +36,10 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill::before {
   -webkit-mask:none;
   mask:none;
   clip-path:polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,2px 2px,2px calc(100% - 2px),calc(100% - 2px) calc(100% - 2px),calc(100% - 2px) 2px,2px 2px);
-  animation:stat-pill-shine 3.8s ease-in-out infinite;
+  /* Twice after every render, then it rests. Left running, this background-position animation
+     made the browser redo style and paint for every frame, and that cost grows with the page:
+     about 15% of a core on a set, close to 60% on a large collection, while idle. */
+  animation:stat-pill-shine 3.8s ease-in-out 2;
 }
 
 @keyframes stat-pill-shine {

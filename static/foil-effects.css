@@ -350,3 +350,29 @@
   mask-size: 100% 100%; -webkit-mask-size: 100% 100%;
   mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
 }
+
+/* ---- Animation budget ----
+   The sweep animates mask-position and a hue-rotate filter under a blend mode. None of that can
+   run on the compositor, so every animating card is repainted on the main thread for every
+   frame. A collection view holds thousands of foil tiles: measured on a desktop GPU that was
+   over 4000 running animations and 6 frames per second with the page doing nothing else.
+   In lists a foil card therefore shows its sheen as a still band and only moves while the
+   pointer is on it. The single large card in the detail view and the deck-add dialog keep
+   animating as before. Specificity is one class higher than the rules above on purpose. */
+.card-finish-frame:is(.finish-foil,.finish-prismatic,.finish-aurora):not(.modal-card-frame,.deck-add-image) :is(.foil-fx-a,.foil-fx-b) {
+  animation: none;
+  mask-position: 50% 50%; -webkit-mask-position: 50% 50%;
+}
+.card-finish-frame:is(.finish-foil,.finish-prismatic,.finish-aurora):not(.modal-card-frame,.deck-add-image):is(:hover,.card-tile:hover *,.card-tile:focus-visible *) .foil-fx-a {
+  animation: tier3RainbowLoop 16s linear infinite, reflectionSweep 6s ease-in-out infinite;
+}
+.card-finish-frame.finish-foil:not(.modal-card-frame,.deck-add-image):is(:hover,.card-tile:hover *,.card-tile:focus-visible *) .foil-fx-a {
+  animation-duration: 8s, 6s;
+}
+.card-finish-frame:is(.finish-foil,.finish-prismatic,.finish-aurora):not(.modal-card-frame,.deck-add-image):is(:hover,.card-tile:hover *,.card-tile:focus-visible *) .foil-fx-b {
+  animation: reflectionSweep 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-finish-frame .foil-fx-a,
+  .card-finish-frame .foil-fx-b { animation: none !important; mask-position: 50% 50%; -webkit-mask-position: 50% 50%; }
+}

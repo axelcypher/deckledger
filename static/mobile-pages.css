@@ -233,7 +233,7 @@
     background-size:148px 100%;background-repeat:no-repeat;background-position:-160px 0;
     -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
     -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
-    animation:mp-summary-shine 3.4s ease-in-out infinite;
+    animation:mp-summary-shine 3.4s ease-in-out 2; /* finite for the same reason as stat-pill-shine */
   }
   @keyframes mp-summary-shine {
     0%,12%{background-position:-160px 0}
