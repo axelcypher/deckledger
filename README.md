@@ -52,7 +52,7 @@ Prices refresh automatically on startup and every six hours when a provider has 
 docker compose exec deckledger python price_sync.py
 ```
 
-Price history is kept for good without growing without bound: roughly the last three months stay day by day, and every calendar month that has aged out of that window is folded into one average per card, provider and metric.
+Price history stores changes, not days: a sync that finds the same price as last time writes nothing, and readers carry a price forward until the next change. Every calendar month that has aged out of the last three months is additionally folded into one time-weighted average per card, provider and metric. An existing day-by-day history is converted once, on the first price sync after the update.
 
 Cardmarket product IDs are persisted separately from internal variant IDs. One Piece Western and Japanese expansions are resolved and priced separately: the Western expansion is anchored by Bandai's official release date, while the corresponding Japanese match must use a distinct Cardmarket expansion ID with the same set/number/name fingerprint. Ambiguous matches remain empty; the importer never resolves them by card name alone.
 

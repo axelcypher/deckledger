@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import xml.sax.saxutils as xml_escape
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import cmp_to_key, wraps
 from pathlib import Path
 from urllib.parse import quote, quote_plus, urljoin, urlparse
@@ -1981,6 +1981,8 @@ def card_detail(identity_id):
             WHERE p.identity_id=? ORDER BY p.language,s.release_date,s.code,p.collector_number,v.is_parallel,v.variant_code""", (uid,uid,identity_id)
     ).fetchall()
     variant_rows = []
+    checked_row = db().execute("SELECT value FROM catalog_metadata WHERE key='price_sync_checked'").fetchone()
+    price_checked = jload(checked_row["value"], {}) if checked_row else {}
     for item in variants:
         variant = dict(item)
         variant_attrs = jload(variant.get("attributes"), {})
@@ -2036,6 +2038,10 @@ def card_detail(identity_id):
             variant["image_source"] = "Offizieller hololive Card-Katalog"
             variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://en.hololive-official-cardgame.com/cardlist/"
         variant["edition_label"] = variant_attrs.get("editionLabel")
+        # A price that did not change writes no new row; it is still as current as the provider's
+        # last successful sync.
+        if variant.get("price_provider") and str(price_checked.get(variant["price_provider"]) or "") > str(variant.get("price_observed_at") or ""):
+            variant["price_observed_at"] = price_checked[variant["price_provider"]]
         variant_rows.append(variant)
     result = dict(identity)
     result["attributes"] = jload(result["attributes"], {})
@@ -2158,19 +2164,49 @@ def variant_price_history(variant_id):
         days = min(3650, max(7, int(request.args.get("days", 180))))
     except (TypeError, ValueError):
         days = 180
-    rows = db().execute(
-        """SELECT day, amount, currency FROM (
-             SELECT substr(po.observed_at,1,10) day, po.amount, po.currency,
-                    ROW_NUMBER() OVER (
-                      PARTITION BY substr(po.observed_at,1,10)
-                      ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END, po.observed_at DESC
-                    ) rn
-             FROM price_observations po
-             WHERE po.variant_id=? AND po.metric=? AND substr(po.observed_at,1,10) >= date('now', ?)
-           ) WHERE rn=1 ORDER BY day""",
-        (variant_id, metric, f"-{days} days"),
+    # One provider per chart -- the one the card's current price comes from -- so the line never
+    # jumps between two marketplaces' price levels.
+    provider = db().execute(f"SELECT {latest_price_meta_sql('v', 'provider_id')} provider FROM variants v WHERE v.id=?", (variant_id,)).fetchone()["provider"]
+    if not provider:
+        return jsonify({"variant_id": variant_id, "metric": metric, "points": []})
+    today = datetime.now(timezone.utc).date()
+    first_day = (today - timedelta(days=days)).isoformat()
+    stored = db().execute(
+        """SELECT substr(observed_at,1,10) day,amount,currency FROM price_observations
+           WHERE variant_id=? AND provider_id=? AND metric=? ORDER BY observed_at""", (variant_id, provider, metric),
     ).fetchall()
-    points = [{"date": row["day"], "amount": row["amount"], "currency": row["currency"]} for row in rows]
+    # Only changes are stored (price_sync.py), so the last row before the window is the price the
+    # window starts with, and each price holds until the day before the next change. Emitting
+    # both ends of every run draws the steps a daily series would have shown.
+    points = []
+
+    def add(day, row):
+        if points and points[-1]["date"] == day:
+            points[-1].update(amount=row["amount"], currency=row["currency"])
+        else:
+            points.append({"date": day, "amount": row["amount"], "currency": row["currency"]})
+
+    previous = None
+    for row in stored:
+        if row["day"] < first_day:
+            previous = row
+            continue
+        if previous is not None:
+            if not points:
+                add(first_day, previous)
+            held_until = (date.fromisoformat(row["day"]) - timedelta(days=1)).isoformat()
+            if held_until > points[-1]["date"]:
+                add(held_until, previous)
+        add(row["day"], row)
+        previous = row
+    if previous is not None:
+        if not points:
+            add(first_day, previous)
+        # The price is known to hold up to the provider's last successful sync.
+        checked = jload((db().execute("SELECT value FROM catalog_metadata WHERE key='price_sync_checked'").fetchone() or [None])[0], {}) or {}
+        last_checked = min(today.isoformat(), str(checked.get(provider) or "")[:10]) if checked.get(provider) else ""
+        if last_checked > points[-1]["date"]:
+            add(last_checked, previous)
     return jsonify({"variant_id": variant_id, "metric": metric, "points": points})
 
 

@@ -68,40 +68,126 @@ CREATE INDEX IF NOT EXISTS idx_prices_variant_metric
 
 DAILY_HISTORY_DAYS = 92
 MONTHLY_STAMP = "-15T12:00:00+00:00"
+HISTORY_FORMAT = "changes"
+
+
+# ---- Price history ----------------------------------------------------------------------------
+# A row in price_observations means "from this moment on the price was X". A sync that finds the
+# same price as last time writes nothing, so a series costs one row per change instead of one per
+# day -- most cards do not move for weeks. Readers take the newest row as the current price and
+# carry a value forward until the next row (app.py: latest_observation_sql, price history).
+# Months older than the daily window are folded into one time-weighted average each.
+
+def store_changed_observations(connection, observation_rows: list[tuple]) -> int:
+    """Inserts (variant_id, provider_id, metric, amount, currency, observed_at) rows whose amount
+    differs from the newest stored row of the same series; returns how many were written."""
+    providers = sorted({row[1] for row in observation_rows})
+    if not providers:
+        return 0
+    placeholders = ",".join("?" for _ in providers)
+    # SQLite returns the other columns from the row that holds MAX(), i.e. the newest observation.
+    newest = {
+        (variant_id, provider_id, metric): (amount, observed_at)
+        for variant_id, provider_id, metric, amount, observed_at in connection.execute(
+            f"""SELECT variant_id,provider_id,metric,amount,MAX(observed_at) FROM price_observations
+                WHERE provider_id IN ({placeholders}) GROUP BY variant_id,provider_id,metric""", providers
+        )
+    }
+    changed = []
+    for row in observation_rows:
+        known = newest.get(row[:3])
+        if known and (known[1] >= row[5] or abs(known[0] - row[3]) < 0.005):
+            continue
+        newest[row[:3]] = (row[3], row[5])
+        changed.append(row)
+    connection.executemany(
+        "INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,?,?,?,?,?)", changed
+    )
+    return len(changed)
+
+
+def drop_unchanged_observations(connection) -> int:
+    """One-time conversion of a history written one row per day: every row that repeats the
+    price of the row before it in its series is removed. The first row of each run stays, so no
+    price and no date of a change is lost."""
+    if metadata_value(connection, "price_history_format") == HISTORY_FORMAT:
+        return 0
+    removed = connection.execute(
+        """DELETE FROM price_observations WHERE id IN (
+             SELECT id FROM (
+               SELECT id,amount,LAG(amount) OVER (PARTITION BY variant_id,provider_id,metric ORDER BY observed_at) previous
+               FROM price_observations
+             ) WHERE previous IS NOT NULL AND ABS(amount-previous) < 0.005
+           )"""
+    ).rowcount
+    connection.execute(
+        "INSERT OR REPLACE INTO catalog_metadata(key,value) VALUES('price_history_format',?)", (json.dumps(HISTORY_FORMAT),)
+    )
+    return removed
+
+
+def month_average(rows: list[tuple[str, float]], carried: float | None, days: int) -> float:
+    """Time-weighted mean of a month. `rows` are (observed_at, amount) changes inside the month
+    in order, `carried` the price the month started with (None if the series began later)."""
+    total = weight = 0.0
+    position, value = 0, carried
+    for observed_at, amount in rows:
+        day = min(days, max(0, int(observed_at[8:10]) - 1))
+        if value is not None and day > position:
+            total += value * (day - position)
+            weight += day - position
+        position, value = max(position, day), amount
+    if value is not None and days > position:
+        total += value * (days - position)
+        weight += days - position
+    return round(total / weight, 2) if weight else round(value or 0.0, 2)
 
 
 def compact_price_history(connection, today: date | None = None) -> dict:
-    """Keeps the price history from growing without bound while keeping it for good.
+    """Folds every calendar month that lies entirely before the daily window (about three months)
+    into one row per series: the month's time-weighted average, dated mid-month.
 
-    Roughly the last three months stay as observed, one row per card, metric and day. Once a
-    calendar month lies entirely before that window, its rows are replaced by a single row per
-    card, provider and metric holding the month's average, dated mid-month. A year of history
-    then costs 12 rows per series instead of 365, and the long-term trend survives.
-
-    Idempotent: a month that already holds one row per series is left alone, so this runs after
-    every sync and only does work when a month crosses the boundary.
+    The price a series ended the month with is written as the first row of the following month
+    where it differs from the average, so "carry the last row forward" stays true across the
+    fold. Idempotent: only months that still hold unfolded rows are touched.
     """
     boundary = ((today or local_today()) - timedelta(days=DAILY_HISTORY_DAYS)).replace(day=1).isoformat()
     months = [row[0] for row in connection.execute(
-        """SELECT DISTINCT month FROM (
-             SELECT substr(observed_at,1,7) month FROM price_observations WHERE observed_at < ?
-             GROUP BY variant_id,provider_id,metric,substr(observed_at,1,7) HAVING COUNT(*) > 1
-           ) ORDER BY month""", (boundary,)
+        """SELECT DISTINCT substr(observed_at,1,7) FROM price_observations
+           WHERE observed_at < ? AND substr(observed_at,8) <> ? ORDER BY 1""", (boundary, MONTHLY_STAMP)
     )]
     removed = 0
     for month in months:
-        connection.execute("DROP TABLE IF EXISTS temp.monthly_prices")
-        connection.execute(
-            """CREATE TEMP TABLE monthly_prices AS
-               SELECT variant_id,provider_id,metric,MAX(currency) currency,ROUND(AVG(amount),2) amount,COUNT(*) samples
-               FROM price_observations WHERE substr(observed_at,1,7)=? GROUP BY variant_id,provider_id,metric""", (month,)
-        )
-        removed += connection.execute("DELETE FROM price_observations WHERE substr(observed_at,1,7)=?", (month,)).rowcount
-        removed -= connection.execute(
-            """INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at)
-               SELECT variant_id,provider_id,metric,amount,currency,? FROM monthly_prices""", (month + MONTHLY_STAMP,)
+        year, number = int(month[:4]), int(month[5:7])
+        following = date(year + number // 12, number % 12 + 1, 1)
+        days = (following - date(year, number, 1)).days
+        series: dict[tuple, list] = defaultdict(list)
+        for variant_id, provider_id, metric, amount, currency, observed_at in connection.execute(
+            """SELECT variant_id,provider_id,metric,amount,currency,observed_at FROM price_observations
+               WHERE observed_at >= ? AND observed_at < ? ORDER BY observed_at""", (month + "-01", following.isoformat())
+        ):
+            series[(variant_id, provider_id, metric)].append((observed_at, amount, currency))
+        averages, openings = [], []
+        for key, rows in series.items():
+            before = connection.execute(
+                """SELECT amount FROM price_observations WHERE variant_id=? AND provider_id=? AND metric=? AND observed_at < ?
+                   ORDER BY observed_at DESC LIMIT 1""", (*key, month + "-01")
+            ).fetchone()
+            average = month_average([(row[0], row[1]) for row in rows], before[0] if before else None, days)
+            closing, currency = rows[-1][1], rows[-1][2]
+            averages.append((*key, average, currency, month + MONTHLY_STAMP))
+            if abs(closing - average) >= 0.005 and not connection.execute(
+                "SELECT 1 FROM price_observations WHERE variant_id=? AND provider_id=? AND metric=? AND substr(observed_at,1,10)=?",
+                (*key, following.isoformat()),
+            ).fetchone():
+                openings.append((*key, closing, currency, following.isoformat() + "T00:00:00+00:00"))
+        removed += connection.execute(
+            "DELETE FROM price_observations WHERE observed_at >= ? AND observed_at < ?", (month + "-01", following.isoformat())
         ).rowcount
-        connection.execute("DROP TABLE temp.monthly_prices")
+        insert = "INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,?,?,?,?,?)"
+        connection.executemany(insert, averages)
+        connection.executemany(insert, openings)
+        removed -= len(averages) + len(openings)
     return {"months": months, "rows_removed": removed}
 
 
@@ -976,14 +1062,14 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             ) for mapping in all_mappings if "values" in mapping
             ],
         )
-        connection.executemany(
-            """INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at)
-               SELECT ?,?,?,?,?,? WHERE NOT EXISTS(
-                 SELECT 1 FROM price_observations WHERE variant_id=? AND provider_id=? AND metric=? AND observed_at=?
-               )""",
-            [(*row, row[0], row[1], row[2], row[5]) for row in observation_rows],
-        )
+        counts["price_changes_stored"] = store_changed_observations(connection, observation_rows)
+        # When each provider's prices were last confirmed: an unchanged price writes no row, so
+        # "as of" can no longer be read off the newest row's date.
+        checked = metadata_value(connection, "price_sync_checked", {}) or {}
+        for row in observation_rows:
+            checked[row[1]] = max(checked.get(row[1], ""), row[5])
         metadata = {
+            "price_sync_checked": checked,
             "price_sync_versions": versions,
             "price_sync_counts": dict(counts),
             "price_sync_last_success": matched_at,
@@ -1002,10 +1088,16 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
         # After the prices themselves are saved, and in a transaction of its own: folding a month
         # of a large catalogue takes several seconds, and a problem here must not undo the sync.
         try:
+            unchanged = drop_unchanged_observations(connection)
+            connection.commit()
             compacted = compact_price_history(connection)
             connection.commit()
-            if compacted["months"]:
-                print(f"Preishistorie verdichtet: {compacted}", file=sys.stderr, flush=True)
+            if unchanged or compacted["months"]:
+                print(f"Preishistorie: {unchanged} unveränderte Zeilen entfernt, verdichtet: {compacted}", file=sys.stderr, flush=True)
+            if unchanged:
+                # Hands the freed pages back to the file system; the history shrinks to a
+                # fraction of its size the first time this runs.
+                connection.execute("VACUUM")
         except sqlite3.Error as error:
             connection.rollback()
             print(f"Preishistorie konnte nicht verdichtet werden: {error}", file=sys.stderr, flush=True)
