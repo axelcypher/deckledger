@@ -33,6 +33,8 @@ if os.environ.get("TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
     # the OAuth redirect_uri comes out as https://, matching what's registered with the IdP,
     # instead of the plain http:// Flask would otherwise infer from the proxy's own request.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# Explicit instead of relying on each browser's own default for cookies without the attribute.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(__file__), "deckledger.db"))
 IMAGE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-images"
 IMAGE_SOURCE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-image-sources"
@@ -99,6 +101,33 @@ def close_db(_error=None):
     connection = g.pop("db", None)
     if connection is not None:
         connection.close()
+
+
+@app.before_request
+def reject_cross_site_writes():
+    """The API reads JSON regardless of Content-Type, so a form on any other website could
+    otherwise post to it with the visitor's session. Browsers label where a request comes from;
+    scripts and tools that send neither header are not a cross-site browser request."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    fetch_site = request.headers.get("Sec-Fetch-Site")
+    if fetch_site:
+        allowed = fetch_site in ("same-origin", "none")
+    else:
+        origin = request.headers.get("Origin")
+        allowed = not origin or urlparse(origin).netloc == request.host
+    if not allowed:
+        return jsonify({"error": "Anfrage von einer fremden Seite abgelehnt."}), 403
+    return None
+
+
+@app.errorhandler(sqlite3.IntegrityError)
+def integrity_error(error):
+    # A write that references a card, list or game that does not exist (any more).
+    db().rollback()
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Der Eintrag verweist auf Daten, die es nicht (mehr) gibt."}), 400
+    raise error
 
 
 SCHEMA = """
@@ -193,7 +222,12 @@ CREATE TABLE IF NOT EXISTS catalog_providers (
   timeout_seconds INTEGER NOT NULL DEFAULT 300,
   provider_version TEXT NOT NULL, last_synced_version TEXT,
   last_run_at TEXT, last_status TEXT, last_summary TEXT, last_error TEXT,
-  enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  customized INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS applied_requests (
+  user_id INTEGER NOT NULL REFERENCES users(id), request_id TEXT NOT NULL, response TEXT NOT NULL,
+  created_at TEXT NOT NULL, PRIMARY KEY(user_id, request_id)
 );
 CREATE TABLE IF NOT EXISTS game_price_overrides (
   game_id TEXT NOT NULL REFERENCES games(id), language TEXT NOT NULL, price_method TEXT NOT NULL,
@@ -509,7 +543,7 @@ def seed_default_providers(connection):
     for game_id, (minimum_sets, minimum_cards, timeout_seconds) in DEFAULT_PROVIDERS.items():
         code = default_provider_code(game_id)
         version = digest(code)
-        existing = connection.execute("SELECT kind FROM catalog_providers WHERE id=?", (game_id,)).fetchone()
+        existing = connection.execute("SELECT kind,code,customized FROM catalog_providers WHERE id=?", (game_id,)).fetchone()
         if existing is None:
             connection.execute(
                 """INSERT INTO catalog_providers
@@ -522,6 +556,15 @@ def seed_default_providers(connection):
             # never touches a row an admin has already converted or edited.
             connection.execute(
                 "UPDATE catalog_providers SET kind='custom_code', code=?, provider_version=?, updated_at=? WHERE id=?",
+                (code, version, now_iso(), game_id),
+            )
+        elif existing[1] != code and not existing[2]:
+            # The database copy is what actually runs. Unless an admin replaced it with their own
+            # code (customized=1, see admin_update_provider), it follows providers/<id>.py, so a
+            # provider fix shipped with a new image takes effect; the changed provider_version
+            # then triggers a re-import on the next catalog_sync --if-needed.
+            connection.execute(
+                "UPDATE catalog_providers SET code=?, provider_version=?, updated_at=? WHERE id=?",
                 (code, version, now_iso(), game_id),
             )
 
@@ -611,6 +654,9 @@ def init_database():
         connection.execute("ALTER TABLE games ADD COLUMN deck_ruleset TEXT")
     if "cardmarket_game_id" not in game_columns:
         connection.execute("ALTER TABLE games ADD COLUMN cardmarket_game_id INTEGER")
+    provider_columns = {row[1] for row in connection.execute("PRAGMA table_info(catalog_providers)")}
+    if "customized" not in provider_columns:
+        connection.execute("ALTER TABLE catalog_providers ADD COLUMN customized INTEGER NOT NULL DEFAULT 0")
     user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
     if "email" not in user_columns:
         connection.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
@@ -771,7 +817,7 @@ def unique_username_from(candidate):
     return username
 
 
-def resolve_oauth_identity(config, subject, email, display_name):
+def resolve_oauth_identity(config, subject, email, display_name, email_verified=True):
     """Walks the account-matching chain for a login (not link) OAuth callback and
     returns the matched/created users row, or None if no account could be resolved.
     Order is cumulative: exact identity match always applies; email-matching and
@@ -783,9 +829,12 @@ def resolve_oauth_identity(config, subject, email, display_name):
     if matched:
         return matched
     mode = config.get("account_matching") or "manual"
-    if mode in ("email", "auto_provision") and email:
+    if mode in ("email", "auto_provision") and email and email_verified:
+        # An address the provider itself reports as unverified proves nothing about who is
+        # logging in. Admin accounts are never claimed by address at all: an admin links SSO
+        # from Settings while signed in with their password.
         candidate = connection.execute(
-            "SELECT * FROM users WHERE oauth_subject='' AND lower(email)=lower(?)", (email,),
+            "SELECT * FROM users WHERE oauth_subject='' AND role!='admin' AND lower(email)=lower(?)", (email,),
         ).fetchone()
         if candidate:
             connection.execute(
@@ -890,7 +939,7 @@ def oauth_callback():
         session["user_id"] = link_user_id
         return redirect(url_for("index", linked="1"))
 
-    matched = resolve_oauth_identity(config, subject, email, display_name)
+    matched = resolve_oauth_identity(config, subject, email, display_name, email_verified=claims.get("email_verified") is not False)
     if not matched:
         return redirect(url_for("login", error="no_account"))
     session.clear()
@@ -1257,8 +1306,8 @@ def admin_create_provider():
     now = now_iso()
     db().execute(
         """INSERT INTO catalog_providers
-           (id, game_id, label, kind, code, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at)
-           VALUES (?,?,?,'custom_code',?,?,?,?,?,1,?,?)""",
+           (id, game_id, label, kind, code, minimum_sets, minimum_cards, timeout_seconds, provider_version, enabled, created_at, updated_at, customized)
+           VALUES (?,?,?,'custom_code',?,?,?,?,?,1,?,?,1)""",
         (provider_id, game_id, p.get("label") or game_id, code,
          int(p.get("minimum_sets") or 0), int(p.get("minimum_cards") or 0), int(p.get("timeout_seconds") or 300),
          digest(code), now, now),
@@ -1279,8 +1328,9 @@ def admin_update_provider(provider_id):
         code = p["code"] or ""
         if not code.strip():
             return jsonify({"error": "Code darf nicht leer sein"}), 400
-        fields += ["code=?", "provider_version=?"]
-        values += [code, digest(code)]
+        shipped = default_provider_code(provider_id) if provider_id in DEFAULT_PROVIDERS else None
+        fields += ["code=?", "provider_version=?", "customized=?"]
+        values += [code, digest(code), 0 if code == shipped else 1]
     for key in ("label", "minimum_sets", "minimum_cards", "timeout_seconds"):
         if key in p:
             fields.append(f"{key}=?")
@@ -1930,26 +1980,49 @@ def card_detail(identity_id):
 @login_required
 def update_collection():
     payload = request.get_json(force=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Ungültige Anfrage."}), 400
+    uid = user_id()
+    # An offline client cannot tell "never arrived" from "arrived, answer lost" and sends the
+    # change again. With a request_id the repeat returns the first answer instead of counting twice.
+    request_id = str(payload.get("request_id") or "")[:64]
+    if request_id:
+        applied = db().execute("SELECT response FROM applied_requests WHERE user_id=? AND request_id=?", (uid, request_id)).fetchone()
+        if applied:
+            return jsonify(jload(applied["response"], {}))
     variant_id = payload.get("variant_id")
+    if not db().execute("SELECT 1 FROM variants WHERE id=?", (variant_id,)).fetchone():
+        return jsonify({"error": "Diese Karte gibt es im Katalog nicht (mehr)."}), 404
     condition = payload.get("condition", "Near Mint")
     is_graded = 1 if payload.get("is_graded") else 0
     grade_label = (payload.get("grade_label") or "").strip() if is_graded else ""
-    existing = db().execute(
-        "SELECT * FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?",
-        (user_id(), variant_id, condition, is_graded, grade_label),
-    ).fetchone()
-    before = existing["quantity"] if existing else 0
-    quantity = max(0, int(payload.get("quantity", before + int(payload.get("delta", 0)))))
-    if "price_override" in payload:
-        raw_override = payload["price_override"]
-        price_override = float(raw_override) if raw_override not in (None, "") else None
-    else:
-        price_override = existing["price_override"] if existing else None
+    row_sql = "SELECT * FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?"
+    existing = db().execute(row_sql, (uid, variant_id, condition, is_graded, grade_label)).fetchone()
+    try:
+        delta = int(payload.get("delta", 0))
+        if delta < 0 and payload.get("any_condition") and not is_graded and not (existing and existing["quantity"]):
+            # The card tile shows one total across conditions but only knows "Near Mint". Its minus
+            # button takes from whichever ungraded condition actually holds a copy.
+            other = db().execute(
+                "SELECT * FROM collection_entries WHERE user_id=? AND variant_id=? AND is_graded=0 AND quantity>0 ORDER BY quantity DESC,condition LIMIT 1",
+                (uid, variant_id),
+            ).fetchone()
+            if other:
+                existing, condition = other, other["condition"]
+        before = existing["quantity"] if existing else 0
+        quantity = max(0, int(payload.get("quantity", before + delta)))
+        if "price_override" in payload:
+            raw_override = payload["price_override"]
+            price_override = float(raw_override) if raw_override not in (None, "") else None
+        else:
+            price_override = existing["price_override"] if existing else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "Menge und Preis müssen Zahlen sein."}), 400
     stamp = now_iso()
     if quantity == 0:
         db().execute(
             "DELETE FROM collection_entries WHERE user_id=? AND variant_id=? AND condition=? AND is_graded=? AND grade_label=?",
-            (user_id(), variant_id, condition, is_graded, grade_label),
+            (uid, variant_id, condition, is_graded, grade_label),
         )
     elif existing:
         db().execute(
@@ -1959,10 +2032,17 @@ def update_collection():
     else:
         db().execute(
             "INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (user_id(), variant_id, condition, quantity, payload.get("notes"), is_graded, grade_label, price_override, stamp, stamp),
+            (uid, variant_id, condition, quantity, payload.get("notes"), is_graded, grade_label, price_override, stamp, stamp),
+        )
+    result = {"variant_id": variant_id, "condition": condition, "before": before, "quantity": quantity}
+    if request_id:
+        db().execute("DELETE FROM applied_requests WHERE created_at<datetime('now','-30 days')")
+        db().execute(
+            "INSERT INTO applied_requests(user_id,request_id,response,created_at) VALUES(?,?,?,datetime('now'))",
+            (uid, request_id, json.dumps(result)),
         )
     db().commit()
-    return jsonify({"variant_id": variant_id, "before": before, "quantity": quantity})
+    return jsonify(result)
 
 
 @app.get("/api/collection/entries/<variant_id>")
@@ -2064,8 +2144,11 @@ def toggle_watchlist():
         if not variant: return jsonify({"error":"variant not found"}), 404
         target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? ORDER BY is_default DESC,id LIMIT 1", (user_id(),variant["game_id"])).fetchone()
         list_id = target["id"] if target else None
-    owned_list = db().execute("SELECT id FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
+    owned_list = db().execute("SELECT id,game_id FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
     if not owned_list: return jsonify({"error":"watchlist not found"}), 404
+    listed_variant = db().execute("SELECT game_id FROM variants WHERE id=?", (variant_id,)).fetchone()
+    if not listed_variant: return jsonify({"error":"variant not found"}), 404
+    if listed_variant["game_id"] != owned_list["game_id"]: return jsonify({"error":"Diese Karte gehört zu einem anderen Spiel als die Watchlist."}), 400
     existing = db().execute("SELECT id FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id)).fetchone()
     if existing:
         db().execute("DELETE FROM named_watchlist_entries WHERE id=?", (existing["id"],)); active = False
@@ -3072,7 +3155,10 @@ def undo_import(operation_id):
 @app.post("/api/settings")
 @login_required
 def save_settings():
-    for key,value in request.get_json(force=True).items():
+    payload = request.get_json(force=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Ungültige Anfrage."}), 400
+    for key,value in payload.items():
         db().execute("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value", (user_id(),key,json.dumps(value)))
     db().commit(); return jsonify({"saved":True})
 
@@ -3411,6 +3497,7 @@ def image_file_response(path: Path, content_type: str, source: str):
 
 
 @app.get("/art/<variant_id>.svg")
+@login_required
 def card_art(variant_id):
     row = db().execute("""SELECT i.canonical_name,p.id printing_id,p.collector_number,p.rarity,p.language,
       v.variant_code,v.game_id,v.finish,v.attributes variant_attributes,g.accent,s.code set_code,s.accent set_accent
@@ -3439,10 +3526,13 @@ def card_art(variant_id):
     <text x="38" y="58" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#fff" opacity=".86">{number}</text><text x="500" y="58" text-anchor="end" font-family="Arial,sans-serif" font-size="17" fill="#fff" opacity=".8">{row['language']}</text>
     <rect x="28" y="540" width="484" height="176" rx="18" fill="#07101f" opacity=".9"/><text x="52" y="590" font-family="Arial,sans-serif" font-size="29" font-weight="800" fill="#fff">{title[:29]}</text><text x="52" y="624" font-family="Arial,sans-serif" font-size="16" fill="#cbd5e1">{rarity} · {finish}</text>
     <path d="M52 657 H460" stroke="#fff" stroke-opacity=".13"/><text x="52" y="687" font-family="Arial,sans-serif" font-size="13" fill="#94a3b8">DECKLEDGER CATALOGUE EDITION</text></svg>'''
-    return Response(svg,mimetype="image/svg+xml",headers={"Cache-Control":"public, max-age=31536000, immutable"})
+    # A stand-in for an image that could not be fetched right now, not the card's artwork:
+    # browsers and the service worker must come back for the real one.
+    return Response(svg,mimetype="image/svg+xml",headers={"Cache-Control":"private, max-age=3600","X-Image-Source":"placeholder"})
 
 
 @app.get("/foil-mask/<variant_id>.webp")
+@login_required
 def foil_mask(variant_id):
     row = db().execute("""SELECT i.canonical_name,p.id printing_id,p.collector_number,p.rarity,p.language,
       v.variant_code,v.game_id,v.finish,v.attributes variant_attributes,g.accent,s.code set_code,s.accent set_accent
@@ -3479,6 +3569,7 @@ def _official_foil_variant(variant_id):
 
 
 @app.get("/api/foil-layer-meta/<variant_id>")
+@login_required
 def foil_layer_meta(variant_id):
     """Metadata for the OFFICIAL Ravensburger foil layers (see ravensburger_foil.py) -- the
     actual mask pixels are served separately (foil_layer_mask_asset below, one request per
@@ -3508,6 +3599,7 @@ def foil_layer_meta(variant_id):
 
 
 @app.get("/foil-layer-mask/<variant_id>/<kind>.jpg")
+@login_required
 def foil_layer_mask_asset(variant_id, kind):
     """Proxies + disk-caches one of Ravensburger's own mask images (never the frontend hitting
     ravensburger.com directly -- no CORS dependency, same "external asset needs our own route"
@@ -3529,6 +3621,7 @@ def foil_layer_mask_asset(variant_id, kind):
 
 
 @app.get("/game-logo/<game_id>")
+@login_required
 def game_logo(game_id):
     """Cache the official TCG wordmarks used by catalogue and game tiles."""
     source_url = GAME_LOGOS.get(game_id)
@@ -3587,6 +3680,10 @@ def remote_set_visual(set_row):
         page_url = f"https://www.vcardtcg.com/cards/{set_row['id'].removeprefix('vcard-')}"
         logo = re.search(r'\\"logo\\":\{\\"main\\":\\"(.*?)\\"', provider_html(page_url))
         return urljoin(page_url, quote(logo.group(1), safe=":/%")) if logo else None
+
+    if set_row["game_id"] != "one-piece":
+        # Games without an official visual source of their own get the generated wordmark.
+        return None
 
     code = re.sub(r"[^a-z0-9]", "", set_row["code"].lower())
     category = "decks" if set_row["code"].startswith("ST-") else "boosters"
@@ -3658,6 +3755,7 @@ def set_visual_version(set_row) -> str:
 
 
 @app.get("/set-logo/<set_id>")
+@login_required
 def set_logo(set_id):
     set_row = db().execute("SELECT id,game_id,code,name FROM sets WHERE id=?", (set_id,)).fetchone()
     if not set_row:

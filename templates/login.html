@@ -48,5 +48,10 @@
       <p class="login-footer">Self-hosted · Deine Daten bleiben bei dir</p>
     </section>
   </main>
+  <script>
+    // The service worker keeps API answers as an offline fallback. Whoever reaches the login
+    // page is signed out, so the previous user's cached answers must not outlive that session.
+    if ('caches' in window) caches.keys().then(keys => keys.filter(key => key.startsWith('deckledger-api-')).forEach(key => caches.delete(key)));
+  </script>
 </body>
 </html>

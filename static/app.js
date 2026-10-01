@@ -31,7 +31,7 @@ const releaseDate = item => {
   if(values.length<2)return date(values[0]||item?.release_date);
   return `${date(values[0])} – ${date(values.at(-1))}`;
 };
-const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=3${size==='thumb'?'&size=thumb':''}`;
+const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=4${size==='thumb'?'&size=thumb':''}`;
 // Luminance mask derived server-side from THIS card's own art (app.py: /foil-mask/<id>.webp,
 // cached_foil_mask) -- used to confine the mobile card-modal's foil/prismatic/aurora shimmer
 // to the card's own non-black regions instead of washing over the whole rectangle.
@@ -1343,9 +1343,16 @@ function scheduleRefresh(delayMs=500){
   },delayMs);
 }
 
+// Sent with every queueable collection change: the server applies a given id only once, so a
+// change that is replayed after a lost answer cannot be counted twice.
+const newRequestId=()=>globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 async function changeQuantity(variantId,delta,quick=false){
+  // any_condition: the tile shows one total across conditions, so its minus button may take a
+  // copy from another ungraded condition when there is no Near Mint one left.
+  const payload={variant_id:variantId,delta,condition:'Near Mint',any_condition:true,request_id:newRequestId()};
   if(!navigator.onLine){
-    await queueOfflineMutation({variant_id:variantId,delta,condition:'Near Mint'});
+    await queueOfflineMutation(payload);
     patchLocalQuantity(variantId,delta);
     await updateOfflineIndicator();
     toast('Offline gespeichert · wird bei Verbindung synchronisiert');
@@ -1353,17 +1360,17 @@ async function changeQuantity(variantId,delta,quick=false){
   }
   let r;
   try{
-    r=await post('/api/collection',{variant_id:variantId,delta,condition:'Near Mint'});
+    r=await post('/api/collection',payload);
   }catch(error){
     if(!error.isNetworkError)throw error; // a real server error, not connectivity -- don't mask it as "syncing"
-    await queueOfflineMutation({variant_id:variantId,delta,condition:'Near Mint'});
+    await queueOfflineMutation(payload);
     patchLocalQuantity(variantId,delta);
     await updateOfflineIndicator();
     toast('Offline gespeichert · wird bei Verbindung synchronisiert');
     return;
   }
   patchLocalQuantity(variantId,delta);
-  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:'Near Mint'});await refreshCurrentView();if(state.modalCard)await openCard(state.modalCard.id,variantId,true)});
+  toast(quick?'Karte hinzugefügt':`Menge auf ${r.quantity} geändert`,'Rückgängig',async()=>{await post('/api/collection',{variant_id:variantId,quantity:r.before,condition:r.condition||'Near Mint'});await refreshCurrentView();if(state.modalCard)await openCard(state.modalCard.id,variantId,true)});
   scheduleRefresh();
 }
 
@@ -1376,6 +1383,7 @@ async function changeCollectionEntry(variantId,{condition='Near Mint',delta=0,qu
   if(quantity!==undefined)payload.quantity=quantity;else payload.delta=delta;
   if(priceOverride!==undefined)payload.price_override=priceOverride;
   const isPureDelta=quantity===undefined&&priceOverride===undefined;
+  if(isPureDelta)payload.request_id=newRequestId();
   if(!navigator.onLine){
     if(!isPureDelta){toast('Preis-Override braucht eine Verbindung -- offline nicht verfügbar');return}
     await queueOfflineMutation(payload);

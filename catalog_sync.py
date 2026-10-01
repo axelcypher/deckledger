@@ -18,7 +18,7 @@ import sys
 from datetime import datetime, timezone
 
 from app import DB_PATH, SCHEMA
-from catalog_provider_contract import empty_catalog, fill_missing_printed_card_counts, merge
+from catalog_provider_contract import fill_missing_printed_card_counts
 from catalog_provider_registry import dispatch_provider, get_provider, load_enabled_providers, mark_provider_result, provider_already_current
 
 
@@ -221,8 +221,8 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
                 "collection_entries", "watchlist_entries", "named_watchlist_entries", "deck_cards"
             )):
                 print(f"hololive sele-Migration: {json.dumps(migration_stats, ensure_ascii=False)}", flush=True)
-            # Stable IDs preserve all user data. Only references to cards genuinely
-            # removed upstream are pruned before their catalogue rows disappear.
+            # Stable IDs preserve all user data. Catalogue rows that vanished upstream are
+            # only pruned while nothing a user entered still points at them.
             for table, records in (
                 ("incoming_variants", catalog["variants"]),
                 ("incoming_printings", catalog["printings"]),
@@ -246,7 +246,24 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
                             WHERE game_id NOT IN ({placeholders}) OR source_type='manual-override'""",
                         tuple(fetched_game_ids),
                     )
-                for table in ("deck_cards", "named_watchlist_entries", "watchlist_entries", "collection_entries", "marketplace_products", "price_observations"):
+                # A card missing from this run is not proof it stopped existing -- a source page
+                # can come back short, or a provider can change its id scheme. Deleting the
+                # collection, deck and watchlist rows behind it would be unrecoverable, so any
+                # variant still referenced by user data stays in the catalogue untouched, along
+                # with the printing, identity and set it hangs off.
+                referenced = """SELECT variant_id FROM collection_entries UNION SELECT variant_id FROM deck_cards
+                    UNION SELECT variant_id FROM named_watchlist_entries UNION SELECT variant_id FROM watchlist_entries
+                    UNION SELECT cover_variant_id FROM decks WHERE cover_variant_id IS NOT NULL"""
+                retained = connection.execute(
+                    f"SELECT COUNT(*) FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants) AND variant_id NOT IN (SELECT id FROM incoming_variants)"
+                ).fetchone()[0]
+                if retained:
+                    print(f"{retained} nicht mehr gelieferte Varianten bleiben erhalten, weil Sammlungen, Decks oder Watchlists sie verwenden.", flush=True)
+                    connection.execute(f"INSERT OR IGNORE INTO incoming_variants(id) SELECT variant_id FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants)")
+                    connection.execute("INSERT OR IGNORE INTO incoming_printings(id) SELECT printing_id FROM variants WHERE id IN (SELECT id FROM incoming_variants)")
+                    connection.execute("INSERT OR IGNORE INTO incoming_identities(id) SELECT identity_id FROM printings WHERE id IN (SELECT id FROM incoming_printings)")
+                    connection.execute("INSERT OR IGNORE INTO incoming_sets(id) SELECT set_id FROM printings WHERE id IN (SELECT id FROM incoming_printings)")
+                for table in ("marketplace_products", "price_observations"):
                     connection.execute(f"DELETE FROM {table} WHERE variant_id NOT IN (SELECT id FROM incoming_variants)")
                 connection.execute("DELETE FROM variants WHERE id NOT IN (SELECT id FROM incoming_variants)")
                 connection.execute("DELETE FROM printings WHERE id NOT IN (SELECT id FROM incoming_printings)")
@@ -303,9 +320,23 @@ def run_single_provider(connection: sqlite3.Connection, provider_id: str) -> int
         return 1
 
 
+def due_for_refresh(provider: dict, max_age_hours: float | None) -> bool:
+    """A provider whose code is unchanged still needs a periodic run: new sets and cards only
+    ever reach the catalogue by fetching the source again."""
+    if not provider_already_current(provider):
+        return True
+    if max_age_hours is None:
+        return False
+    if provider["last_status"] != "ok" or not provider["last_run_at"]:
+        return True
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(provider["last_run_at"])
+    return age.total_seconds() >= max_age_hours * 3600
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Real card catalogue sync")
     parser.add_argument("--if-needed", action="store_true", help="skip providers already imported at their current version")
+    parser.add_argument("--max-age-hours", type=float, help="with --if-needed: also re-run providers whose last successful import is older than this")
     parser.add_argument("--provider", help="run exactly one provider id, ignoring staleness")
     args = parser.parse_args()
 
@@ -317,34 +348,19 @@ def main() -> int:
             return run_single_provider(connection, args.provider)
 
         providers = load_enabled_providers(connection)
-        stale = [p for p in providers if not (args.if_needed and provider_already_current(p))]
+        stale = [p for p in providers if not args.if_needed or due_for_refresh(p, args.max_age_hours)]
         if args.if_needed and not stale:
             print("Alle Kataloge sind aktuell.", flush=True)
             return 0
 
-        combined = empty_catalog()
-        fetched_game_ids = set()
-        provider_minimums = {}
+        # Each game is imported, validated and written on its own (every write is still one
+        # atomic transaction): one unreachable source must not keep every other game from
+        # importing, and each provider gets its own recorded result either way.
+        failed = 0
         for provider in stale:
             print(f"{provider['label']}: Import startet …", flush=True)
-            catalog = dispatch_provider(provider)
-            merge(combined, catalog)
-            fetched_game_ids.add(provider["game_id"])
-            provider_minimums[provider["game_id"]] = (provider["minimum_sets"] or 0, provider["minimum_cards"] or 0)
-
-        fill_missing_printed_card_counts(combined)
-        validate(combined, provider_minimums)
-        write_database(combined, fetched_game_ids)
-        now = iso_now()
-        for provider in stale:
-            counts = {
-                "sets": sum(1 for x in combined["sets"].values() if x["game_id"] == provider["game_id"]),
-                "cards": sum(1 for x in combined["identities"].values() if x["game_id"] == provider["game_id"]),
-            }
-            mark_provider_result(connection, provider["id"], ok=True, now=now, summary=counts)
-        connection.commit()
-        print("Der reale Kartenkatalog wurde atomar gespeichert.", flush=True)
-        return 0
+            failed += run_single_provider(connection, provider["id"])
+        return 1 if failed else 0
     finally:
         connection.close()
 

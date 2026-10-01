@@ -2,7 +2,7 @@
 // itself changes -- old caches are purged on activate. Static assets already
 // have their own ?v=NN cache-busting param from index.html, so this doesn't
 // need to track that separately.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const SHELL_CACHE = `deckledger-shell-${CACHE_VERSION}`;
 const API_CACHE = `deckledger-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `deckledger-images-${CACHE_VERSION}`;
@@ -48,7 +48,9 @@ async function cacheFirst(request, cacheName) {
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = await fetch(request);
-  if (response.ok) cache.put(request, response.clone());
+  // The server answers a card image it could not fetch with a generated stand-in (marked
+  // X-Image-Source: placeholder). Keeping that would pin the stand-in for good.
+  if (response.ok && response.headers.get('X-Image-Source') !== 'placeholder') cache.put(request, response.clone());
   return response;
 }
 

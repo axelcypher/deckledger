@@ -43,6 +43,8 @@ Promotional reprints are linked to their base gameplay identity and remain assig
 docker compose exec deckledger python catalog_sync.py
 ```
 
+The catalogue is re-imported automatically once a game's last successful import is older than `CATALOG_REFRESH_HOURS` (default 24, checked every six hours), so new sets and cards appear without a manual run. Each game imports on its own; a card that disappears from a source stays in the catalogue for as long as a collection, deck or watchlist still uses it. The provider code under `providers/` is what runs, unless an admin has replaced it with their own in the Admin UI.
+
 Prices refresh automatically on startup and every six hours when a provider has published new daily data. A manual refresh is available in every card's market tab or through:
 
 ```bash
