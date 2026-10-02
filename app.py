@@ -43,6 +43,7 @@ IMAGE_SOURCE_CACHE = Path(os.path.dirname(DB_PATH)) / "card-image-sources"
 IMAGE_THUMB_CACHE = Path(os.path.dirname(DB_PATH)) / "card-thumbnails"
 IMAGE_LOCK_CACHE = Path(os.path.dirname(DB_PATH)) / "card-image-locks"
 IMAGE_FOIL_MASK_CACHE = Path(os.path.dirname(DB_PATH)) / "card-foil-masks"
+IMAGE_TRIM_CACHE = Path(os.path.dirname(DB_PATH)) / "card-images-trimmed"
 PUBLIC_DIR = Path(os.environ.get("PUBLIC_DIR", Path(__file__).with_name("public")))
 PUBLIC_SET_DIR = PUBLIC_DIR / "sets"
 PUBLIC_OP_ICON_DIR = PUBLIC_DIR / "icons" / "one-piece"
@@ -1103,9 +1104,13 @@ def service_worker():
     return response
 
 
+MANUAL_PRICE_PROVIDER = "manual"
+MANUAL_PRICE_LIMIT = 1_000_000
+
+
 def latest_observation_sql(alias, metric, field):
-    """Newest observation of a variant: Cardmarket's if it has one, else the newest of any other
-    mapped provider. The inner MAX() is a single index seek per provider, so the cost stays flat
+    """Newest observation of a variant: a price entered by hand if there is one, else Cardmarket's,
+    else the newest of any other mapped provider. The inner MAX() is a single index seek per provider, so the cost stays flat
     however much price history piles up -- sorting a variant's whole history on every lookup (as
     this did before) got slower with each daily sync, on every page that shows a price."""
     return f"""(SELECT po.{field} FROM marketplace_products mp
@@ -1113,7 +1118,7 @@ def latest_observation_sql(alias, metric, field):
       WHERE mp.variant_id={alias}.id AND po.observed_at=(
         SELECT MAX(latest.observed_at) FROM price_observations latest
         WHERE latest.variant_id=mp.variant_id AND latest.provider_id=mp.provider_id AND latest.metric='{metric}')
-      ORDER BY CASE po.provider_id WHEN 'cardmarket' THEN 0 ELSE 9 END,po.observed_at DESC LIMIT 1)"""
+      ORDER BY CASE po.provider_id WHEN '{MANUAL_PRICE_PROVIDER}' THEN -1 WHEN 'cardmarket' THEN 0 ELSE 9 END,po.observed_at DESC LIMIT 1)"""
 
 
 def latest_price_sql(alias="v", metric="trend"):
@@ -2216,6 +2221,9 @@ def card_detail(identity_id):
             variant["price_url"] = (market_mapping or {}).get("source_url") or fallback_url
             variant["image_source"] = "Offizieller hololive Card-Katalog"
             variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://en.hololive-official-cardgame.com/cardlist/"
+        # price_source/price_url keep naming the marketplace, so its link stays useful next to
+        # a price entered by hand.
+        variant["price_manual"] = variant.get("price_provider") == MANUAL_PRICE_PROVIDER
         variant["edition_label"] = variant_attrs.get("editionLabel")
         # A price that did not change writes no new row; it is still as current as the provider's
         # last successful sync.
@@ -2317,6 +2325,51 @@ def collection_entries_for_variant(variant_id):
         (user_id(), variant_id),
     ).fetchall()
     return jsonify([dict(row) for row in rows])
+
+
+@app.route("/api/variants/<variant_id>/manual-price", methods=["PUT", "DELETE"])
+@login_required
+def manual_price(variant_id):
+    """A price entered by hand, for cards no price feed covers (or covers wrongly). It is stored
+    like any provider's price -- a mapping plus change-only observations -- and wins over the
+    feeds until it is removed again, so everything that shows or sums prices picks it up without
+    knowing about it. Prices belong to the catalogue, not to an account: one manual price per card."""
+    variant = db().execute("SELECT id,game_id FROM variants WHERE id=?", (variant_id,)).fetchone()
+    if not variant:
+        return jsonify({"error": "variant not found"}), 404
+    if request.method == "DELETE":
+        db().execute("DELETE FROM price_observations WHERE variant_id=? AND provider_id=?", (variant_id, MANUAL_PRICE_PROVIDER))
+        db().execute("DELETE FROM marketplace_products WHERE variant_id=? AND provider_id=?", (variant_id, MANUAL_PRICE_PROVIDER))
+        db().commit()
+        return jsonify({"removed": True})
+    payload = request.get_json(force=True)
+    try:
+        amount = round(float(str((payload or {}).get("amount", "")).replace(",", ".")), 2)
+    except (TypeError, ValueError, AttributeError):
+        return jsonify({"error": "Der Preis muss eine Zahl sein."}), 400
+    if not 0 < amount <= MANUAL_PRICE_LIMIT:
+        return jsonify({"error": "Der Preis muss größer als 0 sein."}), 400
+    stamp = now_iso()
+    db().execute("BEGIN IMMEDIATE")
+    db().execute(
+        """INSERT OR IGNORE INTO marketplace_products(provider_id,external_product_id,variant_id,game_id,source_url,match_method,matched_at,attributes)
+           VALUES(?,?,?,?,'','manual',?,'{}')""", (MANUAL_PRICE_PROVIDER, variant_id, variant_id, variant["game_id"], stamp),
+    )
+    latest = db().execute(
+        "SELECT id,amount,observed_at FROM price_observations WHERE variant_id=? AND provider_id=? AND metric='trend' ORDER BY observed_at DESC,id DESC LIMIT 1",
+        (variant_id, MANUAL_PRICE_PROVIDER),
+    ).fetchone()
+    if latest and latest["observed_at"] == stamp:
+        # A correction within the same second replaces the entry: two rows with one timestamp
+        # would leave "the latest price" undecided.
+        db().execute("UPDATE price_observations SET amount=? WHERE id=?", (amount, latest["id"]))
+    elif not latest or latest["amount"] != amount:
+        db().execute(
+            "INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,?,'trend',?,'EUR',?)",
+            (variant_id, MANUAL_PRICE_PROVIDER, amount, stamp),
+        )
+    db().commit()
+    return jsonify({"saved": True, "amount": amount})
 
 
 @app.get("/api/variants/<variant_id>/price-history")
@@ -2625,8 +2678,6 @@ def collection_browser():
 SHEET_KINDS = ("WTS", "WTT")
 SHEET_SORTS = ("number", "rarity")
 SHEET_CARD_LIMIT = 400
-# Games whose card images are the print files, bleed included (see sheet_render.trim_bleed).
-SHEET_IMAGE_BLEED = {"vcard": sheet_render.PRINT_BLEED}
 
 
 def own_sheet(sheet_id):
@@ -2801,13 +2852,12 @@ def trade_sheet_image(sheet_id, page, fmt):
     for card in on_page:
         image_path = None
         try:
-            cached = cached_real_image(card, card["variant_id"])
+            cached = card_image(card, card["variant_id"])
             image_path = cached[0] if cached else None
         except Exception as error:  # an unreachable image source must not fail the whole sheet
             app.logger.warning("Sheet image for %s unavailable: %s", card["variant_id"], error)
         tiles.append({"image_path": image_path, "name": card["canonical_name"], "set_code": card["set_code"],
                       "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"],
-                      "bleed": SHEET_IMAGE_BLEED.get(card["game_id"]),
                       "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
     image = sheet_render.render_page(
         tiles, columns, rows, background=sheet["background"], kind=sheet["kind"], title=sheet["name"],
@@ -4130,6 +4180,62 @@ def download_real_image(url, legacy_data, legacy_mime):
         return data_path, content_type, source_key
 
 
+# Games whose card images are the print files, bleed included (see sheet_render.trim_bleed).
+IMAGE_BLEED = {"vcard": sheet_render.PRINT_BLEED}
+
+
+def cached_trimmed_image(source_path: Path, cache_key: str, bleed) -> tuple[Path, str] | None:
+    """The image without its print bleed, made once. None for an image that has none to cut --
+    remembered with a marker file, so it is not opened again on every request."""
+    from PIL import Image
+
+    IMAGE_TRIM_CACHE.mkdir(parents=True, exist_ok=True)
+    IMAGE_LOCK_CACHE.mkdir(parents=True, exist_ok=True)
+    targets = {"image/png": IMAGE_TRIM_CACHE / f"{cache_key}.png", "image/jpeg": IMAGE_TRIM_CACHE / f"{cache_key}.jpg"}
+    untrimmed = IMAGE_TRIM_CACHE / f"{cache_key}.keep"
+
+    def existing():
+        return next(((path, mime) for mime, path in targets.items() if path.exists()), None)
+
+    if existing() or untrimmed.exists():
+        return existing()
+    lock_path = IMAGE_LOCK_CACHE / f"trim-{cache_key}.lock"
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        if existing() or untrimmed.exists():
+            return existing()
+        try:
+            with Image.open(source_path) as source:
+                trimmed = sheet_render.trim_bleed(source, bleed)
+                if trimmed is source:
+                    untrimmed.touch()
+                    return None
+                # A photo stays a JPEG; everything else is kept lossless.
+                mime = "image/jpeg" if source.format == "JPEG" else "image/png"
+                temporary = targets[mime].with_suffix(".tmp")
+                if mime == "image/jpeg":
+                    trimmed.convert("RGB").save(temporary, format="JPEG", quality=95, subsampling=0)
+                else:
+                    trimmed.save(temporary, format="PNG", optimize=True)
+                os.replace(temporary, targets[mime])
+            return targets[mime], mime
+        except Exception as error:
+            app.logger.warning("Trimming the bleed failed for %s: %s", source_path, error)
+            return None
+
+
+def card_image(row, variant_id):
+    """cached_real_image() as every view should show it: cut to the card where the provider
+    publishes its print files. The cache key changes with it, so thumbnails and foil masks made
+    from the untrimmed image are not reused."""
+    real_image = cached_real_image(row, variant_id)
+    bleed = IMAGE_BLEED.get(row["game_id"])
+    if not real_image or not bleed:
+        return real_image
+    trimmed = cached_trimmed_image(real_image[0], real_image[2], bleed)
+    return (trimmed[0], trimmed[1], f"{real_image[2]}-trim") if trimmed else real_image
+
+
 def cached_thumbnail(source_path: Path, cache_key: str) -> Path | None:
     """Create a compact list thumbnail once; full artwork stays untouched."""
     from PIL import Image, ImageOps
@@ -4234,7 +4340,7 @@ def card_art(variant_id):
       JOIN games g ON g.id=v.game_id JOIN sets s ON s.id=p.set_id WHERE v.id=?""", (variant_id,)).fetchone()
     if not row: return Response(status=404)
     try:
-        real_image = cached_real_image(row, variant_id)
+        real_image = card_image(row, variant_id)
         if real_image:
             image_path, content_type, cache_key = real_image
             if request.args.get("size") == "thumb":
@@ -4269,7 +4375,7 @@ def foil_mask(variant_id):
       JOIN games g ON g.id=v.game_id JOIN sets s ON s.id=p.set_id WHERE v.id=?""", (variant_id,)).fetchone()
     if not row: return Response(status=404)
     try:
-        real_image = cached_real_image(row, variant_id)
+        real_image = card_image(row, variant_id)
         if real_image:
             image_path, _content_type, cache_key = real_image
             mask_path = cached_foil_mask(image_path, cache_key)

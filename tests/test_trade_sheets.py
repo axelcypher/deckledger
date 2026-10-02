@@ -149,33 +149,6 @@ def test_holo_cards_are_marked_in_the_image(tmp_path):
     assert all(sum(holo.getpixel(point)) >= sum(regular.getpixel(point)) for point in inside), "it only adds light"
 
 
-@pytest.mark.parametrize("size, trimmed", [((690, 940), True), ((734, 1000), True), ((630, 880), False), ((500, 700), False)])
-def test_bleed_is_cut_off_print_files_only(tmp_path, size, trimmed):
-    """VCard's images are print files: 3 mm of bleed around a 63 x 88 mm card."""
-    scan = tmp_path / "card.png"
-    image = Image.new("RGB", size, "#ff0000")
-    bleed = (round(size[0] * 3 / 69), round(size[1] * 3 / 94))
-    image.paste("#0000ff", (bleed[0], bleed[1], size[0] - bleed[0], size[1] - bleed[1]))
-    image.save(scan)
-    tile = sheet_render.card_tile({"image_path": str(scan), "bleed": sheet_render.PRINT_BLEED}, (300, 420)).convert("RGB")
-    edge_is_red = tile.getpixel((2, 210))[0] > 200
-    assert edge_is_red is not trimmed
-    assert tile.getpixel((150, 210)) == (0, 0, 255)
-    untouched = sheet_render.card_tile({"image_path": str(scan)}, (300, 420)).convert("RGB")
-    assert untouched.getpixel((2, 210))[0] > 200, "without a bleed setting nothing is cut"
-
-
-def test_only_vcard_images_are_trimmed(client, sheet, monkeypatch):
-    seen = []
-    monkeypatch.setattr(sheet_render, "render_page", lambda tiles, *args, **kwargs: seen.extend(tiles) or Image.new("RGB", (10, 10)))
-    add(client, sheet, EMBER8)
-    client.get(f"/api/trade-sheets/{sheet}/image/1.jpg")
-    lorcana = client.post("/api/trade-sheets", json={"game_id": "lorcana", "name": "L"}).get_json()["id"]
-    add(client, lorcana, ELSA)
-    client.get(f"/api/trade-sheets/{lorcana}/image/1.jpg")
-    assert [tile["bleed"] for tile in seen] == [sheet_render.PRINT_BLEED, None]
-
-
 def test_holo_sheen_leaves_black_areas_alone():
     image = Image.new("RGBA", (300, 420), "#000000")
     assert sheet_render.holo_sheen(image).convert("RGB").getcolors() == [(300 * 420, (0, 0, 0))]

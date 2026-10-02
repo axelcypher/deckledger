@@ -258,7 +258,7 @@ def holo_frame(size: tuple[int, int]) -> tuple[Image.Image, int]:
 
 
 # Print files: a 63 x 88 mm card with 3 mm bleed on every side. Publishers that put those files
-# online show more border than the cut card has.
+# online show more border than the cut card has. app.py trims them once, for every view.
 PRINT_BLEED = (3 / 69, 3 / 94)
 CUT_CARD_RATIO = 63 / 88
 
@@ -280,7 +280,7 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
     if path and Path(path).is_file():
         try:
             with Image.open(path) as source:
-                image = trim_bleed(source.convert("RGBA"), card.get("bleed"))
+                image = source.convert("RGBA")
             image = image.resize(size, Image.LANCZOS)
             # Scans come with square or with already-rounded, transparent corners; clipping to
             # the same rounded shape makes both look alike.
@@ -302,7 +302,7 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
 def render_page(cards: list[dict], columns: int, rows: int, *, background: str = DEFAULT_BACKGROUND, kind: str = "WTS",
                 title: str = "", subtitle: str = "", page: tuple[int, int] = (1, 1), scale: float = 1.0) -> Image.Image:
     """One page of a sheet. `cards` are dicts with image_path, name, set_code, number, quantity,
-    label, holo and bleed -- already sorted and cut to this page."""
+    label and holo -- already sorted and cut to this page."""
     card_w = max(60, round(CARD_WIDTH * scale))
     card_h = round(card_w * CARD_RATIO)
     gap = round(card_w * .09)

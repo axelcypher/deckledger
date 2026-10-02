@@ -31,11 +31,11 @@ const releaseDate = item => {
   if(values.length<2)return date(values[0]||item?.release_date);
   return `${date(values[0])} – ${date(values.at(-1))}`;
 };
-const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=4${size==='thumb'?'&size=thumb':''}`;
+const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=5${size==='thumb'?'&size=thumb':''}`;
 // Luminance mask derived server-side from THIS card's own art (app.py: /foil-mask/<id>.webp,
 // cached_foil_mask) -- used to confine the mobile card-modal's foil/prismatic/aurora shimmer
 // to the card's own non-black regions instead of washing over the whole rectangle.
-const foilMaskUrl = variantId => `/foil-mask/${encodeURIComponent(variantId)}.webp?v=1`;
+const foilMaskUrl = variantId => `/foil-mask/${encodeURIComponent(variantId)}.webp?v=2`;
 function finishPresentation(variant={}){
   const finish=String(variant.finish||'').trim();
   const descriptor=`${finish} ${variant.variant_code||''} ${variant.rarity||''}`.toLowerCase();
@@ -2543,6 +2543,20 @@ function renderCardModal(){
   const advancedToggles=$$('#advanced-toggle,#footer-advanced-toggle',$('#card-dialog'));
   advancedToggles.forEach(toggle=>toggle.onclick=toggleAdvancedPanel);
   if(advancedToggles.length&&advancedPanelExpanded)loadAdvancedPanel();
+  const manualPrice=$('#manual-price-form',$('#card-dialog'));
+  if(manualPrice){
+    const saved=async message=>{toast(message);state.boot=await api('/api/bootstrap');await openCard(card.id,v.id,true);scheduleRefresh(0)};
+    manualPrice.onsubmit=async event=>{
+      event.preventDefault();
+      try{await api(`/api/variants/${encodeURIComponent(v.id)}/manual-price`,{method:'PUT',body:JSON.stringify({amount:$('#manual-price-input').value})});await saved('Eigener Preis gespeichert')}
+      catch(error){toast(error.message)}
+    };
+    const remove=$('#manual-price-remove',manualPrice);
+    if(remove)remove.onclick=async()=>{
+      try{await api(`/api/variants/${encodeURIComponent(v.id)}/manual-price`,{method:'DELETE'});await saved('Eigener Preis entfernt')}
+      catch(error){toast(error.message)}
+    };
+  }
   if(state.modalTab==='market'&&$('#price-history-panel',$('#card-dialog')))loadPriceHistory(v.id);
   alignReflectionMask();
   // "wenn eine Karte geladen wird die foillayer dafür gezogen und gespeichert werden" -- fired
@@ -2711,7 +2725,7 @@ function modalTabContent(card,v){
       ? `<div><span>30-Tage-Ø</span><b>${price(v.price_avg30)}</b></div>`
       : `<div><span>Originalpreis</span><b>${original||'Nicht verfügbar'}</b></div>`;
     const historyPanel=v.price==null?'':`<div class="price-history" id="price-history-panel"><div class="price-history-loading">Preisverlauf wird geladen …</div></div>`;
-    return `<div class="price-hero"><span>${escapeHtml(v.price_source)} Marktpreis</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${escapeHtml(v.price_source)}</b></div></div>`}${historyPanel}<a class="price-source-link market-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(modalIsLorcana?lorcanaFinishLabel(v.finish,v.rarity):v.finish)} · direkte Produktseite</small></div><span>→</span></a><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
+    return `<div class="price-hero"><span>${v.price_manual?'Eigener Preis':`${escapeHtml(v.price_source)} Marktpreis`}</span><b>${price(v.price)}</b><small>${v.price==null?'Kein eindeutig zugeordneter Preis verfügbar':`Stand ${date(v.price_observed_at)} · EUR${conversion}`}</small></div>${v.price==null?'':`<div class="market-metrics"><div><span>Niedrig</span><b>${price(v.price_low)}</b></div>${secondaryMetric}<div><span>Anbieter</span><b>${v.price_manual?'Manuell':escapeHtml(v.price_source)}</b></div></div>`}${historyPanel}<a class="price-source-link market-source-link" href="${escapeHtml(v.price_url)}" target="_blank" rel="noopener noreferrer"><span>↗</span><div><b>Preisquelle bei ${escapeHtml(v.price_source)} öffnen</b><small>${escapeHtml(v.collector_number)} · ${escapeHtml(modalIsLorcana?lorcanaFinishLabel(v.finish,v.rarity):v.finish)} · direkte Produktseite</small></div><span>→</span></a><form class="manual-price" id="manual-price-form"><label for="manual-price-input">Eigener Preis</label><div class="manual-price-row"><input id="manual-price-input" inputmode="decimal" autocomplete="off" placeholder="z. B. 4,50" value="${v.price_manual?v.price.toFixed(2).replace('.',','):''}"><span>€</span><button class="secondary-button" type="submit">Speichern</button>${v.price_manual?'<button class="secondary-button" type="button" id="manual-price-remove">Entfernen</button>':''}</div><small>${v.price_manual?'Gilt anstelle der Preisquelle, bis du ihn entfernst.':'Für Karten ohne oder mit falschem Marktpreis. Gilt für diese Ausführung.'}</small></form><button class="secondary-button price-refresh" id="price-refresh">Preise aktualisieren</button>`;
   }
   if(state.modalTab==='card')return `<div class="detail-section modal-rules-section"><p class="rules-text">${rulesTextHtml(card.rules_text)}</p></div><div class="detail-grid modal-info-grid"><div class="detail-field"><span>Kartentyp</span><b>${escapeHtml(card.card_type)}</b></div><div class="detail-field"><span>${card.game_id==='vcard'?'Element':'Farbe'}</span><b>${escapeHtml(card.attributes.color)}</b></div><div class="detail-field"><span>${card.game_id==='vcard'?'Power Level':'Kosten'}</span><b>${card.game_id==='vcard'?(card.attributes.cost??'–'):card.attributes.cost}</b></div><div class="detail-field modal-info-legality"><span>Legalität</span><b>${escapeHtml(card.attributes.legality)}</b></div><div class="detail-field modal-info-set"><span>Set</span><b>${escapeHtml(v.set_name)}</b></div><div class="detail-field modal-info-rarity"><span>Seltenheit</span><b>${escapeHtml(v.rarity)}</b></div></div><a class="price-source-link modal-info-source" href="${escapeHtml(v.image_source_url)}" target="_blank" rel="noopener noreferrer"><span>▧</span><div><b>Bildquelle öffnen</b><small>${escapeHtml(v.image_source)}</small></div><span>→</span></a>`;
   return modalRelationshipContent(card,v);

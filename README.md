@@ -59,7 +59,9 @@ Price history stores changes, not days: a sync that finds the same price as last
 
 Cardmarket product IDs are persisted separately from internal variant IDs. One Piece Western and Japanese expansions are resolved and priced separately: the Western expansion is anchored by Bandai's official release date, while the corresponding Japanese match must use a distinct Cardmarket expansion ID with the same set/number/name fingerprint. Ambiguous matches remain empty; the importer never resolves them by card name alone.
 
-VCard TCG (Gamer Supps) is imported from the public set pages of vcardtcg.com. Every card is tracked per edition and finish (Unlimited/Limited and 1st Edition, each regular and Holo). The 1-of-1 God Rares are left out by default (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`), and no marketplace price feed carries VCard yet, so its prices stay empty.
+VCard TCG (Gamer Supps) is imported from the public set pages of vcardtcg.com. Every card is tracked per edition and finish (Unlimited/Limited and 1st Edition, each regular and Holo). The 1-of-1 God Rares are left out by default (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`). No marketplace price feed carries VCard yet, so its prices are entered by hand. Its card images are the publisher's print files; the 3 mm bleed is cut off once, for every view.
+
+A price can be entered by hand for any card in its market tab ("Eigener Preis"). It is stored like a provider's price, with its own history, counts in every total, and takes precedence over the feeds until it is removed. Prices belong to the catalogue: there is one manual price per card, shared by all accounts.
 
 hololive mappings are language-locked: EN variants use TCGplayer's daily USD export through TCGCSV; JP variants use Yuyutei's JPY retail listings. Original quotes and the daily ECB exchange rate are retained, while EUR conversions are used for collection totals. Ambiguous set/number/rarity matches remain empty.
 
