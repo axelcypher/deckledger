@@ -98,7 +98,7 @@ def collection_entries_for_variant(variant_id):
 @app.get("/api/collection")
 @login_required
 def collection_browser():
-    game_id=request.args.get("game_id"); q=request.args.get("q","").strip().lower(); set_id=request.args.get("set_id","")
+    game_id=request.args.get("game_id"); q=request.args.get("q","").strip(); set_id=request.args.get("set_id","")
     language=request.args.get("language","all"); rarity=request.args.get("rarity",""); finish=request.args.get("finish","")
     mode=request.args.get("mode","all"); sort=request.args.get("sort","number")
     selected_rarities=[value for value in request.args.get("rarities","").split(",") if value]

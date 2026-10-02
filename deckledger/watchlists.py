@@ -157,7 +157,7 @@ def watchlist_cards(list_id):
         if rarity and item["rarity"]!=rarity:continue
         if not matches_catalog_filters(item["game_id"],item["rarity"],item["identity_attrs"],selected_rarities,selected_costs,selected_colors,inkwell):continue
         result.append(item)
-    if q: result=[r for r in result if query_matches_row(q.lower(),r)]
+    if q: result=[r for r in result if query_matches_row(q,r)]
     if language!="all":result=[r for r in result if r["language"]==language]
     if set_id:result=[r for r in result if r["set_id"]==set_id]
     if finish:result=[r for r in result if r["finish"]==finish]

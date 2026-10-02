@@ -236,8 +236,17 @@ async function refreshWatchCount(){
   if(mtBadge){mtBadge.textContent=count;mtBadge.classList.toggle('hidden',count===0)}
 }
 
+// What a search box's text matches, as on the server (deckledger/web.py search_pattern): the text
+// as typed or read as a regular expression, ignoring case -- "PL9|PL10" finds either.
+function searchMatcher(query){
+  const literal=query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  let pattern;
+  try{pattern=new RegExp(`${literal}|(?:${query})`,'i')}catch{pattern=new RegExp(literal,'i')}
+  return text=>pattern.test(String(text??''));
+}
+
 async function doSearch(q){
-  const wrap=$('#search-results'); if(q.trim().length<2){wrap.innerHTML='<div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Suche nach Name, Set oder Sammlernummer.</span></div>';return}
+  const wrap=$('#search-results'); if(q.trim().length<2){wrap.innerHTML='<div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Suche nach Name, Set oder Sammlernummer. Mehrere Begriffe mit | trennen: PL9|PL10</span></div>';return}
   const rows=await api(`/api/search?q=${encodeURIComponent(q)}&game_id=${encodeURIComponent(state.activeGameId)}`); if(!rows.length){wrap.innerHTML='<div class="empty-search"><b>Keine Treffer</b><span>Versuche einen anderen Namen oder eine Nummer.</span></div>';return}
   const groups=Object.groupBy?Object.groupBy(rows,x=>x.game_name):rows.reduce((a,x)=>((a[x.game_name]??=[]).push(x),a),{});
   wrap.innerHTML=Object.entries(groups).map(([game,items])=>`<div class="search-group-title">${escapeHtml(game).toUpperCase()}</div>${items.map(r=>`<button class="search-result" data-id="${r.identity_id}" data-variant="${r.variant_id}">${finishThumb(r,artUrl(r.variant_id),r.canonical_name,'search-thumb')}<div><b>${escapeHtml(r.canonical_name)}</b><small>${escapeHtml(r.set_name)} · ${escapeHtml(r.collector_number)} · ${r.language} · ${escapeHtml(r.game_id==='lorcana'?lorcanaFinishLabel(r.finish,r.rarity):r.finish)}</small></div><span class="search-price">${money(r.price)}</span></button>`).join('')}`).join('');

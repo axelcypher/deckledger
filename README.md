@@ -25,7 +25,7 @@ the demo hint on the login page disappears once the `demo` password has been cha
 - Variant-aware card details, source links and relationships
 - Persistent collection quantities, conditions and watchlist entries
 - Explicit Edit Mode and Quick Entry
-- Global card, set and collector-number search
+- Global card, set and collector-number search; every search box takes the text as typed or as a regular expression, ignoring case, so `PL9|PL10` or `PL(9|10)` finds both
 - Text-list import with preview, matching and undo
 - JSON and CSV export
 - SQLite persistence in the `deckledger_data` Docker volume

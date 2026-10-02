@@ -28,7 +28,7 @@ def game_formats(game_id):
 @login_required
 def deck_catalog():
     game_id = request.args.get("game_id")
-    q = request.args.get("q", "").strip().lower()
+    q = request.args.get("q", "").strip()
     set_id = request.args.get("set_id", "")
     rules = game_rules(game_id)
     language = request.args.get("language", rules.deck_language)
@@ -76,10 +76,10 @@ def deck_catalog():
         # printing, and the English rules text -- a search box that only understood the English
         # canonical_name was useless while actually browsing German- or Japanese-language cards.
         filters.append(
-            "(lower(i.canonical_name) LIKE ? OR lower(p.collector_number) LIKE ? OR lower(i.rules_text) LIKE ?"
-            " OR lower(json_extract(p.attributes,'$.localizedName')) LIKE ? OR lower(json_extract(p.attributes,'$.localizedRulesText')) LIKE ?)"
+            "(search_matches(?,i.canonical_name) OR search_matches(?,p.collector_number) OR search_matches(?,i.rules_text)"
+            " OR search_matches(?,json_extract(p.attributes,'$.localizedName')) OR search_matches(?,json_extract(p.attributes,'$.localizedRulesText')))"
         )
-        values.extend((f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"))
+        values.extend((q, q, q, q, q))
     if set_id:
         filters.append("p.set_id=?")
         values.append(set_id)

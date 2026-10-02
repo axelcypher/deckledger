@@ -7,7 +7,7 @@ from flask import jsonify, request
 
 from .config import jload
 from .games import game as game_rules, playset_size, rarity_filter_ranks, rarity_rank
-from .web import app, db, login_required, user_id
+from .web import app, db, login_required, search_pattern, user_id
 from .prices import MANUAL_PRICE_PROVIDER, latest_price_meta_sql, latest_price_sql
 from .assets import set_visual_version
 
@@ -141,7 +141,7 @@ def game_card_rows(game_id, uid):
 
 
 def query_matches_row(query, row):
-    """Case-insensitive substring match used by every card search box -- canonical (English)
+    """The match used by every card search box (see web.search_pattern) -- canonical (English)
     name, collector number, and (since a search box that only understands English names is
     useless if you're looking at German/Japanese-localized cards) the printing's own localized
     name and localized rules text, plus the English rules text as a bonus "search by card text"
@@ -153,7 +153,8 @@ def query_matches_row(query, row):
         row.get("canonical_name"), row.get("collector_number"), row.get("rules_text"),
         printing_attrs.get("localizedName"), printing_attrs.get("localizedRulesText"),
     )
-    return any(query in str(field).lower() for field in fields if field)
+    pattern = search_pattern(query)
+    return any(pattern.search(str(field)) for field in fields if field)
 
 
 def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell="", finish="normal"):
@@ -297,7 +298,7 @@ def set_cards(set_id):
         return jsonify({"error": "set not found"}), 404
     language = request.args.get("language", "combined")
     mode = request.args.get("mode", "all")
-    query = request.args.get("q", "").strip().lower()
+    query = request.args.get("q", "").strip()
     sort = request.args.get("sort", "number")
     rarity = request.args.get("rarity", "")
     foil = request.args.get("foil", "")
@@ -328,7 +329,7 @@ def game_cards(game_id):
         return jsonify({"error": "game not found"}), 404
     language = request.args.get("language", "combined")
     mode = request.args.get("mode", "all")
-    query = request.args.get("q", "").strip().lower()
+    query = request.args.get("q", "").strip()
     sort = request.args.get("sort", "number")
     set_order = request.args.get("set_order", "desc")
     rarity = request.args.get("rarity", "")
@@ -521,17 +522,16 @@ def global_search():
     game_id = request.args.get("game_id")
     if len(q) < 2: return jsonify([])
     limit = min(80, max(1, request.args.get("limit", 24, type=int)))
-    like = f"%{q}%"
     rows = db().execute(
         f"""SELECT DISTINCT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,p.rarity,s.name set_name,
           g.id game_id,g.short_name game_name,g.accent,v.id variant_id,v.finish,{latest_price_sql('v')} price,
           s.code set_code,v.variant_code,v.is_parallel,
-          COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) quantity,
-          CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted
+          COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=?2 AND c.variant_id=v.id),0) quantity,
+          CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?3) THEN 1 ELSE 0 END watchlisted
           FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id
           JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=i.game_id
-          WHERE (? IS NULL OR g.id=?) AND (i.canonical_name LIKE ? OR p.collector_number LIKE ? OR s.name LIKE ?
-            OR i.rules_text LIKE ? OR json_extract(p.attributes,'$.localizedName') LIKE ? OR json_extract(p.attributes,'$.localizedRulesText') LIKE ?)
-          LIMIT ?""", (user_id(),user_id(),game_id,game_id,like,like,like,like,like,like,limit)
+          WHERE (?4 IS NULL OR g.id=?5) AND (search_matches(?1,i.canonical_name) OR search_matches(?1,p.collector_number) OR search_matches(?1,s.name)
+            OR search_matches(?1,i.rules_text) OR search_matches(?1,json_extract(p.attributes,'$.localizedName')) OR search_matches(?1,json_extract(p.attributes,'$.localizedRulesText')))
+          LIMIT ?6""", (q,user_id(),user_id(),game_id,game_id,limit)
     ).fetchall()
     return jsonify([dict(r) for r in rows])
