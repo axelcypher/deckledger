@@ -46,6 +46,11 @@ function renderDashboard(){
   $$('[data-dashboard-route]',content).forEach(el=>el.onclick=()=>{const route=el.dataset.dashboardRoute;routeTo(route,route==='game'?state.activeGameId:undefined)});
   const bannerTrack=$('#home-banner-track');
   bannerTrack.addEventListener('click',e=>{const card=e.target.closest('.banner-card');if(card)openCard(card.dataset.identity,card.dataset.variant)});
+  // The reel waits while a mouse pointer rests on it. Set from pointer events, not with :hover --
+  // on a touch screen :hover sticks to the last thing tapped, so opening a card from the reel
+  // left it standing still until something else was tapped.
+  bannerTrack.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse')bannerTrack.classList.add('paused')});
+  bannerTrack.addEventListener('pointerleave',()=>bannerTrack.classList.remove('paused'));
   loadHomeBanner();
   loadRecentAdditions();
 }
@@ -95,6 +100,7 @@ async function loadHomeBanner(){
     state.homeBanner={slides:[reel],index:0};
     preloadBannerImages([reel]);
     paintBannerSlide(0);
+    $('#home-banner').classList.toggle('always-moving',Boolean(state.boot.settings?.homeBanner?.alwaysMoving));
     $('#home-banner').classList.remove('hidden');
   }catch(error){/* banner is decorative; fail silently */}
 }

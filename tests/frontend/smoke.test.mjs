@@ -151,6 +151,48 @@ describe('app in the browser', { skip }, () => {
     noProblems();
   });
 
+  describe('the highlights reel on the dashboard', () => {
+    const reel = `document.querySelector('#home-banner-track')`;
+    const position = () => page.evaluate(`new DOMMatrix(getComputedStyle(${reel}).transform).m41`);
+    const moves = async () => { const before = await position(); await sleep(700); return (await position()) < before - 0.5; };
+    const open = async () => {
+      await page.route('dashboard');
+      await page.waitFor(`${reel}?.querySelector('.banner-card')&&!document.querySelector('#home-banner').classList.contains('hidden')`, { message: 'the reel to show cards' });
+      await sleep(150);   // the animation is restarted two frames after the cards are in
+    };
+
+    test('moves, and stops under a resting mouse pointer', async () => {
+      await open();
+      assert.ok(await moves());
+      const spot = await page.evaluate(`(()=>{const box=${reel}.parentElement.getBoundingClientRect();return {x:box.left+60,y:box.top+box.height/2}})()`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...spot });
+      await sleep(100);
+      assert.equal(await moves(), false);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+      await sleep(100);
+      assert.ok(await moves());
+      noProblems();
+    });
+
+    test('with animations reduced it stands still and can be scrolled by hand', async () => {
+      await page.motion('reduce');
+      try {
+        await open();
+        assert.equal(await moves(), false);
+        const row = await page.evaluate(`(()=>{const view=${reel}.parentElement;return {overflow:getComputedStyle(view).overflowX,copies:[...${reel}.children].filter(group=>getComputedStyle(group).display!=='none').length}})()`);
+        assert.deepEqual(row, { overflow: 'auto', copies: 1 });
+        // ... unless the user wants it to move regardless.
+        await page.route('settings');
+        await page.evaluate(`document.querySelector('#banner-always-moving').click()`);
+        await page.waitFor(`state.boot.settings.homeBanner?.alwaysMoving===true`);
+        await open();
+        assert.ok(await moves());
+        await page.evaluate(`post('/api/settings',{homeBanner:{}}).then(()=>{state.boot.settings.homeBanner={}})`);
+      } finally { await page.motion('no-preference'); }
+      noProblems();
+    });
+  });
+
   test('search finds cards by name', async () => {
     await page.evaluate(`doSearch('Tide')`);
     await page.waitFor(`document.querySelector('#search-results')?.innerText.includes('Tide (PL8)')`);
@@ -214,6 +256,18 @@ describe('app in the browser', { skip }, () => {
       assert.ok(await phone.evaluate(`getComputedStyle(document.querySelector('#mobile-tabbar')).display!=='none'`));
       for (const route of ['collection', 'watchlist', 'decks', 'sheets', 'dashboard']) await phone.route(route);
       assert.deepEqual(phone.problems, []);
+      // Regression: on a touch screen :hover stays on the last thing tapped, so opening a card
+      // from the highlights reel left the reel paused after the card was closed again.
+      await phone.waitFor(`document.querySelector('#home-banner-track .banner-card')`, { message: 'the reel to show cards' });
+      const spot = await phone.evaluate(`(()=>{const box=document.querySelector('#home-banner-track .banner-card').getBoundingClientRect();return {x:box.left+20,y:box.top+40}})()`);
+      await phone.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [spot] });
+      await phone.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await phone.waitFor(`!document.querySelector('#card-modal').classList.contains('hidden')&&document.querySelector('#card-dialog [data-tab]')`, { message: 'the tapped card to open' });
+      await phone.evaluate(`(closeOverlay('card-modal'),1)`);
+      const at = () => phone.evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#home-banner-track')).transform).m41`);
+      const before = await at();
+      await sleep(700);
+      assert.ok(await at() < before - 0.5, 'the reel stays paused after a tap');
     } finally { await phone.close(); }
   });
 

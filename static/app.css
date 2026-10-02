@@ -105,7 +105,7 @@ body.editing .edit-indicator { display:block; }
 .home-banner-viewport { overflow:hidden;padding:34px 0;-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent); }
 .home-banner-track { --banner-gap:16px;display:flex;width:max-content;gap:0;animation:home-banner-scroll var(--marquee-duration,30s) linear infinite;will-change:transform; }
 .home-banner-group { display:flex;gap:var(--banner-gap);padding-right:var(--banner-gap); }
-.home-banner-track:hover { animation-play-state:paused; }
+.home-banner-track.paused { animation-play-state:paused; }
 @keyframes home-banner-scroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
 .banner-card { position:relative;flex:0 0 132px;width:132px;cursor:pointer; }
 .banner-card:hover { z-index:2; }
@@ -122,7 +122,15 @@ body.editing .edit-indicator { display:block; }
 .dashboard-recent-copy b,.dashboard-recent-copy small { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .dashboard-recent-copy small { margin-top:4px;color:#aab4c1; }
 .dashboard-recent-price { font-weight:700;white-space:nowrap; }
-@media(prefers-reduced-motion:reduce){.home-banner-track{animation:none}}
+/* With animations reduced in the system settings (also what Windows reports with its animation
+   effects off, in a remote session or on battery saver) the reel does not move by itself. It
+   becomes a row to scroll by hand instead of a strip cut off at the edge -- unless the user chose
+   to have it move regardless (Settings > Highlights, .always-moving). */
+@media(prefers-reduced-motion:reduce){
+  .home-banner:not(.always-moving) .home-banner-track { animation:none; }
+  .home-banner:not(.always-moving) .home-banner-group[aria-hidden] { display:none; }
+  .home-banner:not(.always-moving) .home-banner-viewport { overflow-x:auto;scrollbar-width:thin; }
+}
 .settings-section { max-width:640px;margin-bottom:28px;padding:22px 24px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line); }
 .settings-section h2 { margin:0 0 4px;font-size:16px; }
 .settings-section .muted { font-size:11px; }

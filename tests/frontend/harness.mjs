@@ -97,6 +97,9 @@ export async function startBrowser({ width = 1400, height = 950, mobile = false 
   const send = (method, params = {}) => new Promise(resolve => { pending.set(++nextId, resolve); socket.send(JSON.stringify({ id: nextId, method, params })); });
   for (const domain of ['Page', 'Runtime', 'Network']) await send(`${domain}.enable`);
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+  if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  // Headless Chrome takes this from the machine it runs on; the tests decide for themselves.
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
 
   const page = {
     problems,
@@ -136,6 +139,10 @@ export async function startBrowser({ width = 1400, height = 950, mobile = false 
       // the sign that the new one is there -- also when the same view is opened again.
       await page.evaluate(`(document.querySelector('#content').firstElementChild?.setAttribute('data-previous-view',''),routeTo(${JSON.stringify(route)}${data === undefined ? '' : `,${JSON.stringify(data)}`}),1)`);
       await page.waitFor(`(()=>{const view=document.querySelector('#content');return !view.querySelector('[data-previous-view],.page-loader')&&view.children.length>0})()`, { message: `the ${route} view to finish loading` });
+    },
+    /** Whether the system asks for reduced motion ('reduce') or not ('no-preference'). */
+    async motion(value) {
+      await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value }] });
     },
     async offline(offline) {
       await send('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });

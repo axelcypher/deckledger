@@ -81,6 +81,9 @@ function renderSettings(){
         <label class="checkbox-row highlight-setting"><span><b>Wertvollste Karten</b><small>Die 20 Karten mit dem höchsten Wert</small></span><input type="checkbox" data-banner-mode="value" ${modes.includes('value')?'checked':''}><i aria-hidden="true"></i></label>
       </div>
       <p class="muted settings-hint">Aktive Listen werden zu einer gemeinsamen, duplikatfreien Spur zusammengeführt.</p>
+      <div class="settings-checklist highlight-settings-list">
+        <label class="checkbox-row highlight-setting"><span><b>Immer bewegen</b><small>${matchMedia('(prefers-reduced-motion: reduce)').matches?'Auf diesem Gerät sind Animationen in den Systemeinstellungen reduziert: Das Reel steht still und lässt sich von Hand scrollen. Hiermit läuft es trotzdem.':'Das Reel läuft auch dann, wenn ein Gerät Animationen reduziert (Systemeinstellung, Energiesparmodus, Remote-Sitzung).'}</small></span><input type="checkbox" id="banner-always-moving" ${banner.alwaysMoving?'checked':''}><i aria-hidden="true"></i></label>
+      </div>
     </section>
     <section class="settings-section user-settings-card settings-card-offline settings-card-wide" id="offline-save-card">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg></span><div><span class="eyebrow">UNTERWEGS</span><h2>Offline verfügbar machen</h2><p>Speichert Sammlung, Watchlists, Kartendetails und Kartenbilder auf diesem Gerät, damit sie auch ohne Verbindung zum Server da sind.</p></div></div>
@@ -139,6 +142,12 @@ function renderSettings(){
     state.boot.settings.homeBanner=updated;
     toast('Banner-Einstellung gespeichert');
   });
+  $('#banner-always-moving',content).onchange=async event=>{
+    const updated={...(state.boot.settings.homeBanner||{}),alwaysMoving:event.target.checked};
+    await post('/api/settings',{homeBanner:updated});
+    state.boot.settings.homeBanner=updated;
+    toast('Banner-Einstellung gespeichert');
+  };
 }
 
 // The "Offline verfügbar machen" card: what is saved on this device, saving it and removing it.
