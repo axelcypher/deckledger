@@ -129,7 +129,10 @@ def fetch_userinfo(config, token):
     )
     if not response.ok:
         # What the provider says about its refusal is the only clue to why; it goes to the log.
-        raise OAuthConfigError(f"Userinfo-Endpunkt {endpoints['userinfo_url']} antwortet mit {response.status_code}: {response.text[:300].strip() or '(leer)'}")
+        # Providers put the reason for refusing a bearer token into this header (RFC 6750), often
+        # with an empty body: invalid_token, insufficient_scope, ...
+        reason = response.headers.get("WWW-Authenticate") or response.text[:300].strip() or "(keine Begründung)"
+        raise OAuthConfigError(f"Userinfo-Endpunkt {endpoints['userinfo_url']} antwortet mit {response.status_code}: {reason}")
     return response.json()
 
 
