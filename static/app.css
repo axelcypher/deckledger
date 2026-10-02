@@ -936,6 +936,10 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 /* What a sheet is for: independent switches with a box each, not one segmented control. */
 .sheet-head { flex-wrap:wrap; }
 .sheet-head .sheet-name-input { min-width:220px; }
+.tile-edition-row { display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 16px; }
+.tile-edition-row>span { color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
+.tile-edition-switch { flex:none; }
+.tile-edition-switch button { white-space:nowrap; }
 .sheet-kinds { display:flex;align-items:center;gap:6px;flex:none; }
 .sheet-kinds-label { color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
 .sheet-kind-chip+.sheet-kinds-label { margin-left:8px; }

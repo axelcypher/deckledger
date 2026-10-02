@@ -134,6 +134,7 @@ GAME = Game(
     rarity_filter_keys=RARITY_KEYS,
     premium_ranks=frozenset({RARITY_KEYS["epic"], RARITY_KEYS["enchanted"], RARITY_KEYS["iconic"]}),
     cost_filter_cap=7,
+    tile_editions=(("base", "", "Normal", "Silver", "Foil"),),
     is_foil=is_foil,
     main_set_types=("expansion",),
     formats=(

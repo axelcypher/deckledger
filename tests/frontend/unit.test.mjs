@@ -119,6 +119,68 @@ describe('rules that come with the game', () => {
   });
 });
 
+describe('quantity buttons on a card tile', () => {
+  const variant = (finish, quantity = 0, code = finish.toLowerCase().replace(/ /g, '-')) =>
+    ({ variant_id: `v-${code}`, finish, variant_code: finish === 'Normal' ? 'normal' : code, language: 'EN', game_id: 'vcard', quantity, rarity: 'Uncommon', price: null });
+  const html = (variants, game = 'vcard') => run(`cardTile(${JSON.stringify({ identity_id: 'c', canonical_name: 'Card', collector_number: '001', rarity: 'Uncommon', language: 'EN', quantity: 0,
+    variant_id: variants[0].variant_id, variants: variants.map(item => ({ ...item, game_id: game })) })})`);
+  const tile = (variants, game) => {
+    const markup = html(variants, game);
+    return {
+      controls: [...markup.matchAll(/class="quantity-control( foil)?" data-variant="([^"]+)"/g)].map(match => `${match[2]}${match[1] ? ' (foil)' : ''}`),
+      quick: [...markup.matchAll(/class="quick-add( foil)?" data-variant="([^"]+)">([^<]+)</g)].map(match => `${match[2]}: ${match[3].trim()}`),
+      image: markup.match(/class="card-tile [^"]*" data-identity="c" data-variant="([^"]+)"/)[1],
+    };
+  };
+  const everyPrint = [variant('Normal'), variant('Holo'), variant('1st Edition'), variant('1st Edition Holo')];
+  const games = [
+    { id: 'vcard', languages: ['EN'], playset_size: 3, tile_editions: [
+      { id: 'base', label: 'Limited / Unlimited', regular: 'Normal', foil: 'Holo', foil_label: 'Holo' },
+      { id: 'first', label: '1st Edition', regular: '1st Edition', foil: '1st Edition Holo', foil_label: 'Holo' }] },
+    { id: 'lorcana', languages: ['EN'], playset_size: 4, tile_editions: [{ id: 'base', label: '', regular: 'Normal', foil: 'Silver', foil_label: 'Foil' }] },
+    { id: 'one-piece', languages: ['EN'], playset_size: 4, tile_editions: [] },
+  ];
+
+  test('a VCard tile counts the regular print and its Holo', () => {
+    set('state.boot.games', games); set('state.activeGameId', 'vcard'); set('state.tileEditions', {});
+    assert.deepEqual(tile(everyPrint), {
+      controls: ['v-holo (foil)', 'v-normal'], quick: ['v-holo: ＋ 1 Holo', 'v-normal: ＋ 1 hinzufügen'], image: 'v-normal' });
+  });
+
+  test('the switch moves the buttons to the 1st Edition prints', () => {
+    set('state.tileEditions', { vcard: 'first' });
+    assert.deepEqual(tile(everyPrint), {
+      controls: ['v-1st-edition-holo (foil)', 'v-1st-edition'], quick: ['v-1st-edition-holo: ＋ 1 Holo', 'v-1st-edition: ＋ 1 hinzufügen'], image: 'v-1st-edition' });
+    assert.match(html(everyPrint), /· 1st Edition</);
+  });
+
+  test('a card that does not exist in the chosen print run keeps the buttons of the one it has', () => {
+    assert.deepEqual(tile([variant('Normal'), variant('Holo')]).controls, ['v-holo (foil)', 'v-normal']);
+    // ... one that only exists as a Holo gets a single button for that ...
+    set('state.tileEditions', {});
+    assert.deepEqual(tile([variant('Holo')]), { controls: ['v-holo'], quick: ['v-holo: ＋ 1 hinzufügen'], image: 'v-holo' });
+    // ... and one without a 1st Edition Holo a single one in that print run.
+    set('state.tileEditions', { vcard: 'first' });
+    assert.deepEqual(tile([variant('Normal'), variant('Holo'), variant('1st Edition')]).controls, ['v-1st-edition']);
+    set('state.tileEditions', {});
+  });
+
+  test('Lorcana keeps Normal and Foil, other games one button', () => {
+    set('state.activeGameId', 'lorcana');
+    assert.deepEqual(tile([variant('Normal'), variant('Silver')], 'lorcana').quick, ['v-silver: ＋ 1 Foil', 'v-normal: ＋ 1 hinzufügen']);
+    assert.deepEqual(tile([variant('Magma')], 'lorcana').controls, ['v-magma'], 'a premium print has no foil of its own');
+    set('state.activeGameId', 'one-piece');
+    assert.deepEqual(tile([variant('standard'), variant('parallel')], 'one-piece').controls, ['v-standard']);
+    set('state.activeGameId', 'vcard');
+  });
+
+  test('the switch only exists for games with several print runs', () => {
+    assert.match(run(`tileEditionSwitch('vcard')`), /data-tile-edition="base" class="active">Limited \/ Unlimited<.*data-tile-edition="first" class="">1st Edition</);
+    assert.equal(run(`tileEditionSwitch('lorcana')`), '');
+    assert.equal(run(`tileEditionSwitch('one-piece')`), '');
+  });
+});
+
 describe('views and their URLs', () => {
   test('a view starts with the default language of its game', () => {
     assert.equal(run(`defaultCollectionFilters('lorcana').language`), 'DE');

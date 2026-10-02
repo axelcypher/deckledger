@@ -77,6 +77,12 @@ GAME = Game(
         "Secret Rare": 6, "Paradox": 7, "Box Topper": 8, "Promo": 9, "God Rare": 10,
     },
     is_foil=is_foil,
+    # Every card comes from the regular print run (called Limited or Unlimited, depending on the
+    # set) and as 1st Edition, each plain and as a Holo.
+    tile_editions=(
+        ("base", "Limited / Unlimited", "Normal", "Holo", "Holo"),
+        ("first", "1st Edition", "1st Edition", "1st Edition Holo", "Holo"),
+    ),
     main_set_types=("booster set",),
     formats=(
         {"id": "standard", "name": "Official Standard", "description": "Offizielles Constructed-Regelset",

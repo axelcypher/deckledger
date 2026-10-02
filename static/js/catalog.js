@@ -130,6 +130,7 @@ async function renderSet(setId, preserve=false){
         <div class="zoom-control card-filter-end"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
     </div>
+    ${tileEditionSwitch(game.id)}
     <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</section>`;
   mountTileFeed($('.card-grid',content),[{cards:data.cards}],{key:`set:${setId}`,preserve,render:card=>cardTile(card,foilDisplayActive)});
   state.statsUrl=`/api/sets/${setId}/cards?${params}`;
@@ -146,6 +147,7 @@ async function renderSet(setId, preserve=false){
   $$('[data-card-filter]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardFilter,value=b.dataset.value,current=f[key]||[];f[key]=current.includes(value)?current.filter(x=>x!==value):[...current,value];renderSet(setId,true)});
   $$('[data-card-single-filter]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardSingleFilter,value=b.dataset.value;f[key]=f[key]===value?'':value;renderSet(setId,true)});
   $$('[data-card-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardMode,value=b.dataset.value;f[key]=value;renderSet(setId,true)});
+  bindTileEditionSwitch(game.id,()=>renderSet(setId,true));
   $('#card-zoom').oninput=e=>{state.zoom=e.target.value;$('.card-grid').style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
 }
 
@@ -192,6 +194,7 @@ async function renderAllCards(gameId,preserve=false){
         <div class="zoom-control card-filter-end"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
       </div>
     </div>
+    ${tileEditionSwitch(game.id)}
     <div class="all-card-groups" style="--card-size:${state.zoom}px">${data.groups.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe Suche oder Filter an.</span></div>'}</div>`;
   mountTileFeed($('.all-card-groups',content),data.groups.map(group=>({cards:group.cards,sectionHtml:`<section class="all-card-set"><header class="set-card-divider"><img loading="lazy" src="/set-logo/${encodeURIComponent(group.set.id)}?v=${encodeURIComponent(group.set.visual_version||'provider-v1')}" alt=""><div><span>${escapeHtml(group.set.code)}</span><h2>${escapeHtml(group.set.name)}</h2></div><small>${releaseDate(group.set)} · ${group.cards.length} Karten</small></header><div class="card-grid"></div></section>`})),{key:`all:${gameId}`,preserve,render:card=>cardTile(card,foilDisplayActive)});
   state.statsUrl=`/api/games/${gameId}/cards?${params}`;
@@ -207,6 +210,7 @@ async function renderAllCards(gameId,preserve=false){
   $$('[data-card-filter]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardFilter,value=b.dataset.value,current=f[key]||[];f[key]=current.includes(value)?current.filter(x=>x!==value):[...current,value];renderAllCards(gameId,true)});
   $$('[data-card-single-filter]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardSingleFilter,value=b.dataset.value;f[key]=f[key]===value?'':value;renderAllCards(gameId,true)});
   $$('[data-card-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardMode,value=b.dataset.value;f[key]=value;renderAllCards(gameId,true)});
+  bindTileEditionSwitch(gameId,()=>renderAllCards(gameId,true));
   let timer;$('#all-card-search').oninput=event=>{clearTimeout(timer);state.query=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#all-card-search',()=>renderAllCards(gameId,true)),280)};
   $('#all-card-zoom').oninput=event=>{state.zoom=event.target.value;$('.all-card-groups',content).style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
 }
@@ -239,6 +243,25 @@ const gameRules=gameId=>state.boot?.games.find(game=>game.id===gameId)||{};
 function playsetSize(gameId){return gameRules(gameId).playset_size||4}
 
 // VCard prints every card in up to four edition/finish combinations; show all of them, base first.
+// Games whose cards come in several print runs (VCard: Limited/Unlimited and 1st Edition) get a
+// switch for which of them the tiles' quantity buttons count.
+function tileEditionSwitch(gameId){
+  const editions=gameRules(gameId).tile_editions||[];
+  if(editions.length<2)return '';
+  const active=editions.find(edition=>edition.id===state.tileEditions[gameId])||editions[0];
+  // Its own row above the grid, not inside the filter panel: it is used while entering cards,
+  // when that panel is closed.
+  return `<div class="tile-edition-row"><span>Auflage</span><div class="segmented tile-edition-switch" role="radiogroup" aria-label="Auflage für die Mengen-Schalter" title="Welche Auflage die Mengen-Schalter der Karten zählen">${editions.map(edition=>`<button type="button" role="radio" aria-checked="${edition===active}" data-tile-edition="${edition.id}" class="${edition===active?'active':''}">${escapeHtml(edition.label)}</button>`).join('')}</div></div>`;
+}
+function bindTileEditionSwitch(gameId,render){
+  $$('[data-tile-edition]',content).forEach(button=>button.onclick=()=>{
+    if(state.tileEditions[gameId]===button.dataset.tileEdition)return;
+    state.tileEditions={...state.tileEditions,[gameId]:button.dataset.tileEdition};
+    post('/api/settings',{tileEditions:state.tileEditions});
+    render();
+  });
+}
+
 function tileChipVariants(variants,gameId){
   if(gameId!=='vcard')return variants.slice(0,3);
   const order=finishFilterOptions(gameId),rank=x=>{const index=order.indexOf(x.finish);return index<0?order.length:index};
@@ -253,9 +276,16 @@ function cardTile(card,foilDisplayActive=false){
   const languageVariants=card.variants.filter(x=>x.language===card.language);
   // When the server switched the representative to the foil printing (foil filter engaged),
   // honor that choice first -- otherwise always default to the Normal finish, as before.
-  const v=languageVariants.find(x=>x.variant_id===card.variant_id)||languageVariants.find(x=>x.finish==='Normal')||languageVariants.find(x=>['standard','normal'].includes(x.variant_code))||languageVariants[0]||card.variants[0];
-  const isLorcana=(v.game_id||state.activeGameId)==='lorcana';
-  const foil=(isLorcana&&!foilDisplayActive)?languageVariants.find(x=>x.finish==='Silver'):null;
+  const v0=languageVariants.find(x=>x.variant_id===card.variant_id)||languageVariants.find(x=>x.finish==='Normal')||languageVariants.find(x=>['standard','normal'].includes(x.variant_code))||languageVariants[0]||card.variants[0];
+  const gameId=v0.game_id||state.activeGameId,isLorcana=gameId==='lorcana';
+  // Which print run the tile's buttons stand for, and its regular and foil variant of this card
+  // (see tile_editions in deckledger/games). A card that does not exist in the chosen run -- or
+  // only as a foil -- falls back to what it does exist as.
+  const editions=gameRules(gameId).tile_editions||[],chosen=editions.find(edition=>edition.id===state.tileEditions[gameId])||editions[0];
+  const pairOf=edition=>({edition,regular:languageVariants.find(x=>x.finish===edition.regular),foil:languageVariants.find(x=>x.finish===edition.foil)});
+  const pair=[chosen,...editions].filter(Boolean).map(pairOf).find(item=>item.regular||item.foil);
+  const v=editions.length>1&&pair?(pair.regular||pair.foil):v0;
+  const foil=(pair&&pair.regular&&pair.foil&&pair.foil!==v&&!foilDisplayActive)?pair.foil:null;
   const visual=finishPresentation(v);
   // Hovering cycles through a card's other printings. For Lorcana specifically,
   // the Silver/foil finish is skipped -- every card has one, so it adds no
@@ -264,9 +294,9 @@ function cardTile(card,foilDisplayActive=false){
   const cycle=isLorcana?[v,...premiumVariants]:[v,...languageVariants.filter(x=>x!==v)];
   cardCycleRegistry.set(v.variant_id,cycle);
   const badgesHtml=isLorcana?lorcanaVariantBadges(languageVariants):(card.quantity?`<span class="owned-pill">×${card.quantity}</span>`:'');
-  const quantityHtml=isLorcana&&foil
+  const quantityHtml=foil
     ?`<div class="quantity-stack"><div class="quantity-control foil" data-variant="${foil.variant_id}"><button data-delta="-1">−</button><b>${foil.quantity}</b><button data-delta="1">＋</button></div><div class="quantity-control" data-variant="${v.variant_id}"><button data-delta="-1">−</button><b>${v.quantity}</b><button data-delta="1">＋</button></div></div>
-      <div class="quick-add-stack"><button class="quick-add foil" data-variant="${foil.variant_id}">＋ 1 Foil</button><button class="quick-add" data-variant="${v.variant_id}">＋ 1 hinzufügen</button></div>`
+      <div class="quick-add-stack"><button class="quick-add foil" data-variant="${foil.variant_id}">＋ 1 ${escapeHtml(pair.edition.foil_label||'Foil')}</button><button class="quick-add" data-variant="${v.variant_id}">＋ 1 hinzufügen</button></div>`
     :`<div class="quantity-control" data-variant="${v.variant_id}"><button data-delta="-1">−</button><b>${v.quantity}</b><button data-delta="1">＋</button></div><button class="quick-add" data-variant="${v.variant_id}">＋ 1 hinzufügen</button>`;
   const imageHtml=cycle.length>1
     ?`<div class="card-flip-stack"><img class="cycle-img front" loading="lazy" decoding="async" src="${artUrl(v.variant_id)}" alt="${escapeHtml(card.canonical_name)}"><img class="cycle-img back" loading="lazy" decoding="async" alt="" aria-hidden="true"></div>`
@@ -281,7 +311,7 @@ function cardTile(card,foilDisplayActive=false){
   return `<article class="card-tile ${card.quantity?'owned':'missing'}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
     <div class="card-image-wrap card-finish-frame ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.variant_id)}')">${imageHtml}<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><button class="watchlist-action watchlist-action-icon watch-button ${card.watchlisted?'active':''}" title="Watchlist" aria-label="${card.watchlisted?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen'}" aria-pressed="${Boolean(card.watchlisted)}">${watchlistIcon(card.watchlisted)}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
     ${playsetHtml}
-    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${tileChipVariants(languageVariants,v.game_id||state.activeGameId).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
+    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}${editions.length>1&&pair&&pair.edition.id!=='base'?` · ${escapeHtml(pair.edition.label)}`:''}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${tileChipVariants(languageVariants,v.game_id||state.activeGameId).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
 
 // Keeps the heart icon in sync everywhere a card can be watchlist-toggled from. The card modal

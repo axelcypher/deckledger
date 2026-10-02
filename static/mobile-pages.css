@@ -545,6 +545,10 @@
   body.dark.mobile-modern .content :is(.quantity-control,.quick-add) {
     border:1px solid rgba(255,255,255,.08);border-radius:var(--mt-radius-full);background:rgba(16,32,25,.91);box-shadow:0 5px 16px rgba(0,0,0,.22);
   }
+  /* The foil control keeps its gold: the dark background above made its dark numbers unreadable. */
+  body.dark.mobile-modern .content :is(.quantity-control,.quick-add).foil {
+    border-color:rgba(255,224,140,.5);background:linear-gradient(120deg,#7a4e0e,#f7d67a 42%,#a8721c 58%,#ffe9ab);
+  }
   body.dark.mobile-modern .content .variant-chip { border-radius:var(--mt-radius-full);background:var(--mp-gold-soft);color:var(--mt-gold); }
 
   /* Settings and administration */

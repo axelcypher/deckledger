@@ -116,6 +116,11 @@ def test_the_database_is_seeded_from_the_registry():
 def test_the_frontend_gets_its_rules_with_the_game(client):
     sent = {item["id"]: item for item in client.get("/api/bootstrap").get_json()["games"]}
     assert (sent["vcard"]["playset_size"], sent["vcard"]["copy_limits"], sent["vcard"]["icon"]) == (3, {"Mascot": 2}, "vcard")
+    # Which finishes a tile's quantity buttons stand for: VCard has two print runs to switch between.
+    assert [(item["id"], item["regular"], item["foil"]) for item in sent["vcard"]["tile_editions"]] == [
+        ("base", "Normal", "Holo"), ("first", "1st Edition", "1st Edition Holo")]
+    assert [(item["regular"], item["foil"], item["foil_label"]) for item in sent["lorcana"]["tile_editions"]] == [("Normal", "Silver", "Foil")]
+    assert sent["one-piece"]["tile_editions"] == []
     assert (sent["lorcana"]["playset_size"], sent["lorcana"]["copy_limits"], sent["lorcana"]["symbol"]) == (4, {}, "✦")
     assert [item["id"] for item in client.get("/api/games/one-piece/formats").get_json()] == ["standard"]
 

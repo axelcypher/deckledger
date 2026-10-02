@@ -61,6 +61,10 @@ class Game:
     premium_ranks: frozenset[int] = frozenset()
     # The cost filter's last button means "this or more".
     cost_filter_cap: int | None = None
+    # The finishes a card tile offers quantity buttons for, per print run: (id, label, finish of
+    # the regular print, finish of its foil counterpart, what the foil button is called). Several
+    # entries give the catalogue a switch between them; none means one button for the base print.
+    tile_editions: tuple[tuple[str, str, str, str, str], ...] = ()
     # Whether a variant counts for Foil%.
     is_foil: Callable[[dict, "Game"], bool] = any_other_finish
     # set_type values (lower case) of the sets that make up "the main game" on the dashboard.
@@ -124,4 +128,7 @@ class Game:
 
     def client_rules(self) -> dict:
         """What the frontend needs to know, sent along with the game in the bootstrap data."""
-        return {"playset_size": self.playset_size, "copy_limits": self.copy_limits, "symbol": self.symbol, "icon": self.icon}
+        return {
+            "playset_size": self.playset_size, "copy_limits": self.copy_limits, "symbol": self.symbol, "icon": self.icon,
+            "tile_editions": [dict(zip(("id", "label", "regular", "foil", "foil_label"), edition)) for edition in self.tile_editions],
+        }

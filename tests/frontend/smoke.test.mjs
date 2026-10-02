@@ -131,6 +131,28 @@ describe('app in the browser', { skip }, () => {
     noProblems();
   });
 
+  test('a VCard tile adds the Holo too, and the switch moves the buttons to the 1st Edition', async () => {
+    const HOLO = 'vcard-print-ember8-en-holo', FIRST = 'vcard-print-ember8-en-1st-edition';
+    const controls = () => page.evaluate(`[...document.querySelectorAll('.card-tile[data-identity="vcard-card-ember8"] .quantity-control')].map(control=>control.dataset.variant)`);
+    const owned = variant => `api('/api/collection/entries/${variant}').then(entries=>entries.reduce((sum,entry)=>sum+entry.quantity,0))`;
+    await page.evaluate(`(setEditMode(true),1)`);
+    await page.route('set', 'vcard-test');
+    assert.deepEqual(await controls(), [HOLO, EMBER8]);
+    await page.evaluate(`document.querySelector('.quick-add.foil[data-variant="${HOLO}"]').click()`);
+    await page.waitFor(`${owned(HOLO)}.then(count=>count===1)`, { message: 'the Holo to be added' });
+    await page.evaluate(`document.querySelector('[data-tile-edition="first"]').click()`);
+    await page.waitFor(`document.querySelector('.card-tile[data-identity="vcard-card-ember8"] .quantity-control')?.dataset.variant==='${FIRST}'`, { message: 'the buttons to count the 1st Edition' });
+    assert.deepEqual(await controls(), [FIRST], 'this card has no 1st Edition Holo in the test catalogue');
+    // The choice is kept for the account.
+    await page.waitFor(`api('/api/bootstrap').then(boot=>boot.settings.tileEditions?.vcard==='first')`, { message: 'the choice to be saved' });
+    await page.evaluate(`document.querySelector('[data-tile-edition="base"]').click()`);
+    await page.waitFor(`document.querySelectorAll('.card-tile[data-identity="vcard-card-ember8"] .quantity-control').length===2`);
+    await page.evaluate(`post('/api/collection',{variant_id:'${HOLO}',delta:-1})`);
+    await page.waitFor(`${owned(HOLO)}.then(count=>count===0)`);
+    await page.evaluate(`(setEditMode(false),1)`);
+    noProblems();
+  });
+
   test('the collection shows what was added', async () => {
     await page.route('collection');
     await page.waitFor(`document.querySelectorAll('.card-tile').length===1`);
@@ -327,6 +349,16 @@ describe('app in the browser', { skip }, () => {
       assert.ok(await phone.evaluate(`getComputedStyle(document.querySelector('#mobile-tabbar')).display!=='none'`));
       for (const route of ['collection', 'watchlist', 'decks', 'sheets', 'dashboard']) await phone.route(route);
       assert.deepEqual(phone.problems, []);
+      // Regression: on the phone the foil quantity control had the dark background of the regular
+      // one under its dark numbers.
+      await phone.evaluate(`(setEditMode(true),1)`);
+      await phone.route('set', 'vcard-test');
+      await phone.waitFor(`document.querySelector('.quantity-control.foil')`);
+      const colours = await phone.evaluate(`(()=>{const control=document.querySelector('.quantity-control.foil');return {background:getComputedStyle(control).backgroundImage,text:getComputedStyle(control.querySelector('b')).color}})()`);
+      assert.match(colours.background, /linear-gradient/);
+      assert.equal(colours.text, 'rgb(58, 38, 4)');
+      await phone.evaluate(`(setEditMode(false),1)`);
+      await phone.route('dashboard');
       // Regression: on a touch screen :hover stays on the last thing tapped, so opening a card
       // from the highlights reel left the reel paused after the card was closed again.
       await phone.waitFor(`document.querySelector('#home-banner-track .banner-card')`, { message: 'the reel to show cards' });
