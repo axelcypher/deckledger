@@ -132,7 +132,8 @@ def oauth_login():
         return oauth_failure_redirect(link_flow, "not_configured")
     try:
         auth_url, state, code_verifier = build_authorization_request(config, url_for("oauth_callback", _external=True))
-    except OAuthConfigError:
+    except OAuthConfigError as error:
+        app.logger.warning("SSO login could not be started: %s", error)
         return oauth_failure_redirect(link_flow, "provider_error")
     session["oauth_state"] = state
     session["oauth_code_verifier"] = code_verifier
@@ -155,12 +156,19 @@ def oauth_callback():
     code = request.args.get("code")
     if not code:
         return oauth_failure_redirect(link_user_id, "provider_error")
+    # The login page only says "the provider refused or cannot be reached". Which step failed and
+    # what the provider answered goes to the log -- without it a wrong client secret, an
+    # unreachable token endpoint and a missing claim all look the same.
+    step = "token exchange"
     try:
         redirect_uri = url_for("oauth_callback", _external=True)
         token = exchange_code(config, redirect_uri, code, code_verifier)
+        step = "userinfo request"
         claims = fetch_userinfo(config, token)
+        step = "reading the identity"
         subject, email, display_name = extract_identity(config, claims)
-    except OAuthConfigError:
+    except OAuthConfigError as error:
+        app.logger.warning("SSO login failed at the %s (redirect URI %s): %s", step, url_for("oauth_callback", _external=True), error)
         return oauth_failure_redirect(link_user_id, "provider_error")
 
     connection = db()

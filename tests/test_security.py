@@ -98,3 +98,22 @@ def test_sso_manual_mode_only_accepts_linked_identities():
     assert resolve("manual", "demo@example.com") is None
     query("UPDATE users SET oauth_provider='generic', oauth_subject='subject-1' WHERE username='demo'")
     assert resolve("manual", "")["username"] == "demo"
+
+
+def test_a_failed_sso_login_says_why_in_the_log(anonymous, monkeypatch, caplog):
+    """Regression: every failure after the return from the provider ended in the same message on
+    the login page and nothing in the log, so a wrong secret could not be told from a network problem."""
+    config = {**deckledger.config.OAUTH_CONFIG_DEFAULTS, "enabled": True, "client_id": "id", "client_secret": "secret"}
+    monkeypatch.setattr(deckledger.auth, "resolve_oauth_config", lambda: config)
+
+    def refuse(*args):
+        raise deckledger.auth.OAuthConfigError("invalid_client: Client authentication failed")
+
+    monkeypatch.setattr(deckledger.auth, "exchange_code", refuse)
+    with anonymous.session_transaction() as session:
+        session["oauth_state"], session["oauth_code_verifier"] = "state-1", "verifier"
+    with caplog.at_level("WARNING"):
+        response = anonymous.get("/oauth/callback?code=abc&state=state-1")
+    assert response.status_code == 302 and response.headers["Location"].endswith("/login?error=provider_error")
+    assert "token exchange" in caplog.text and "invalid_client" in caplog.text and "/oauth/callback" in caplog.text
+    assert "secret" not in caplog.text.replace("invalid_client", "") and "abc" not in caplog.text
