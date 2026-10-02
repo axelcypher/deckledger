@@ -58,6 +58,12 @@ describe('app in the browser', { skip }, () => {
     try {
       await sleep(350);   // the sidebar animates to its new width
       assert.deepEqual(await measure(), { inside: true, visible: true, copy: 'none' });
+      // The account menu is a popup of its own: its entries keep their text in the narrow rail.
+      await page.evaluate(`document.querySelector('#user-avatar').click()`);
+      const menu = await page.evaluate(`[...document.querySelectorAll('#user-popup [role="menuitem"]')].filter(item=>item.getBoundingClientRect().width>0).map(item=>({text:item.querySelector('span:last-child').innerText,label:item.querySelector('span:last-child').getBoundingClientRect().width>20}))`);
+      assert.deepEqual(menu.map(item => item.label), menu.map(() => true), JSON.stringify(menu));
+      assert.deepEqual(menu.map(item => item.text), ['Einstellungen', 'Import / Export', 'Abmelden']);
+      await page.evaluate(`document.querySelector('#user-avatar').click()`);
       await page.evaluate(`document.querySelector('#edit-panel').click()`);
       assert.equal(await page.evaluate(`state.edit`), true);
       await page.evaluate(`document.querySelector('#edit-panel').click()`);

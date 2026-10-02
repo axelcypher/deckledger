@@ -607,9 +607,9 @@
   body.dark.mobile-modern .sidebar,body.sidebar-collapsed.dark.mobile-modern .sidebar { width:82px;padding-inline:14px; }
   body.dark.mobile-modern .sidebar-collapse { display:none; }
   body.dark.mobile-modern .brand { justify-content:center;padding-inline:0; }
-  body.dark.mobile-modern .brand-word,body.dark.mobile-modern .nav-item>span:not(.nav-icon),body.dark.mobile-modern .sidebar-label,body.dark.mobile-modern .edit-panel :is(.edit-panel-copy,.switch),body.dark.mobile-modern .user-menu-info,body.dark.mobile-modern .user-menu form { display:none; }
+  body.dark.mobile-modern .brand-word,body.dark.mobile-modern .nav-item:not([role="menuitem"])>span:not(.nav-icon),body.dark.mobile-modern .sidebar-label,body.dark.mobile-modern .edit-panel :is(.edit-panel-copy,.switch),body.dark.mobile-modern .user-menu-info,body.dark.mobile-modern .user-menu>form { display:none; }
   body.dark.mobile-modern .edit-panel { justify-content:center;margin-inline:auto;padding:8px;width:max-content;cursor:pointer; }
-  body.dark.mobile-modern .nav-item { justify-content:center;padding:0; }
+  body.dark.mobile-modern .nav-item:not([role="menuitem"]) { justify-content:center;padding:0; }
   body.dark.mobile-modern .nav-icon { width:auto; }
   body.dark.mobile-modern .user-menu { justify-content:center;padding-inline:0; }
   body.dark.mobile-modern .content { padding-inline:26px; }
