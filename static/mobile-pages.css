@@ -704,7 +704,7 @@
     display:grid;grid-template-columns:38px minmax(0,1fr) 38px 38px;gap:7px;padding:11px;
     border-bottom:1px solid var(--mp-line);background:transparent;
   }
-  body.dark.mobile-modern .content .deck-editor-head .compact-back-button {
+  body.dark.mobile-modern .content :is(.deck-editor-head,.sheet-head) .compact-back-button {
     grid-column:1;grid-row:1;width:38px;height:38px;border:1px solid var(--mp-line);border-radius:50%;background:var(--mp-soft);color:var(--ink);
   }
   body.dark.mobile-modern .content .deck-title-field { grid-column:2/4;grid-row:1;min-width:0; }

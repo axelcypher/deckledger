@@ -21,11 +21,14 @@ async function renderSheets(){
   sheetView.options=sheetView.options||await api('/api/trade-sheets/options');
   // The options are fetched once; a first visit that is left before they arrive draws nothing.
   if(state.route!=='sheets')return;
+  if(state.dealId)return renderDeal();
+  if(!state.sheetId&&sheetView.tab==='deals')return renderDeals();
   if(!state.sheetId){
     content.innerHTML='<div class="page-loader"><span></span><p>Sheets werden geladen …</p></div>';
     const sheets=await api(`/api/trade-sheets?game_id=${encodeURIComponent(game.id)}`);
     if(state.route!=='sheets'||state.sheetId)return;
     content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · VERKAUF &amp; TAUSCH</span><h1>Deine Sheets</h1><p>Stelle Karten für WTS- und WTT-Posts zusammen und gib sie als Bild aus.</p></div><button class="primary-button" id="new-sheet">＋ Neues Sheet</button></div>
+      ${sheetTabsHtml('sheets')}
       <section id="sheet-inbox" class="sheet-inbox hidden"></section>
       ${sheets.length?`<section class="sheet-overview-grid">${sheets.map(sheet=>`<button class="sheet-overview-card" data-sheet="${sheet.id}">
         <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
@@ -34,6 +37,7 @@ async function renderSheets(){
     const create=async()=>{const created=await post('/api/trade-sheets',{game_id:game.id,name:'Neues Sheet',kind:'WTS'});state.sheetId=created.id;renderSheets()};
     $('#new-sheet').onclick=create;$('#first-sheet')?.addEventListener('click',create);
     $$('.sheet-overview-card',content).forEach(card=>card.onclick=()=>{state.sheetId=Number(card.dataset.sheet);renderSheets()});
+    bindSheetTabs();
     renderInbox();
     return;
   }
@@ -132,7 +136,7 @@ function applySheetPayload(payload,immediate=false){
   $('#sheet-text').value=payload.cards.length?payload.text:'';
   box.innerHTML=payload.cards.length?payload.cards.map(card=>`<div class="sheet-entry" data-variant="${escapeHtml(card.variant_id)}">
       ${finishThumb(card,artUrl(card.variant_id),card.canonical_name,'sheet-thumb')}
-      <div class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_code)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${escapeHtml(variantName(card))}${card.price!=null?` · ${price(card.price)}`:''}</small>${sheetIsWanted(payload.sheet.kind)?(card.owned?`<small>${card.owned}× schon in der Sammlung</small>`:''):card.quantity>card.owned?`<small class="sheet-warning">Nur ${card.owned}× in der Sammlung</small>`:''}</div>
+      <div class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}${card.reserved?`<em class="sheet-reserved">${card.reserved>=card.quantity?'reserviert':`${card.reserved} reserviert`}</em>`:''}</b><small>${escapeHtml(card.set_code)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${escapeHtml(variantName(card))}${card.price!=null?` · ${price(card.price)}`:''}</small>${sheetIsWanted(payload.sheet.kind)?(card.owned?`<small>${card.owned}× schon in der Sammlung</small>`:''):card.quantity>card.owned?`<small class="sheet-warning">Nur ${card.owned}× in der Sammlung</small>`:''}</div>
       <input class="sheet-label" value="${escapeHtml(card.label)}" maxlength="24" placeholder="Preis / Notiz" aria-label="Preis oder Notiz">
       <div class="sheet-stepper"><button type="button" data-sheet-delta="-1" aria-label="Weniger">−</button><b>${card.quantity}</b><button type="button" data-sheet-delta="1" aria-label="Mehr">＋</button></div>
       <button type="button" class="sheet-remove" title="Entfernen" aria-label="Entfernen">×</button></div>`).join('')

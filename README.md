@@ -37,7 +37,8 @@ the demo hint on the login page disappears once the `demo` password has been cha
 - Multiple named watchlists per TCG with catalogue-style filters and sorting
 - Saved decklists with module-defined zones, formats and official-rule validation
 - Trade and sale sheets, for what is offered (WTS, WTT or both) and for what is looked for (WTB, WTTF or both; picked from the watchlists or the whole catalogue): pick cards from the collection, set quantities and price labels, and download the sheet as an image collage on a playmat-style background, with a ready-to-paste text list for the post; the background is one of the drawn mats or a picture of your own (uploaded in the sheet editor, per account); holo and other foil prints are marked in the image with a rainbow sheen and an iridescent frame, and VCard's print-file images are trimmed to the cut card
-- JSON backups carry collection, decks, watchlists and sheets, and restore all four
+- Deals: what was sold, bought or traded, with whom and at what price, booked into the collection and kept as a history
+- JSON backups carry collection, decks, watchlists, sheets and deals, and restore all five
 
 There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
 
@@ -87,6 +88,21 @@ The other direction works without a post of your own. Under **Settings → Reddi
 Reddit is the only source so far, read through its public feeds: no Reddit account, no API key, and nothing is ever posted or answered from here. The price of that is Reddit's limit of about one anonymous request a minute, counted per public IP address, so everything in the household that reads Reddit without a login shares it. The container therefore runs `post_watch.py` once a minute and reads one feed per run, the one that has waited longest: a linked post's comments, or a subreddit's new posts, which are read at most every five minutes. With five linked posts and three subreddits each is read about every eight minutes. "Jetzt prüfen" reads one at once and says how long to wait when the minute is not over.
 
 Your own posts and answers are not news: enter your Reddit name under **Settings → Reddit** and what that name writes is skipped. Name and subreddits are settings of the account; nothing is tied to one user or one subreddit.
+
+## Deals
+
+A sheet is the shop window; a deal ("Vorgang", the second tab of **Verkauf & Tausch**) is the business done. It needs no Reddit: the partner and the platform are free text, a link to the post, thread or message is optional. A deal is entered by hand or started from an entry of the inbox, which fills in the partner, the link and the cards the entry names.
+
+A deal has two sides, what you give and what you get, each with cards at a price per copy, and beside them the money received, the money paid and the shipping. Its status moves the collection:
+
+- **Offen**: nothing is booked.
+- **Reserviert**: the cards you give stay in the collection but are spoken for. Every sheet of offers that lists them says so, in its entries, in the text for the post and in the picture (a "RESERVED" band over the card, with the number when only some copies are reserved). Another deal with the same card shows how many copies are still free.
+- **Abgeschlossen**: the cards you give leave the collection and every sheet that offers them. The cards you get are on their way ("Unterwegs"): they enter the collection, and leave the sheets of wanted cards, only when you confirm their arrival with **Empfang bestätigen**.
+- **Abgebrochen**: before the deal was finished nothing was booked; cancelling a finished deal ("Stornieren") takes its booking in the collection back. Sheets are left as they are.
+
+A finished deal is the record and is no longer edited, apart from its note. It keeps each card's name, set, number and price as they were, so the history survives changes to the catalogue. The list filters by status and searches partner, platform and cards; it adds up income, expenses and shipping of what is finished. A card's detail view lists the deals it was part of: to whom it went or from whom it came, when, and at what price.
+
+Cards that were never entered in the collection can be sold all the same; the deal's history then notes how many copies it could not take out. Deals are part of the JSON backup and are restored as a record, without booking anything a second time.
 
 ## Offline use
 

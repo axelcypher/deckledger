@@ -11,6 +11,7 @@ import { after, before, describe, test } from 'node:test';
 import { chromePath, sleep, startBrowser, startServer } from './harness.mjs';
 
 const EMBER8 = 'vcard-print-ember8-en-normal';
+const TIDE8 = 'vcard-print-tide8-en-normal';
 const skip = !chromePath() && !process.env.CI ? 'Chrome not found' : false;
 
 describe('app in the browser', { skip }, () => {
@@ -393,6 +394,48 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`document.querySelector('#sheet-scout-switch').click()`);
     await page.waitFor(`sheetView.payload.sheet.scout===1`);
     await page.evaluate(`post('/api/inbox/done',{}).then(()=>refreshInboxCount())`);
+    noProblems();
+  });
+
+  test('a deal is entered by hand, finished, and leaves a record on the card', async () => {
+    await page.evaluate(`(window.confirm=()=>true,state.sheetId=null,state.dealId=null,1)`);
+    await page.evaluate(`post('/api/collection',{variant_id:${JSON.stringify(TIDE8)},quantity:3})`);
+    await page.route('sheets');
+    await page.evaluate(`document.querySelector('[data-sheet-tab="deals"]').click()`);
+    await page.waitFor(`document.querySelector('#new-deal')`, { message: 'the list of deals' });
+    await page.evaluate(`document.querySelector('#new-deal').click()`);
+    await page.waitFor(`document.querySelector('#deal-partner')`, { message: 'the new deal' });
+    await page.evaluate(`(()=>{const input=document.querySelector('#deal-partner');input.value='Kim vom Stammtisch';input.dispatchEvent(new Event('change'))})()`);
+    await page.waitFor(`/Kim vom Stammtisch/.test(document.querySelector('.deal-title')?.innerText||'')`, { message: 'the partner in the title' });
+    await page.evaluate(`(()=>{const input=document.querySelector('[data-deal-search="give"]');input.value='Tide';input.dispatchEvent(new Event('input'))})()`);
+    await page.waitFor(`document.querySelector('[data-deal-found="give"] [data-deal-pick]')`, { message: 'the card to be found' });
+    await page.evaluate(`document.querySelector('[data-deal-found="give"] [data-deal-pick=${JSON.stringify(TIDE8)}]').click()`);
+    await page.waitFor(`document.querySelector('[data-deal-side="give"] .deal-card')`, { message: 'the card on the deal' });
+    assert.match(await text('[data-deal-side="give"] .deal-card'), /Tide \(PL8\)[\s\S]*3× in der Sammlung/);
+    assert.match(await text('.deal-title'), /^Verkauf · Kim vom Stammtisch$/);
+    await page.evaluate(`(()=>{const input=document.querySelector('.deal-card .deal-price input');input.value='4,50';input.dispatchEvent(new Event('change'))})()`);
+    await page.waitFor(`document.querySelector('[data-deal-take="money_in"]')`, { message: 'the offer to take the cards\' value as the sum' });
+    await page.evaluate(`document.querySelector('[data-deal-take="money_in"]').click()`);
+    await page.waitFor(`document.querySelector('#deal-money-in')?.value==='4,5'`, { message: 'the sum' });
+    await page.evaluate(`document.querySelector('[data-deal-action="reserved"]').click()`);
+    await page.waitFor(`document.querySelector('.deal-status')?.innerText.toUpperCase()==='RESERVIERT'`);
+    assert.equal(await owned(TIDE8), 3, 'reserved cards stay in the collection');
+    await page.evaluate(`document.querySelector('[data-deal-action="done"]').click()`);
+    await page.waitFor(`document.querySelector('.deal-status')?.innerText.toUpperCase()==='ABGESCHLOSSEN'`);
+    assert.equal(await owned(TIDE8), 2);
+    assert.equal(await page.evaluate(`document.querySelector('#deal-partner').disabled`), true, 'a finished deal is the record');
+    assert.match(await text('.deal-events'), /Angelegt[\s\S]*Reserviert[\s\S]*Abgeschlossen/);
+    await page.evaluate(`document.querySelector('#deal-back').click()`);
+    await page.waitFor(`document.querySelector('.deal-row')`, { message: 'the deal in the list' });
+    assert.match(await text('.deal-row'), /Verkauf · Kim vom Stammtisch[\s\S]*1× Tide \(PL8\)[\s\S]*\+4,50/);
+    assert.match(await text('.deal-totals'), /Einnahmen\s*4,50/);
+    // The card remembers it.
+    await page.evaluate(`(state.modalTab='collection',openCard('vcard-card-tide8',${JSON.stringify(TIDE8)}))`);
+    await page.waitFor(`document.querySelector('.card-deal')`, { message: 'the deal in the card\'s detail view' });
+    assert.match(await text('.card-deal'), /1× abgegeben an Kim vom Stammtisch[\s\S]*4,50/);
+    await page.evaluate(`(closeOverlay('card-modal'),1)`);
+    // Later tests count what is in the collection.
+    await page.evaluate(`post('/api/collection',{variant_id:${JSON.stringify(TIDE8)},quantity:0})`);
     noProblems();
   });
 

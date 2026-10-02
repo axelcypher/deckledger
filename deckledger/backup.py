@@ -15,6 +15,7 @@ from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
 from .catalog import match_collector_number, split_set_prefix
 from .sheets import SHEET_KINDS, SHEET_SORTS
+from .deals import DEAL_STATES, SIDES
 
 
 def parse_import(text, game_id, language="EN", condition="Near Mint"):
@@ -193,6 +194,7 @@ def import_json_preview():
     for kind, label, items, cards_key in (
         ("deck", "Deck", p.get("decks") or [], "cards"), ("watchlist", "Watchlist", backup_watchlists(p), "entries"),
         ("sheet", "Sheet", backup_sheets(p), "cards"),
+        ("deal", "Vorgang", [deal | {"name": deal.get("partner") or deal.get("created_at")} for deal in p.get("deals") or [] if isinstance(deal, dict)], "cards"),
     ):
         for item in items:
             entries = item.get(cards_key) or []
@@ -357,10 +359,62 @@ def restore_backup_sheets(sheets, strategy, changes):
     return summary
 
 
+def restore_backup_deals(deals, changes):
+    """Deals come back as the record they are: nothing is booked, because the collection of the
+    same backup already is what those deals made it. One that is already there -- same partner,
+    created at the same moment -- is left alone, whatever the import's strategy."""
+    uid, stamp, summary = user_id(), now_iso(), {"deals_restored": 0, "deals_skipped": 0}
+    games = {row["name"]: row["id"] for row in db().execute("SELECT id,name FROM games")}
+    number = lambda value: max(0.0, float(value or 0))
+    for deal in deals:
+        if not isinstance(deal, dict):
+            continue
+        game_id, created_at = games.get(deal.get("game")), str(deal.get("created_at") or stamp)
+        partner = str(deal.get("partner") or "").strip()[:80]
+        if not game_id:
+            continue
+        if db().execute("SELECT 1 FROM deals WHERE user_id=? AND created_at=? AND partner=?", (uid, created_at, partner)).fetchone():
+            summary["deals_skipped"] += 1
+            continue
+        try:
+            money = [number(deal.get(key)) for key in ("money_in", "money_out", "shipping")]
+        except (TypeError, ValueError):
+            money = [0.0, 0.0, 0.0]
+        url = str(deal.get("url") or "").strip()[:500]
+        deal_id = db().execute(
+            """INSERT INTO deals(user_id,game_id,partner,platform,url,note,status,money_in,money_out,shipping,created_at,updated_at,reserved_at,completed_at,received_at,cancelled_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (uid, game_id, partner, str(deal.get("platform") or "").strip()[:40], url if url.startswith(("https://", "http://")) else "",
+             str(deal.get("note") or "").strip()[:2000], deal.get("status") if deal.get("status") in DEAL_STATES else "open", *money,
+             created_at, str(deal.get("updated_at") or stamp), deal.get("reserved_at"), deal.get("completed_at"), deal.get("received_at"), deal.get("cancelled_at")),
+        ).lastrowid
+        entries = [entry for entry in deal.get("cards") or [] if isinstance(entry, dict) and entry.get("side") in SIDES]
+        for entry, row in zip(entries, parse_json_backup(entries)):
+            # A card this catalogue does not have keeps the id and the name the backup knew it by.
+            variant_id = row["match"]["variant_id"] if row["status"] == "matched" else str(entry.get("variant_id") or "")
+            try:
+                quantity, booked = max(1, min(99, int(entry.get("quantity") or 1))), max(0, int(entry.get("booked") or 0))
+                unit_price = None if entry.get("unit_price") in (None, "") else number(entry["unit_price"])
+            except (TypeError, ValueError):
+                continue
+            db().execute(
+                "INSERT OR IGNORE INTO deal_cards(deal_id,side,variant_id,quantity,unit_price,name,detail,booked) VALUES(?,?,?,?,?,?,?,?)",
+                (deal_id, entry["side"], variant_id, quantity, unit_price, str(entry.get("name") or entry.get("canonical_name") or "")[:200], str(entry.get("detail") or "")[:200], booked),
+            )
+        for event in deal.get("events") or []:
+            if isinstance(event, dict):
+                db().execute("INSERT INTO deal_events(deal_id,at,kind,detail) VALUES(?,?,?,?)", (deal_id, str(event.get("at") or stamp), str(event.get("kind") or "")[:40], str(event.get("detail") or "")[:500]))
+        changes.append({"kind": "deal_created", "deal_id": deal_id})
+        summary["deals_restored"] += 1
+    return summary
+
+
 def undo_restored_item(change):
     """Reverts one deck/watchlist/sheet step of a backup import; every statement is scoped to the user."""
     uid, kind = user_id(), change["kind"]
     own_sheet_row = "id=? AND user_id=?"
+    if kind == "deal_created":
+        db().execute("DELETE FROM deals WHERE id=? AND user_id=?", (change["deal_id"], uid))
     if kind == "sheet_created":
         db().execute(f"DELETE FROM trade_sheets WHERE {own_sheet_row}", (change["sheet_id"], uid))
     elif kind == "sheet_replaced" and db().execute(f"SELECT 1 FROM trade_sheets WHERE {own_sheet_row}", (change["sheet_id"], uid)).fetchone():
@@ -420,6 +474,7 @@ def import_json_apply():
     summary = {
         **restore_backup_decks(p.get("decks") or [], strategy, changes), **restore_backup_watchlists(backup_watchlists(p), strategy, changes),
         **restore_backup_sheets(backup_sheets(p), strategy, changes),
+        **restore_backup_deals(p.get("deals") or [], changes),
     }
     games = sorted({row["match"]["game_id"] for row in rows if row.get("match")})
     cur = db().execute(
@@ -503,7 +558,7 @@ def export_collection(fmt):
     ).fetchall()
     data = [dict(r) for r in rows]
     if fmt == "json":
-        # Decks, watchlists and sheets ride along so one file holds everything a user entered by hand.
+        # Decks, watchlists, sheets and deals ride along so one file holds everything a user entered by hand.
         card_columns = """v.id variant_id,g.name game,s.code set_code,s.name set_name,p.collector_number,i.canonical_name,p.language,v.finish"""
         card_joins = """JOIN variants v ON v.id=e.variant_id JOIN printings p ON p.id=v.printing_id
           JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id"""
@@ -526,7 +581,20 @@ def export_collection(fmt):
         for sheet in db().execute("SELECT t.*,g.name game FROM trade_sheets t JOIN games g ON g.id=t.game_id WHERE t.user_id=? ORDER BY t.id", (uid,)):
             cards = db().execute(f"SELECT {card_columns},e.quantity,e.label FROM trade_sheet_cards e {card_joins} WHERE e.sheet_id=? ORDER BY e.id", (sheet["id"],))
             sheets.append({key: sheet[key] for key in ("name", "game", "kind", "subtitle", "background", "sort", "layout", "created_at", "updated_at")} | {"cards": [dict(card) for card in cards]})
-        payload = {"format_version": 2, "exported_at": now_iso(), "collection": data, "decks": decks, "watchlists": watchlists, "trade_sheets": sheets}
+        deals = []
+        for deal in db().execute("SELECT d.*,g.name game FROM deals d JOIN games g ON g.id=d.game_id WHERE d.user_id=? ORDER BY d.id", (uid,)):
+            # A deal's cards carry what the deal kept (name, detail) and, while the catalogue
+            # still has them, what a restore needs to find them in another catalogue.
+            cards = db().execute(
+                """SELECT e.side,e.variant_id,e.quantity,e.unit_price,e.name,e.detail,e.booked,g.name game,s.code set_code,s.name set_name,
+                     p.collector_number,i.canonical_name,p.language,v.finish
+                   FROM deal_cards e LEFT JOIN variants v ON v.id=e.variant_id LEFT JOIN printings p ON p.id=v.printing_id
+                     LEFT JOIN card_identities i ON i.id=p.identity_id LEFT JOIN sets s ON s.id=p.set_id LEFT JOIN games g ON g.id=v.game_id
+                   WHERE e.deal_id=? ORDER BY e.id""", (deal["id"],))
+            events = db().execute("SELECT at,kind,detail FROM deal_events WHERE deal_id=? ORDER BY id", (deal["id"],))
+            fields = ("game", "partner", "platform", "url", "note", "status", "money_in", "money_out", "shipping", "created_at", "updated_at", "reserved_at", "completed_at", "received_at", "cancelled_at")
+            deals.append({key: deal[key] for key in fields} | {"cards": [dict(card) for card in cards], "events": [dict(event) for event in events]})
+        payload = {"format_version": 2, "exported_at": now_iso(), "collection": data, "decks": decks, "watchlists": watchlists, "trade_sheets": sheets, "deals": deals}
         return Response(json.dumps(payload,indent=2,ensure_ascii=False),mimetype="application/json",headers={"Content-Disposition":"attachment; filename=deckledger-collection.json"})
     out = io.StringIO(); writer = csv.DictWriter(out,fieldnames=data[0].keys() if data else ["game","set_code","collector_number","canonical_name","language","finish","condition","quantity"]); writer.writeheader(); writer.writerows(data)
     return Response(out.getvalue(),mimetype="text/csv",headers={"Content-Disposition":"attachment; filename=deckledger-collection.csv"})

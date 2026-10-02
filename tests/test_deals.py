@@ -260,3 +260,34 @@ def test_deleting_an_account_or_a_game_removes_its_deals(client, admin, stock):
     demo_id = query("SELECT id FROM users WHERE username='demo'")[0]["id"]
     assert admin.delete(f"/api/admin/users/{demo_id}").get_json() == {"deleted": True}
     assert [query(f"SELECT COUNT(*) n FROM {table}")[0]["n"] for table in ("deals", "deal_cards", "deal_events")] == [0, 0, 0]
+
+
+# ---- backup ------------------------------------------------------------------------------------------
+
+def test_deals_travel_in_the_backup_as_a_record(client, stock):
+    sale = new_deal(client, ("give", EMBER8, 2, 4.5), ("get", EMBER9, 1, 3), partner="Kim", url="https://forum.example/t/1", money_in=6, note="Turnier")
+    move(client, sale, "done")
+    client.post(f'/api/deals/{sale["id"]}/receive')
+    move(client, new_deal(client, ("give", TIDE8, 1, 2), partner="Alex"), "reserved")
+    backup = client.get("/api/export.json").get_json()
+    kim = next(deal for deal in backup["deals"] if deal["partner"] == "Kim")
+    assert (kim["game"], kim["status"], kim["money_in"], kim["note"], bool(kim["received_at"])) == ("VCard Trading Card Game", "done", 6.0, "Turnier", True)
+    assert [(card["side"], card["canonical_name"], card["quantity"], card["unit_price"], card["booked"]) for card in kim["cards"]] == [("give", "Ember (PL8)", 2, 4.5, 2), ("get", "Ember (PL9)", 1, 3.0, 1)]
+    assert [event["kind"] for event in kim["events"]] == ["created", "done", "received"]
+    before = (owned(EMBER8), owned(EMBER9), owned(TIDE8))
+
+    preview = client.post("/api/import/json/preview", json=backup).get_json()
+    assert [row["original"] for row in preview if row.get("kind") == "deal"] == ["Vorgang: Kim", "Vorgang: Alex"]
+    assert client.post("/api/import/json/apply", json=backup | {"collection": []}).get_json()["deals_skipped"] == 2, "they are all there already"
+
+    query("DELETE FROM deals")
+    result = client.post("/api/import/json/apply", json=backup | {"collection": []}).get_json()
+    assert (result["deals_restored"], result["deals_skipped"]) == (2, 0)
+    assert (owned(EMBER8), owned(EMBER9), owned(TIDE8)) == before, "a restored deal books nothing"
+    restored = {deal["partner"]: deal for deal in client.get("/api/deals?game_id=vcard").get_json()["deals"]}
+    assert (restored["Kim"]["status"], restored["Kim"]["url"], restored["Kim"]["in_transit"], restored["Alex"]["status"]) == ("done", "https://forum.example/t/1", False, "reserved")
+    assert [(card["side"], card["variant_id"], card["booked"]) for card in restored["Kim"]["cards"]] == [("get", EMBER9, 1), ("give", EMBER8, 2)]
+    assert [event["kind"] for event in client.get(f'/api/deals/{restored["Kim"]["id"]}').get_json()["events"]] == ["created", "done", "received"]
+
+    assert client.post(f'/api/import/{result["operation_id"]}/undo').status_code == 200
+    assert client.get("/api/deals?game_id=vcard").get_json()["deals"] == []

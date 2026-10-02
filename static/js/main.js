@@ -195,7 +195,7 @@ function wireGlobalEvents(){
     resetCardTilt(zone);
     stopWebglHover(zone);
   });
-  $$('[data-route]').forEach(el=>el.onclick=()=>{if(el.dataset.route==='decks')state.deckId=null;if(el.dataset.route==='sheets')state.sheetId=null;routeTo(el.dataset.route)});
+  $$('[data-route]').forEach(el=>el.onclick=()=>{if(el.dataset.route==='decks')state.deckId=null;if(el.dataset.route==='sheets'){state.sheetId=null;state.dealId=null}routeTo(el.dataset.route)});
   $('#sidebar-collapse').onclick=()=>{document.body.classList.toggle('sidebar-collapsed');post('/api/settings',{sidebarCollapsed:document.body.classList.contains('sidebar-collapsed')})};
   $('#user-avatar').onclick=()=>{const hidden=$('#user-popup').classList.toggle('hidden');$('#user-avatar').setAttribute('aria-expanded',String(!hidden))};
   document.addEventListener('click',e=>{const popup=$('#user-popup');if(!popup.classList.contains('hidden')&&!e.target.closest('#user-popup')&&e.target.id!=='user-avatar'){popup.classList.add('hidden');$('#user-avatar').setAttribute('aria-expanded','false')}});
@@ -248,7 +248,7 @@ function wireGlobalEvents(){
       const r=importMode==='json'
         ?await post('/api/import/json/apply',{collection:importJsonData||[],...importJsonExtras,strategy})
         :await post('/api/import/apply',{game_id:$('#import-game').value,language:$('#import-language').value,condition:$('#import-condition').value,text:$('#import-text').value,strategy});
-      const restored=[r.decks_restored&&`${r.decks_restored} Decks`,r.watchlist_entries_restored&&`${r.watchlist_entries_restored} Watchlist-Einträge`,r.sheets_restored&&`${r.sheets_restored} Sheets`,r.decks_skipped&&`${r.decks_skipped} vorhandene Decks übersprungen`,r.sheets_skipped&&`${r.sheets_skipped} vorhandene Sheets übersprungen`].filter(Boolean);
+      const restored=[r.decks_restored&&`${r.decks_restored} Decks`,r.watchlist_entries_restored&&`${r.watchlist_entries_restored} Watchlist-Einträge`,r.deals_restored&&`${r.deals_restored} Vorgänge`,r.sheets_restored&&`${r.sheets_restored} Sheets`,r.decks_skipped&&`${r.decks_skipped} vorhandene Decks übersprungen`,r.sheets_skipped&&`${r.sheets_skipped} vorhandene Sheets übersprungen`].filter(Boolean);
       closeOverlay('import-modal');toast(`${r.applied} Einträge wurden importiert${restored.length?` · ${restored.join(' · ')}`:''}.`,'Rückgängig',async()=>{await post(`/api/import/${r.operation_id}/undo`,{});toast('Import wurde rückgängig gemacht.')});state.boot=await api('/api/bootstrap');routeTo('dashboard')
     }catch(error){
       toast(error.message);

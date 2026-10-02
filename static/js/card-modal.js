@@ -157,6 +157,7 @@ function renderCardModal(){
     };
   }
   if(state.modalTab==='market'&&$('#price-history-panel',$('#card-dialog')))loadPriceHistory(v.id);
+  if(state.modalTab==='collection')loadCardDeals(v.id);
   alignReflectionMask();
   // "wenn eine Karte geladen wird die foillayer dafür gezogen und gespeichert werden" -- fired
   // once per modal render, only when the generic foil markup above was actually emitted (same

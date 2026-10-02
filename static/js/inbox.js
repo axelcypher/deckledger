@@ -35,7 +35,7 @@ function inboxItemHtml(item){
     ${found?`<h4>${escapeHtml(item.title)}</h4>`:''}
     <p>${escapeHtml(item.body)}</p>
     ${matches?`<div class="inbox-matches">${matches}</div>`:''}
-    <footer>${link?`<a class="secondary-button" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Auf Reddit öffnen ↗</a>`:''}<button type="button" class="secondary-button" data-inbox-done="${item.id}">Erledigt</button></footer>
+    <footer>${link?`<a class="secondary-button" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Auf Reddit öffnen ↗</a>`:''}<button type="button" class="secondary-button" data-inbox-deal="${item.id}">Vorgang anlegen</button><button type="button" class="secondary-button" data-inbox-done="${item.id}">Erledigt</button></footer>
   </article>`;
 }
 
@@ -55,6 +55,7 @@ async function renderInbox(){
   $$('[data-inbox-done]',box).forEach(button=>button.onclick=async()=>{
     try{await api(`/api/inbox/${button.dataset.inboxDone}`,{method:'PATCH',body:JSON.stringify({state:'done'})});renderInbox()}catch(error){toast(error.message)}
   });
+  $$('[data-inbox-deal]',box).forEach(button=>button.onclick=()=>dealFromInbox(data.items.find(item=>item.id===Number(button.dataset.inboxDeal))));
   $$('[data-inbox-sheet]',box).forEach(button=>button.onclick=()=>{state.sheetId=Number(button.dataset.inboxSheet);renderSheets()});
   $('#inbox-all-done').onclick=async()=>{try{await post('/api/inbox/done',{});renderInbox()}catch(error){toast(error.message)}};
 }

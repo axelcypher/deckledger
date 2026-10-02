@@ -147,7 +147,7 @@ function setActiveGame(gameId, persist=true) {
   const iconName=state.game.icon||'generic';
   if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=3')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
-  state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null; state.sheetId=null;
+  state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null; state.sheetId=null; state.dealId=null;
   if(changed||isInitial){
     // Settings shows languages[0] as each game's assumed default even before
     // the user ever touches that dropdown (it's only actually saved once they

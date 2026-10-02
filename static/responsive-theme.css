@@ -473,7 +473,7 @@
   body.dark.mobile-modern :is(.deck-editor,.deck-catalog) { border:1px solid var(--line);border-radius:24px;background:var(--mp-soft);box-shadow:none; }
   body.dark.mobile-modern .deck-editor-head { min-height:62px;padding:11px 14px;border-color:var(--line); }
   body.dark.mobile-modern .deck-editor-head input { font:600 23px var(--font-display); }
-  body.dark.mobile-modern .deck-editor-head .compact-back-button,body.dark.mobile-modern .deck-header-menu-button { border:1px solid var(--line);border-radius:50%;background:var(--surface); }
+  body.dark.mobile-modern :is(.deck-editor-head,.sheet-head) .compact-back-button,body.dark.mobile-modern .deck-header-menu-button { border:1px solid var(--line);border-radius:50%;background:var(--surface); }
   body.dark.mobile-modern .deck-rules-button { display:flex;align-items:center;gap:5px;color:var(--brand); }
   body.dark.mobile-modern .deck-rules-button svg { width:14px;height:14px;fill:none;stroke:currentColor; }
   body.dark.mobile-modern .op-deck-overview { grid-template-columns:126px 1fr;padding:16px;border-bottom:1px solid var(--line); }

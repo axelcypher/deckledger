@@ -833,7 +833,7 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 
 /* Compact builder controls */
 .deck-editor-head { gap:7px;padding:9px; }
-.deck-editor-head .compact-back-button { display:grid;flex:0 0 29px;width:29px;height:29px;padding:0;place-items:center;border:0;border-radius:7px;background:var(--surface-3);color:var(--ink);cursor:pointer; }
+.deck-editor-head .compact-back-button,.sheet-head .compact-back-button { display:grid;flex:0 0 29px;width:29px;height:29px;padding:0;place-items:center;border:0;border-radius:7px;background:var(--surface-3);color:var(--ink);cursor:pointer; }
 .deck-editor-head .deck-title-field { flex:1;min-width:75px; }
 .deck-editor-head .deck-title-field input { font-size:14px; }
 .deck-editor-head .select-control { width:auto;min-width:95px;max-width:140px;height:30px;padding:0 25px 0 8px;font-size:8px; }
@@ -973,6 +973,69 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .community-list { display:grid;gap:8px;margin:8px 0; }
 .community-row { display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:var(--surface-2); }
 .community-row .secondary-button { flex:none;min-height:30px;padding:0 11px;font-size:11px; }
+/* The button of a page head keeps its one line; squeezed, it wrapped into a blob on a phone. */
+.deck-overview-head .primary-button { flex:none;align-self:center;white-space:nowrap; }
+/* A row of its own, not a box: the theme stretches every direct child of the page to full width. */
+.sheet-tabs { display:flex;gap:6px;margin:0 0 20px; }
+.sheet-tabs button { height:36px;padding:0 20px;border:0;border-radius:999px;background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer; }
+.sheet-tabs button.active { background:var(--surface-2);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 40%,var(--line));color:var(--ink); }
+.sheet-reserved { margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--mt-gold-soft,rgba(188,151,75,.14));color:var(--mt-gold,#bc974b);font-size:9px;font-style:normal;font-weight:800;letter-spacing:.04em;text-transform:uppercase; }
+.deal-filters { display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:14px; }
+.deal-filter-chips { display:flex;flex-wrap:wrap;gap:6px;flex:1; }
+.deal-filters .filter-search { flex:0 1 280px; }
+.deal-filters .filter-search input { width:100%; }
+.deal-totals { display:flex;flex-wrap:wrap;gap:6px 22px;margin-bottom:14px;padding:12px 16px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);font-size:12px; }
+.deal-totals b { margin-left:4px;color:var(--ink); }
+.deal-totals b.is-in,.deal-money.is-in { color:var(--success,#18a675); }
+.deal-totals b.is-out,.deal-money.is-out { color:var(--danger,#e5484d); }
+.deal-list { display:grid;gap:8px; }
+.deal-row { display:grid;grid-template-columns:minmax(150px,1fr) minmax(0,2.2fr) auto;align-items:center;gap:16px;padding:12px 16px;border:0;border-radius:14px;background:var(--surface);color:var(--ink);text-align:left;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line); }
+.deal-row:hover { background:var(--surface-2); }
+.deal-row-head { display:grid;gap:3px;min-width:0; }
+.deal-row-head b { overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap; }
+.deal-row-head small,.deal-row-cards { color:var(--muted);font-size:11px; }
+.deal-row-cards { display:grid;gap:3px;min-width:0; }
+.deal-row-cards span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.deal-row-cards i { margin-right:4px;font-style:normal;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase; }
+.deal-row-end { display:flex;align-items:center;gap:12px;justify-self:end; }
+.deal-money { font-size:13px;white-space:nowrap; }
+.deal-status { padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap; }
+.deal-status-reserved,.deal-status-transit { background:var(--mt-gold-soft,rgba(188,151,75,.14));color:var(--mt-gold,#bc974b); }
+.deal-status-done { background:color-mix(in srgb,var(--success,#18a675) 16%,transparent);color:var(--success,#18a675); }
+.deal-status-cancelled { text-decoration:line-through; }
+.deal-editor { max-width:1100px; }
+.deal-title { flex:1;min-width:0;margin:0;overflow:hidden;font-size:24px;text-overflow:ellipsis;white-space:nowrap; }
+.deal-note { margin:0 0 14px;padding:10px 14px;border-radius:12px;background:var(--mt-gold-soft,rgba(188,151,75,.14));color:var(--ink);font-size:12px; }
+.deal-fields a { margin-left:6px;color:var(--ink);text-transform:none;letter-spacing:0; }
+.deal-fields input:disabled,.deal-price input:disabled { opacity:.7; }
+.deal-sides { display:grid;grid-template-columns:1fr 1fr;gap:22px;margin:8px 0 18px; }
+.deal-side { min-width:0;padding:14px;border-radius:16px;background:var(--surface-2); }
+.deal-price { display:flex;align-items:center;gap:4px;flex:none; }
+.deal-price input { width:72px;height:32px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:12px;text-align:right; }
+.deal-price span { color:var(--muted);font-size:11px; }
+.deal-money-fields .deal-price input { width:100%;height:36px;text-align:left; }
+.deal-money-fields .text-link { margin-top:2px;color:var(--muted);font-size:10px;font-weight:600;text-align:left;text-transform:none;letter-spacing:0; }
+.deal-card-fixed { flex:none;color:var(--muted);font-size:12px;font-weight:700; }
+.deal-thumb-gone { background:var(--surface-3,var(--line)); }
+.deal-add { margin-top:10px; }
+.deal-add .filter-search input { width:100%; }
+.deal-found { display:grid;gap:6px;max-height:300px;margin-top:6px;overflow:hidden auto; }
+.deal-found .sheet-pick { width:100%;cursor:pointer; }
+.deal-found .sheet-pick i { margin-left:auto;color:var(--brand);font-style:normal;font-size:16px; }
+.deal-note-field { display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase; }
+.deal-note-field textarea { padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;resize:vertical; }
+.deal-actions { display:flex;flex-wrap:wrap;gap:8px;margin:18px 0; }
+.deal-actions .deal-delete { margin-left:auto; }
+.deal-events { margin-top:8px; }
+.deal-event { display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:7px 0;border-top:1px solid var(--line);font-size:12px; }
+.deal-event span { color:var(--muted);font-size:11px;min-width:120px; }
+.deal-event small { flex-basis:100%;color:var(--muted);font-size:11px; }
+.card-deals { margin-top:16px; }
+.card-deal { display:grid;grid-template-columns:auto 1fr;gap:2px 12px;width:100%;padding:8px 0;border:0;border-top:1px solid var(--line);background:none;color:var(--ink);font-size:12px;text-align:left;cursor:pointer; }
+.card-deal span { color:var(--muted);font-size:11px; }
+.card-deal small { grid-column:2;color:var(--muted);font-size:10px; }
+@media(max-width:640px){ .deal-card { flex-wrap:wrap; } .deal-card .sheet-entry-copy { flex-basis:calc(100% - 60px); } .deal-card .deal-price { margin-left:auto; } }
+@media(max-width:860px){ .deal-sides { grid-template-columns:1fr; } .deal-row { grid-template-columns:1fr; gap:8px; } .deal-row-end { justify-self:start; } .deal-title { font-size:19px; } }
 .sheet-posts { margin:18px 0; }
 .sheet-posts .sheet-section-head span { color:var(--muted);font-size:11px; }
 .sheet-post-form { display:flex;gap:8px;margin:10px 0; }
