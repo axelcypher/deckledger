@@ -26,6 +26,7 @@ async function renderSheets(){
     const sheets=await api(`/api/trade-sheets?game_id=${encodeURIComponent(game.id)}`);
     if(state.route!=='sheets'||state.sheetId)return;
     content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · VERKAUF &amp; TAUSCH</span><h1>Deine Sheets</h1><p>Stelle Karten für WTS- und WTT-Posts zusammen und gib sie als Bild aus.</p></div><button class="primary-button" id="new-sheet">＋ Neues Sheet</button></div>
+      <section id="sheet-inbox" class="sheet-inbox hidden"></section>
       ${sheets.length?`<section class="sheet-overview-grid">${sheets.map(sheet=>`<button class="sheet-overview-card" data-sheet="${sheet.id}">
         <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
         <div class="sheet-overview-copy"><span class="sheet-kind sheet-kind-${sheet.kind.toLowerCase().replace('/','-')}">${escapeHtml(sheet.kind)}</span><h3>${escapeHtml(sheet.name)}</h3><small>${sheet.card_count} Karten · ${sheet.copies} Exemplare</small></div></button>`).join('')}</section>`
@@ -33,6 +34,7 @@ async function renderSheets(){
     const create=async()=>{const created=await post('/api/trade-sheets',{game_id:game.id,name:'Neues Sheet',kind:'WTS'});state.sheetId=created.id;renderSheets()};
     $('#new-sheet').onclick=create;$('#first-sheet')?.addEventListener('click',create);
     $$('.sheet-overview-card',content).forEach(card=>card.onclick=()=>{state.sheetId=Number(card.dataset.sheet);renderSheets()});
+    renderInbox();
     return;
   }
   content.innerHTML='<div class="page-loader"><span></span><p>Sheet wird geladen …</p></div>';
@@ -57,6 +59,7 @@ async function renderSheets(){
       <div class="sheet-backgrounds" role="radiogroup" aria-label="Hintergrund">${options.backgrounds.map(bg=>`<button type="button" role="radio" aria-checked="${sheet.background===bg.id}" data-sheet-background="${bg.id}" class="${sheet.background===bg.id?'active':''}" title="${escapeHtml(bg.label)}"><img src="/api/trade-sheets/backgrounds/${bg.id}.jpg" alt=""><span>${escapeHtml(bg.label)}</span>${bg.custom?`<i class="sheet-background-delete" role="button" tabindex="0" data-delete-background="${bg.id}" title="Hintergrund löschen" aria-label="Hintergrund ${escapeHtml(bg.label)} löschen">×</i>`:''}</button>`).join('')}<label class="sheet-background-upload" title="Eigenes Bild als Hintergrund hochladen (JPEG, PNG, WebP)"><input type="file" id="sheet-background-file" accept="image/jpeg,image/png,image/webp" hidden><b>＋</b><span>Eigenes Bild</span></label></div>
       <div id="sheet-preview" class="sheet-preview"></div>
       <div class="sheet-text"><div class="sheet-section-head"><b>Text für den Post</b><button class="secondary-button" id="sheet-copy-text">Kopieren</button></div><textarea id="sheet-text" readonly rows="6"></textarea></div>
+      <div id="sheet-posts" class="sheet-posts"></div>
       <div class="sheet-section-head"><b>Karten auf dem Sheet</b><span id="sheet-count"></span></div>
       <div id="sheet-entries" class="sheet-entries"></div>
     </section>
@@ -113,6 +116,7 @@ async function renderSheets(){
   let searchTimer;$('#sheet-picker-q').oninput=event=>{sheetView.picker.q=event.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(renderSheetPicker,150)};
   applySheetPayload(payload,true);
   sheetView.picker.cards=null;sheetView.picker.wanted=null;sheetView.picker.found=null;
+  renderSheetPosts();
   renderSheetPicker();
 }
 

@@ -119,7 +119,8 @@ def bootstrap():
     user_payload["password_set"] = bool(current["password_hash"])
     oauth_config = resolve_oauth_config()
     oauth_payload = {"enabled": oauth_config["enabled"], "provider_name": oauth_config["provider_name"]}
-    return jsonify({"user": user_payload, "games": games, "settings": settings, "imports": imports, "price_sync": price_sync, "oauth": oauth_payload})
+    inbox_new = db().execute("SELECT COUNT(*) FROM inbox_items WHERE user_id=? AND state='new'", (uid,)).fetchone()[0]
+    return jsonify({"user": user_payload, "games": games, "settings": settings, "imports": imports, "price_sync": price_sync, "oauth": oauth_payload, "inbox_new": inbox_new})
 
 
 def fetch_banner_cards(game_id, mode, uid):

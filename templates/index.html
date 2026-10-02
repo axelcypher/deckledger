@@ -83,7 +83,7 @@
         <button class="nav-item" data-route="collection"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="12" height="16" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V7"/></svg></span><span>Sammlung</span></button>
         <button class="nav-item" data-route="watchlist"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg></span><span>Watchlists</span><span id="watch-count" class="count-badge">0</span></button>
         <button class="nav-item" data-route="decks"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M8.5 8h6M8.5 12h6"/></svg></span><span>Deckbuilder</span></button>
-        <button class="nav-item" data-route="sheets"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg></span><span>Verkauf &amp; Tausch</span></button>
+        <button class="nav-item" data-route="sheets"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg></span><span>Verkauf &amp; Tausch</span><span class="count-badge hidden" data-inbox-count title="Neue Kommentare im Eingang">0</span></button>
       </nav>
       <div class="sidebar-spacer"></div>
       <div id="edit-panel" class="edit-panel">
@@ -224,6 +224,7 @@
   <script src="{{ asset_url('js/admin.js') }}"></script>
   <script src="{{ asset_url('js/import.js') }}"></script>
   <script src="{{ asset_url('js/sheets.js') }}"></script>
+  <script src="{{ asset_url('js/inbox.js') }}"></script>
   <script src="{{ asset_url('js/main.js') }}"></script>
 </body>
 </html>

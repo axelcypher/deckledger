@@ -78,6 +78,14 @@ quantities; a backup that still contains one restores it as a sheet as well. Wha
 that list collected automatically is now the "Über Playset" source when adding cards
 to a sheet.
 
+## Posts and the inbox
+
+A sheet usually ends up as a post. Paste the link of that post into the sheet editor ("Posts zu diesem Sheet") and DeckLedger reads its comments from then on; new ones appear in the inbox ("Eingang") above the sheets, with a counter on the menu entry. Each comment shows which cards of the sheet it names: certain when the name or name and number fit one card, marked with a question mark when the words fit several. "Erledigt" files a comment away; a post that stays quiet for 30 days is no longer read, and can be ended or resumed by hand.
+
+Reddit is the only source so far, read through its public feeds: no Reddit account, no API key, and nothing is ever posted or answered from here. The price of that is Reddit's limit of about one anonymous request a minute for the whole server. The container therefore runs `post_watch.py` once a minute and reads one post per run, the one that has waited longest, so with five linked posts each is read every five minutes. "Jetzt prüfen" reads a post at once and says how long to wait when the minute is not over.
+
+Your own answers are not news: enter your Reddit name under **Settings → Reddit** and comments by that name are skipped. It is a setting of the account; nothing is tied to one user or one subreddit.
+
 ## Offline use
 
 The app is installable and keeps working when the server cannot be reached: the page and what was looked at recently come from the service worker's cache (marked as a saved copy), and quantity changes are queued on the device and sent once the server answers again.

@@ -317,6 +317,43 @@ describe('app in the browser', { skip }, () => {
     });
   });
 
+  test('a comment on a linked post shows up in the inbox', async () => {
+    await page.evaluate(`(state.sheetId=null,1)`);
+    await page.route('sheets');
+    await page.waitFor(`document.querySelector('.sheet-overview-card')`, { message: 'the sheet made by an earlier test' });
+    await page.evaluate(`document.querySelector('.sheet-overview-card').click()`);
+    await page.waitFor(`document.querySelector('#sheet-post-form')`, { message: 'the posts section of the sheet' });
+    await page.evaluate(`post('/api/trade-sheets/'+state.sheetId+'/cards',{variant_id:${JSON.stringify(EMBER8)},quantity:1})`);
+    await page.evaluate(`(()=>{document.querySelector('#sheet-post-url').value='https://www.reddit.com/r/vcardtrades/comments/1abc23/wts/';document.querySelector('#sheet-post-form').requestSubmit()})()`);
+    await page.waitFor(`document.querySelector('[data-post-check]')`, { message: 'the linked post to be listed' });
+    assert.match(await page.evaluate(`document.querySelector('.sheet-post').innerText`), /wird beobachtet/);
+    await page.evaluate(`document.querySelector('[data-post-check]').click()`);
+    await page.waitFor(`document.querySelector('.sheet-post-new')?.innerText==='1 neu'`, { message: 'the new comment to be counted on the post' });
+    await page.waitFor(`(()=>{const badge=document.querySelector('.nav-item [data-inbox-count]');return badge.textContent==='1'&&!badge.classList.contains('hidden')})()`, { message: 'the badge in the menu' });
+    assert.match(await page.evaluate(`document.querySelector('.sheet-post').innerText`), /\[WTS\] Test post/);
+    // The inbox sits above the list of sheets.
+    await page.evaluate(`(state.sheetId=null,renderSheets(),1)`);
+    await page.waitFor(`document.querySelector('.inbox-item')`, { message: 'the comment in the inbox' });
+    const item = await page.evaluate(`(()=>{const entry=document.querySelector('.inbox-item');return {text:entry.innerText,link:entry.querySelector('a').href,match:entry.querySelector('.inbox-match')?.innerText,markup:entry.querySelector('p').innerHTML}})()`);
+    assert.match(item.text, /u\/buyer_one/);
+    assert.equal(item.markup, 'I would take the Ember PL8 today', 'the comment is shown as text');
+    assert.equal(item.match, 'Ember (PL8)');
+    assert.equal(item.link, 'https://www.reddit.com/r/vcardtrades/comments/1abc23/wts/c1/');
+    await page.evaluate(`document.querySelector('[data-inbox-done]').click()`);
+    await page.waitFor(`!document.querySelector('.inbox-item')&&document.querySelector('.nav-item [data-inbox-count]').classList.contains('hidden')`, { message: 'the inbox to be empty again' });
+    noProblems();
+  });
+
+  test('the Reddit name is a setting of the account', async () => {
+    await page.route('settings');
+    await page.evaluate(`(()=>{document.querySelector('#reddit-username').value='u/Demo_Seller';document.querySelector('#reddit-username-save').click()})()`);
+    await page.waitFor(`api('/api/bootstrap').then(boot=>boot.settings.redditUsername==='Demo_Seller')`, { message: 'the name to be saved without its prefix' });
+    await page.evaluate(`(()=>{document.querySelector('#reddit-username').value='no spaces allowed';document.querySelector('#reddit-username-save').click()})()`);
+    await sleep(300);
+    assert.equal(await page.evaluate(`state.boot.settings.redditUsername`), 'Demo_Seller');
+    noProblems();
+  });
+
   test('search finds cards by name', async () => {
     await page.evaluate(`doSearch('Tide')`);
     await page.waitFor(`document.querySelector('#search-results')?.innerText.includes('Tide (PL8)')`);

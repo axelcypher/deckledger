@@ -287,6 +287,8 @@ async function init(){
 // the app was reopened after being offline and is already back online.
 init().then(()=>{
   updateOfflineIndicator();if(navigator.onLine)syncOfflineQueue();
+  // The watcher works in the background; the badge catches up with it now and then.
+  if(state.boot){setInboxCount(state.boot.inbox_new||0);setInterval(refreshInboxCount,INBOX_REFRESH_MS)}
   // Only an answer that really came from the server says who is signed in.
   if(state.boot&&!serverUnreachable)dropForeignOfflineSave();
 });

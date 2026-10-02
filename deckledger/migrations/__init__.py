@@ -16,9 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import now_iso
-from . import m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting
+from . import m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting, m0005_sheet_posts
 
-MIGRATIONS = [m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting]
+MIGRATIONS = [m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting, m0005_sheet_posts]
 
 BACKUPS_KEPT = 2
 

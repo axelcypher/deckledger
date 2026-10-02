@@ -12,4 +12,10 @@ python price_sync.py --if-needed || echo "Preisimport nicht erreichbar; letzte g
   python price_sync.py --if-needed || echo "Geplanter Preisimport fehlgeschlagen; letzter Stand bleibt aktiv." >&2
 done) &
 
+# Comments on the posts users linked to their sheets. Reddit allows an anonymous client about
+# one request a minute, so each run reads at most one post.
+(while sleep 60; do
+  python post_watch.py || echo "Post-Watcher fehlgeschlagen." >&2
+done) &
+
 exec gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --access-logfile - app:app
