@@ -66,6 +66,17 @@
     --mt-tab-track: #e5ddc9;
     --mt-stage-plate: #cdc3ab; --mt-stage-top: #ede8de; --mt-stage-outer: var(--bg);
   }
+  /* The stage stays light in the dark appearance too (see responsive-theme.css). On the phone
+     the floor below the platform keeps the page's own colour, so the stage still runs into the
+     panel underneath without a seam. */
+  body.dark.mobile-modern:not(.mobile-light) .card-stage {
+    --surface: #ffffff; --surface-2: #faf6ee; --ink: #24291f; --muted: #8d8879; --line: #e9e2d2; --brand: #1f3a2e;
+    --mt-stage-plate: #cdc3ab; --mt-stage-top: #ede8de;
+    --mt-podium: radial-gradient(ellipse 26% 30% at 14% 82%, rgba(255,255,255,.5), transparent 70%),
+                 radial-gradient(ellipse 26% 30% at 86% 82%, rgba(255,255,255,.5), transparent 70%),
+                 radial-gradient(ellipse 56% 40% at 50% 54%, rgba(255,255,255,.95), transparent 60%),
+                 radial-gradient(ellipse 58% 14% at 50% 90%, rgba(60,45,20,.16), transparent 75%);
+  }
 
   /* ---- App shell: hide the desktop sidebar/topbar chrome the tab bar replaces ---- */
   body.dark.mobile-modern .app-shell { padding-left: 0; }
@@ -154,6 +165,8 @@
     padding-top: 60px;
     background: linear-gradient(rgba(0,0,0,.1),rgba(0,0,0,.1)),var(--mt-stage-top);
   }
+  /* ... which in the dark appearance is the stage's own light tone, not the page's. */
+  body.dark.mobile-modern:not(.mobile-light) .card-modal-layout { --mt-stage-top: #ede8de; }
   body.dark.mobile-modern .card-stage {
     /* height/min-height override the classic-mobile rule's 49vh/390px (app.css) -- shrinking
        the stage moves the platform (bottom:10%, percentage-based) proportionally closer to

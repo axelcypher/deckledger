@@ -193,6 +193,23 @@ describe('app in the browser', { skip }, () => {
     noProblems();
   });
 
+  test('the card stage is light in both appearances', async () => {
+    // The spotlight, the reflection and the foil effects are made for a light backdrop.
+    const stageTone = async light => {
+      await page.evaluate(`(document.body.classList.toggle('mobile-light',${light}),1)`);
+      return page.evaluate(`(()=>{const stage=document.querySelector('.card-stage'),tone=getComputedStyle(stage).getPropertyValue('--mt-stage-top').trim(),panel=getComputedStyle(document.querySelector('.modal-side')).getPropertyValue('--ink').trim();
+        const value=parseInt(tone.slice(1,3),16);return {light:value>200,panelInk:panel}})()`);
+    };
+    await page.evaluate(`openCard('vcard-card-ember8',${JSON.stringify(EMBER8)})`);
+    await page.waitFor(`document.querySelector('#card-dialog .card-stage')`);
+    const dark = await stageTone(false), bright = await stageTone(true);
+    assert.equal(dark.light, true, 'dark appearance');
+    assert.equal(bright.light, true, 'light appearance');
+    assert.notEqual(dark.panelInk, bright.panelInk, 'the panel next to the stage follows the appearance');
+    await page.evaluate(`(document.body.classList.remove('mobile-light'),closeOverlay('card-modal'),1)`);
+    noProblems();
+  });
+
   test('closing a card while it reloads in the background is harmless', async () => {
     // Regression: the refresh that follows a change finished after the dialog was closed and
     // then failed on the card that was no longer there.

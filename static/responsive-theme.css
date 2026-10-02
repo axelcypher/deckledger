@@ -60,6 +60,17 @@
     background:radial-gradient(circle at 78% -18%,rgba(194,165,108,.13),transparent 37%),radial-gradient(circle at 2% 72%,rgba(84,112,91,.07),transparent 34%),var(--bg);
   }
 
+  /* The card stage is a lit showcase in both appearances: spotlight, reflection and the foil
+     effects are built for a light backdrop and drown on a dark one. In the dark appearance the
+     stage therefore carries the light palette of its own; the panel next to it stays dark. */
+  body.dark.mobile-modern:not(.mobile-light) .card-stage {
+    --bg:#f5f0e6;--surface:#fffdf8;--surface-2:#eee8dc;--surface-3:#e7dfd0;--ink:#24291f;--muted:#827d70;--line:#dfd7c8;
+    --brand:#1f3a2e;--brand-2:#385848;--mt-shadow:0 22px 58px rgba(61,48,28,.11);--mp-shadow-soft:0 8px 22px rgba(61,48,28,.075);
+    --mt-stage-plate:#bfb49d;--mt-stage-top:#e9e3d8;--mt-stage-outer:#f5f0e6;
+    --mt-podium:radial-gradient(ellipse 28% 31% at 13% 82%,rgba(255,255,255,.75),transparent 70%),radial-gradient(ellipse 28% 31% at 87% 82%,rgba(255,255,255,.75),transparent 70%),radial-gradient(ellipse 60% 43% at 50% 54%,rgba(255,255,255,.94),transparent 64%),radial-gradient(ellipse 64% 18% at 50% 89%,rgba(84,61,28,.13),transparent 74%);
+    color-scheme:light;
+  }
+
   body.dark.mobile-modern :is(button,input,select,textarea) { font-family:var(--font-ui); }
   body.dark.mobile-modern :is(h1,h2,h3,.brand-word,.modal-price) { font-family:var(--font-display);letter-spacing:-.015em; }
   body.dark.mobile-modern :is(h1,h2,h3,h4,b,strong) { color:var(--ink); }
