@@ -49,6 +49,33 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`(setActiveGame('vcard'),1)`);
   });
 
+  test('choosing another game keeps the view that is open', async () => {
+    const choose = async game => {
+      await page.evaluate(`(()=>{document.querySelector('#content').firstElementChild?.setAttribute('data-previous-view','');const select=document.querySelector('#global-game-filter');select.value=${JSON.stringify(game)};select.dispatchEvent(new Event('change'))})()`);
+      await page.waitFor(`state.activeGameId===${JSON.stringify(game)}&&!document.querySelector('#content .page-loader')`);
+      return page.evaluate(`state.route`);
+    };
+    for (const route of ['dashboard', 'collection', 'watchlist', 'decks', 'sheets']) {
+      await page.route(route);
+      assert.equal(await choose('lorcana'), route);
+      await page.waitFor(`!document.querySelector('#content [data-previous-view]')`, { message: `${route} to be drawn again for the other game` });
+      assert.equal(await choose('vcard'), route);
+    }
+    await page.route('game-cards', 'vcard');
+    assert.equal(await choose('lorcana'), 'game-cards');
+    await page.waitFor(`state.game?.id==='lorcana'&&/LORCANA/i.test(document.querySelector('#content').innerText)`, { message: 'all cards of the other game' });
+    // A single set belongs to its game: the other game's sets take its place.
+    await page.route('set', 'vcard-test');
+    assert.equal(await choose('lorcana'), 'game');
+    // Settings do not depend on the game; what is typed there stays.
+    await page.route('settings');
+    await page.evaluate(`(document.querySelector('#account-display-name').value='not saved yet',1)`);
+    assert.equal(await choose('vcard'), 'settings');
+    assert.equal(await page.evaluate(`document.querySelector('#account-display-name').value`), 'not saved yet');
+    await page.route('dashboard');
+    noProblems();
+  });
+
   test('leaving a view while it loads does not let it draw over the next one', async () => {
     // Regression: the sheets view fetched its options first and then put its loading placeholder
     // over whatever view had been opened in the meantime -- for good.

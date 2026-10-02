@@ -213,7 +213,17 @@ function wireGlobalEvents(){
   });
   window.addEventListener('scroll',()=>$('#back-to-top').classList.toggle('hidden',window.scrollY<600),{passive:true});
   $('#back-to-top').onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
-  $('#global-game-filter').onchange=e=>{setActiveGame(e.target.value);refreshWatchCount();if(['collection','watchlist','decks'].includes(state.route))routeTo(state.route);else routeTo('game',e.target.value)};
+  // Choosing another game keeps the view that is open and shows it for that game. Only a single
+  // set has no counterpart there: it gives way to the new game's set overview. Settings and admin
+  // do not depend on the game and are left as they are (a redraw would drop unsaved input).
+  $('#global-game-filter').onchange=e=>{
+    const gameId=e.target.value,route=state.route;
+    setActiveGame(gameId);refreshWatchCount();
+    if(route==='settings'||route==='admin')return;
+    if(route==='set'||route==='game')routeTo('game',gameId);
+    else if(route==='game-cards')routeTo('game-cards',gameId);
+    else routeTo(route);
+  };
   $('#edit-toggle').onclick=toggleEditMode;
   $('#mobile-edit-toggle')?.addEventListener('click',toggleEditMode);
   setEditMode(state.edit);
