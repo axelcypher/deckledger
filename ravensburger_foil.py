@@ -53,7 +53,7 @@ CARD_SUPERTYPE_KEYS = ("characters", "actions", "items", "locations")
 # Every foil_type actually observed in the live feed (verified 2026-08-07), used purely for the
 # "does this look like a real value" comment trail -- NOT for validation. An unrecognised value
 # must never error (a future set could add a new type any day); see MASK_KIND_FIELDS below and
-# static/app.js's FOIL_EFFECTS registry for how the "fall back to generic" requirement is met on
+# static/js/finish.js's FOIL_EFFECTS registry for how the "fall back to generic" requirement is met on
 # each side.
 KNOWN_FOIL_TYPES = {
     "Silver", "Lava", "Satin", "Glitter", "VerticalWave", "Tempest", "FreeForm1", "FreeForm2",

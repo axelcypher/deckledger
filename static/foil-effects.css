@@ -6,17 +6,17 @@
    RESET (starting over): every tier-specific visual (gradients, blend modes, animations,
    sparkle) has been stripped. What's left is just the skeleton:
    1. The 4 classes (finish-normal/finish-foil/finish-prismatic/finish-aurora), assigned in
-      app.js (finishPresentation()) -- untouched by this file.
+      js/finish.js (finishPresentation()) -- untouched by this file.
    2. The old unmasked whole-card sweep permanently suppressed (content:none below).
    3. The per-card MASK applied across the board (app.py: /foil-mask/<id>.webp,
       cached_foil_mask -- a luminance map of THIS card's own art) -- so which part of a card
       WOULD receive an effect is already defined, even though no effect is drawn through it
-      yet. The three .foil-fx-a/b/c divs exist in the markup (app.js) and are pre-masked, empty
+      yet. The three .foil-fx-a/b/c divs exist in the markup (the scripts in static/js) and are pre-masked, empty
       vessels waiting for content.
    A parallax toolkit (tilt-on-press + mouseover shine, further down) is built and functional,
    but deliberately not attached to any tier yet -- see that block's own comment. */
 
-/* Tier classification lives in app.js (finishPresentation()) -- untouched by this file, just
+/* Tier classification lives in js/finish.js (finishPresentation()) -- untouched by this file, just
    consumed via the finish-foil/finish-prismatic/finish-aurora classes it assigns. */
 .card-finish-frame.finish-foil:before,
 .card-finish-frame.finish-foil:after,
@@ -192,9 +192,9 @@
    opacity fade and NOT an animation swap, foil-fx-a/b's own animations never stop or reset --
    they keep running invisibly underneath and reappear exactly where they'd naturally be,
    which also quietly removes the earlier "restart from frame 0 on release" simplification.
-   All --tg-* custom properties computed once per pointer move in setParallaxReveal (app.js),
+   All --tg-* custom properties computed once per pointer move in setParallaxReveal (js/main.js),
    porting the reference JS's own remap math (their `bt()` helper, their pointer-from-center
-   formula) -- see app.js for the exact numbers.
+   formula) -- see the scripts in static/js for the exact numbers.
    Same specificity (3 classes) as the base per-tier rules above, so the fade-out rule for
    foil-fx-a/b has to sit LATER in the file to win via source order, not selector weight. */
 .card-finish-frame.finish-foil .foil-fx-a,
@@ -213,7 +213,7 @@
    fade-out, same transition, DIFFERENT class than is-parallax-active above: that one drives the
    (currently parked) CSS reveal, this one drives the real WebGL canvas. Only ever added once
    LorcanaFoilRenderer.prepare() has actually resolved true for the hovered card -- see
-   startWebglHover() in app.js -- so a WebGL failure/no-match never touches this class at all and
+   startWebglHover() in js/main.js -- so a WebGL failure/no-match never touches this class at all and
    foil-fx-a/b simply keep running their untouched idle loop (12: "bleibt der bisherige CSS-Foil
    aktiv"). */
 .card-tilt-zone.is-webgl-active .foil-fx-a,
@@ -275,7 +275,7 @@
      on touch too, which has no hover state to drive a tilt from.
    - Shine: a soft light streak that tracks the cursor, MOUSE-ONLY (checks e.pointerType) --
      this one really is "der Mouseover Shine-Effekt" specifically, not a touch equivalent.
-   Wired up in the card detail modal (app.js renderCardModal): .modal-card-frame-wrap is the
+   Wired up in the card detail modal (js/card-modal.js renderCardModal): .modal-card-frame-wrap is the
    .card-tilt-zone, .modal-card-frame is the .card-tilt element. --tilt-x/--tilt-y are written
    onto the ZONE (see wireGlobalEvents), not onto .card-tilt directly -- custom properties
    inherit to descendants by default, so any other element inside the same zone that wants to
@@ -295,7 +295,7 @@
    browser's own drag-the-image-out gesture instead of ordinary mousemove/mouseup, which starves
    the tilt of its move/up events entirely (confirmed: without this, a real press-drag froze
    mid-tilt and never reset on release, since pointerup never fired once the native drag took
-   over). draggable="false" on the <img> itself (app.js) plus this CSS belt-and-suspenders
+   over). draggable="false" on the <img> itself (the scripts in static/js) plus this CSS belt-and-suspenders
    (Safari/older engines look at -webkit-user-drag, not just the attribute) for every image
    living inside a tilt zone -- the card art and its floor reflection alike. */
 .card-tilt-zone img {
@@ -329,7 +329,7 @@
 /* ---- Official Ravensburger foil layers (Lorcana only) -- structural scaffolding ----
    Source of the masks: app.py's /foil-layer-mask/<variant_id>/<kind>.jpg (proxied + disk-cached
    from Ravensburger's own catalog API -- see ravensburger_foil.py), wired onto these nodes by
-   hydrateOfficialFoilLayers() in app.js once /api/foil-layer-meta/<variant_id> resolves.
+   hydrateOfficialFoilLayers() in js/finish.js once /api/foil-layer-meta/<variant_id> resolves.
    Deliberately no background/color/blend-mode here yet -- "die eigentlichen Effekte machen wir
    dann in einem eigenen Schritt". This is ONLY the structural half: exact same size+position as
    the card art (position:absolute, inset:0, 100%/100%, matching the brief's own spec verbatim),
@@ -342,7 +342,7 @@
    too, not just "no official mask at all".
    --hot-foil-color (top layers only) is threaded through as a plain custom property, unused by
    any actual paint yet -- available for the deferred effect step without needing another pass
-   through app.js's hydration code once that step starts. */
+   through the scripts in static/js's hydration code once that step starts. */
 .official-foil-layer,
 .official-foil-top-layer {
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;

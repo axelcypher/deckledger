@@ -164,6 +164,8 @@ otherwise lets a direct client spoof those headers.
 
 Modules import each other in one direction only (the order `deckledger/__init__.py` lists them in). No module outside `games/` branches on a game's id: it asks `games.game(game_id)` for the playset size, the rarity ladder, the deck rules, where images and prices come from. Adding a game is one module there, its provider under `providers/`, and an icon. The frontend receives the rules it needs (playset size, copy limits, icon) with each game.
 
+The frontend has no build step. `static/js/` holds plain scripts that share one global scope and are loaded in a fixed order (`core.js` first, `main.js` last, see `templates/index.html`): `core` (state, API client, navigation), `finish`, `filters`, `catalog`, `offline`, `collection`, `watchlist`, `decks`, `card-modal`, `dashboard`, `settings`, `admin`, `import`, `sheets`, `main` (wiring and start-up). Each file gets its own content-hashed URL, so a changed file is the only one a browser fetches again.
+
 The catalogue and price jobs (`catalog_sync.py`, `price_sync.py`), the sheet renderer (`sheet_render.py`) and the providers stay standalone scripts and modules next to the package.
 
 ## Tests

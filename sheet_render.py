@@ -187,7 +187,7 @@ FOIL_NAME = re.compile(r"foil|silver|satin|holo|rainbow|etched|textured|gold|par
 
 def is_holo(finish: str | None, variant_code: str | None = "", rarity: str | None = "", game_id: str | None = "", is_parallel=0) -> bool:
     """Whether a variant is a foil print of any kind. Same rules as finishPresentation() in
-    static/app.js, which decides where the app itself shows a foil effect."""
+    static/js/finish.js, which decides where the app itself shows a foil effect."""
     finish = str(finish or "").strip()
     descriptor = f"{finish} {variant_code or ''} {rarity or ''}".lower()
     if PREMIUM_NAME.search(descriptor) or PREMIUM_CODE.search(descriptor) or FOIL_NAME.search(descriptor):

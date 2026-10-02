@@ -30,7 +30,7 @@
        actually punches the hole -- SVG mask visibility is luminance x alpha, and glass_side's
        own artwork is light-colored (high luminance), which would make that area MORE visible,
        not less, if used as-is. #mt-reflection-cutout-wrap's transform is set dynamically per
-       render (see alignReflectionMask in app.js) to match wherever the plate actually sits on
+       render (see alignReflectionMask in js/card-modal.js) to match wherever the plate actually sits on
        screen -- the plate and reflection are independently positioned elements, so that
        alignment can't be expressed as a fixed value here.
        Bug fix: <use href="/glass-plate.svg#glass_side"> (a CROSS-document reference to the
@@ -56,7 +56,7 @@
            or logic error. Any single axis being a more ordinary magnitude avoided it in testing;
            real pixel units (rect + g scaled by roughly the plate's actual on-screen size, order
            0.6-0.8, not 0.003) sidestep the failure zone entirely. Both the rect and the cutout
-           <g> transform are set in real pixels by JS (alignReflectionMask in app.js), since
+           <g> transform are set in real pixels by JS (alignReflectionMask in js/card-modal.js), since
            userSpaceOnUse here means "the reflection element's own pixel box". -->
       <mask id="mt-reflection-mask" maskUnits="objectBoundingBox" maskContentUnits="userSpaceOnUse">
         <rect id="mt-reflection-fade-rect" x="0" y="0" width="0" height="0" fill="#fff"/>
@@ -208,6 +208,21 @@
   <div id="offline-indicator" class="offline-indicator hidden"></div>
   <script src="{{ asset_url('filter-panel.js') }}"></script>
   <script src="{{ asset_url('stat-pill.js') }}"></script>
-  <script src="{{ asset_url('app.js') }}"></script>
+  {# Plain scripts sharing one global scope, in this order: core first, main (start-up) last. #}
+  <script src="{{ asset_url('js/core.js') }}"></script>
+  <script src="{{ asset_url('js/finish.js') }}"></script>
+  <script src="{{ asset_url('js/filters.js') }}"></script>
+  <script src="{{ asset_url('js/catalog.js') }}"></script>
+  <script src="{{ asset_url('js/offline.js') }}"></script>
+  <script src="{{ asset_url('js/collection.js') }}"></script>
+  <script src="{{ asset_url('js/watchlist.js') }}"></script>
+  <script src="{{ asset_url('js/decks.js') }}"></script>
+  <script src="{{ asset_url('js/card-modal.js') }}"></script>
+  <script src="{{ asset_url('js/dashboard.js') }}"></script>
+  <script src="{{ asset_url('js/settings.js') }}"></script>
+  <script src="{{ asset_url('js/admin.js') }}"></script>
+  <script src="{{ asset_url('js/import.js') }}"></script>
+  <script src="{{ asset_url('js/sheets.js') }}"></script>
+  <script src="{{ asset_url('js/main.js') }}"></script>
 </body>
 </html>

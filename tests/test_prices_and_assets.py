@@ -74,8 +74,10 @@ def test_static_urls_carry_a_content_hash(client, tmp_path, monkeypatch):
     """Regression: hand-maintained ?v=N numbers were forgotten, and the service worker then kept
     serving the old file for good."""
     page = client.get("/").get_data(as_text=True)
-    scripts = re.findall(r'/static/(app\.js|app\.css|service-worker\.js)\?v=([0-9a-f]{12})"', page)
-    assert {name for name, _ in scripts} == {"app.js", "app.css"}
+    hashed = dict(re.findall(r'/static/([\w./-]+\.(?:js|css))\?v=([0-9a-f]{12})"', page))
+    assert {"app.css", "js/core.js", "js/main.js"} <= set(hashed)
+    # Every local script and stylesheet the page loads goes through asset_url().
+    assert set(re.findall(r'(?:src|href)="/static/([\w./-]+\.(?:js|css))[?"]', page)) == set(hashed)
 
     monkeypatch.setattr(deckledger.app, "static_folder", str(tmp_path))
     (tmp_path / "probe.js").write_text("one")

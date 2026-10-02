@@ -219,7 +219,7 @@
     transform: translate(-50%, -50%); border-radius: 50%; z-index: 0;
     background: var(--mt-podium); background-repeat: no-repeat;
   }
-  /* The platform is now a real SVG element (.stage-platform-svg, markup in app.js) instead of
+  /* The platform is now a real SVG element (.stage-platform-svg, markup in the scripts in static/js) instead of
      a CSS pseudo-element. Every previous approach (box-shadow rim, border-bottom extrusion,
      CSS-only "acrylic" gradients) was fundamentally faking a 3D shape out of a flat 2D box.
      SVG can just draw the actual geometry instead: a top ellipse (the surface) plus a path
@@ -476,7 +476,7 @@
     /* Full card geometry is required to mirror the transformed plane exactly. The local fade
        below exposes only the narrow strip adjoining the lower card edge. */
     display: block; position: absolute; inset: auto; width: 100%; height: 100%;
-    /* Parallax tilt (foil-effects.css .card-tilt-zone/.card-tilt, wired in app.js): the
+    /* Parallax tilt (foil-effects.css .card-tilt-zone/.card-tilt, wired in the scripts in static/js): the
        reflection sits outside .modal-card-frame (a sibling, per the comment above -- has to,
        since it lives past the frame's own clipped box), so it can't just inherit the card's
        rotate via being a descendant of it. It's still a descendant of the shared
@@ -611,7 +611,7 @@
      the active tab pill) instead of --surface, and the top border is dropped -- both per
      follow-up feedback asking for the bar to blend into the page rather than read as a
      separate slab. Scroll-lock bug behind "the bar scrolls with the page": see openOverlay/
-     closeOverlay in app.js -- position:fixed itself was never broken. */
+     closeOverlay in js/core.js -- position:fixed itself was never broken. */
   body.dark.mobile-modern .modal-action-bar {
     display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
     padding: 0 20px env(safe-area-inset-bottom); background: var(--bg); border: 0;
@@ -781,7 +781,7 @@
   /* Both redundant with the heart button already in the bottom action bar -- see feedback. */
   body.dark.mobile-modern .watchlist-picker { display: none; }
   /* Sprachversion/Sammlungswert/Datenquelle row -- per feedback, cut entirely (not just
-     restyled). Scoped to this one instance (app.js gives it a second, unique class) since the
+     restyled). Scoped to this one instance (the scripts in static/js gives it a second, unique class) since the
      SAME .detail-grid/.detail-field classes are also the "Karte" tab's info grid, which stays. */
   body.dark.mobile-modern .collection-info-grid { display: none; }
   /* Advanced ("Erweitert") panel -- same hardcoded-dark-regardless-of-theme bug as

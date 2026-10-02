@@ -117,7 +117,7 @@ def oauth_failure_redirect(link_flow, error_code):
     # An already-authenticated user hitting this from the Settings "Verbinden" button never sees
     # /login (it immediately bounces anyone with a session straight to "/") -- routing those
     # failures there would silently swallow the error. Send them to "/" with a query flag the SPA
-    # itself reads and toasts (see init() in app.js) instead. A genuine logged-out login attempt
+    # itself reads and toasts (see init() in static/js/main.js) instead. A genuine logged-out login attempt
     # still gets the server-rendered banner on /login as before.
     if link_flow:
         return redirect(url_for("index", oauth_error=error_code))

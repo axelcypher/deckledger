@@ -168,7 +168,7 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   // Never intercept mutations -- POST/PATCH/DELETE responses aren't
   // meaningfully cacheable, and offline write queuing is handled at the
-  // application level (see app.js), not here.
+  // application level (see static/js/offline.js), not here.
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
