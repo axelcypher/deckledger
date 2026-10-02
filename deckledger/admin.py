@@ -136,6 +136,7 @@ def admin_delete_user(target_id):
     db().execute("DELETE FROM inbox_items WHERE user_id=?", (target_id,))
     db().execute("DELETE FROM sheet_posts WHERE user_id=?", (target_id,))
     db().execute("DELETE FROM watch_communities WHERE user_id=?", (target_id,))
+    db().execute("DELETE FROM deals WHERE user_id=?", (target_id,))  # their cards and events go with them (ON DELETE CASCADE)
     db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id IN (SELECT id FROM trade_sheets WHERE user_id=?)", (target_id,))
     remove_user_backgrounds(target_id)
     for table in ("decks", "named_watchlists", "trade_sheets", "watchlist_entries", "collection_entries", "import_operations", "user_settings", "applied_requests"):
@@ -219,6 +220,8 @@ def admin_delete_game(game_id):
         db().execute(f"DELETE FROM {table} WHERE {variant_filter}", (game_id,))
     db().execute("DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE game_id=?)", (game_id,))
     db().execute("DELETE FROM trade_sheets WHERE game_id=?", (game_id,))  # its cards go with it (ON DELETE CASCADE)
+    db().execute("DELETE FROM deals WHERE game_id=?", (game_id,))
+    db().execute("DELETE FROM watch_communities WHERE game_id=?", (game_id,))
     db().execute("DELETE FROM named_watchlist_entries WHERE list_id IN (SELECT id FROM named_watchlists WHERE game_id=?)", (game_id,))
     db().execute("DELETE FROM decks WHERE game_id=?", (game_id,))
     db().execute("DELETE FROM named_watchlists WHERE game_id=?", (game_id,))

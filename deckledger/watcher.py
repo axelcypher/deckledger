@@ -27,7 +27,7 @@ from flask import jsonify, request
 
 from .config import jload, now_iso
 from .web import app, db, login_required, user_id
-from .sheets import own_sheet
+from .sheets import WANTED_SHEET_KINDS, own_sheet
 
 USER_AGENT = "DeckLedger/1.0 (self-hosted collection manager; reads public feeds of posts the user follows)"
 ATOM = {"a": "http://www.w3.org/2005/Atom"}
@@ -44,7 +44,6 @@ COMMUNITIES_PER_GAME = 8
 COMMUNITY_INTERVAL_SECONDS = 300
 # Posts older than this are not reported: whoever wrote them has most likely found a partner.
 FIND_DAYS = 7
-WANTED_KINDS = ("WTB", "WTTF", "WTB/WTTF")
 
 
 class FeedError(Exception):
@@ -328,7 +327,7 @@ def file_finds(connection, source, name, posts, stamp=None):
             for post in posts if cards else []:
                 if post["external_id"] in linked or (own_name and post["author"].lower() == own_name):
                     continue
-                matches = cards_found(post, cards, sheet["kind"] in WANTED_KINDS)
+                matches = cards_found(post, cards, sheet["kind"] in WANTED_SHEET_KINDS)
                 if not matches:
                     continue
                 new += connection.execute(

@@ -24,7 +24,11 @@ from .catalog import natural_code_key
 # looked for -- to buy (WTB), to trade for (WTTF) or both. The two sides are separate sheets:
 # one picture cannot say which of its cards are on offer and which are wanted.
 SHEET_KINDS = ("WTS", "WTT", "WTS/WTT", "WTB", "WTTF", "WTB/WTTF")
+WANTED_SHEET_KINDS = ("WTB", "WTTF", "WTB/WTTF")
 SHEET_SORTS = ("number", "rarity")
+# How many copies of a variant (v.id) the user's reserved deals have spoken for (deckledger/deals.py).
+RESERVED_SQL = """(SELECT COALESCE(SUM(rc.quantity),0) FROM deal_cards rc JOIN deals rd ON rd.id=rc.deal_id
+  WHERE rd.user_id=? AND rd.status='reserved' AND rc.side='give' AND rc.variant_id=v.id)"""
 SHEET_CARD_LIMIT = 400
 
 
@@ -43,11 +47,15 @@ def sheet_cards(sheet):
         f"""SELECT e.variant_id,e.quantity,e.label,v.finish,v.variant_code,v.is_parallel,v.game_id,v.attributes variant_attributes,
               i.id identity_id,i.canonical_name,p.collector_number,p.language,p.rarity,
               s.code set_code,s.name set_name,s.release_date,{latest_price_sql('v')} price,
-              COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) owned
+              COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) owned,
+              {RESERVED_SQL} reserved
             FROM trade_sheet_cards e JOIN variants v ON v.id=e.variant_id JOIN printings p ON p.id=v.printing_id
               JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id
-            WHERE e.sheet_id=?""", (sheet["user_id"], sheet["id"])
+            WHERE e.sheet_id=?""", (sheet["user_id"], sheet["user_id"], sheet["id"])
     )]
+    for row in rows:
+        # Reserved is what a sheet of offers shows; no more copies than it lists can be.
+        row["reserved"] = 0 if sheet["kind"] in WANTED_SHEET_KINDS else min(row["reserved"], row["quantity"])
 
     def by_number(row):
         return (row["release_date"] or "", natural_code_key(row["set_code"]), natural_code_key(row["collector_number"]),
@@ -74,7 +82,8 @@ def sheet_text(sheet, cards):
         if card["finish"] not in ("Normal", "standard"):
             details.append(card["finish"])
         price = card["label"] or (f'{card["price"]:.2f} €'.replace(".", ",") if card["price"] is not None and "WTS" in sheet["kind"].split("/") else "")
-        lines.append(f'* {card["quantity"]}x **{card["canonical_name"]}** ({", ".join(details)})' + (f" – {price}" if price else ""))
+        reserved = "" if not card["reserved"] else " – reserved" if card["reserved"] >= card["quantity"] else f' – {card["reserved"]} reserved'
+        lines.append(f'* {card["quantity"]}x **{card["canonical_name"]}** ({", ".join(details)})' + (f" – {price}" if price else "") + reserved)
     return "\n".join(lines) + "\n"
 
 
@@ -224,7 +233,7 @@ def trade_sheet_image(sheet_id, page, fmt):
         except Exception as error:  # an unreachable image source must not fail the whole sheet
             app.logger.warning("Sheet image for %s unavailable: %s", card["variant_id"], error)
         tiles.append({"image_path": image_path, "name": card["canonical_name"], "set_code": card["set_code"],
-                      "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"],
+                      "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"], "reserved": card["reserved"],
                       "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
     image = sheet_render.render_page(
         tiles, columns, rows, **background_for(sheet), kind=sheet["kind"], title=sheet["name"],

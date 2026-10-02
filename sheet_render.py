@@ -335,11 +335,32 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
     return tile
 
 
+def reserved_stamp(size: tuple[int, int], reserved: int, quantity: int, accent: str) -> Image.Image:
+    """What lies over a card that is spoken for: a band across it saying so. When every copy is
+    reserved the card is dimmed as well; when only some are, the band says how many."""
+    width, height = size
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    if reserved >= quantity:
+        draw.rectangle((0, 0, width, height), fill=(12, 14, 18, 120))
+    text = "RESERVED" if reserved >= quantity else f"{reserved}× RESERVED"
+    text, face = fit_text(draw, text, width * .14, width * .86)
+    band, line = width * .12, max(2, width // 100)
+    middle = height * .5
+    draw.rectangle((0, middle - band, width, middle + band), fill=(16, 18, 22, 232))
+    draw.rectangle((0, middle - band, width, middle - band + line), fill=accent)
+    draw.rectangle((0, middle + band - line, width, middle + band), fill=accent)
+    draw.text((width / 2, middle), text, font=face, fill=accent, anchor="mm")
+    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), rounded_mask(size, width * .045)))
+    return layer
+
+
 def render_page(cards: list[dict], columns: int, rows: int, *, background: str = DEFAULT_BACKGROUND, kind: str = "WTS",
                 title: str = "", subtitle: str = "", page: tuple[int, int] = (1, 1), scale: float = 1.0,
                 background_image=None, accent: str | None = None) -> Image.Image:
     """One page of a sheet. `cards` are dicts with image_path, name, set_code, number, quantity,
-    label and holo -- already sorted and cut to this page."""
+    label, holo and reserved (how many of the copies are spoken for) -- already sorted and cut
+    to this page."""
     card_w = max(60, round(CARD_WIDTH * scale))
     card_h = round(card_w * CARD_RATIO)
     gap = round(card_w * .09)
@@ -397,6 +418,9 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
             frame, reach = holo_frame((card_w, card_h))
             canvas.alpha_composite(frame, (x - reach, y - reach))
         quantity = int(card.get("quantity") or 1)
+        reserved = min(quantity, int(card.get("reserved") or 0))
+        if reserved:
+            canvas.alpha_composite(reserved_stamp((card_w, card_h), reserved, quantity, accent), (x, y))
         if quantity > 1:
             text = f"×{quantity}"
             face = font(card_w * .12)

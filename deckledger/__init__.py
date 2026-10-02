@@ -5,7 +5,7 @@ Flask app, then the database is created or migrated. `app.py` in the repository 
 point servers and scripts import.
 """
 from . import config, games, web, schema  # noqa: F401  -- the order is the dependency order
-from . import prices, images, assets, catalog, auth, pages, collection, watchlists, sheets, decks, backup, account, admin, watcher  # noqa: F401
+from . import prices, images, assets, catalog, auth, pages, collection, watchlists, sheets, deals, decks, backup, account, admin, watcher  # noqa: F401
 from .web import app
 
 schema.init_database()
