@@ -63,6 +63,14 @@ describe('app in the browser', { skip }, () => {
       await page.evaluate(`document.querySelector('#edit-panel').click()`);
       assert.equal(await page.evaluate(`state.edit`), false);
     } finally { await page.evaluate(`(document.body.classList.remove('sidebar-collapsed'),1)`); await sleep(350); }
+    // In edit mode the top bar shows a pencil in the theme's green, not a filled box; a click on it ends edit mode.
+    await page.evaluate(`(setEditMode(true),1)`);
+    const badge = await page.evaluate(`(()=>{const badge=document.querySelector('#edit-indicator'),icon=badge.querySelector('svg'),box=badge.getBoundingClientRect(),style=getComputedStyle(badge);
+      return {shown:style.display!=='none',round:style.borderRadius,size:Math.round(box.width)+'x'+Math.round(box.height),icon:Math.round(icon.getBoundingClientRect().width),fill:getComputedStyle(icon).fill,sameAsBrand:style.color===getComputedStyle(document.querySelector('.primary-button')||badge).backgroundColor||style.color}})()`);
+    assert.deepEqual({ shown: badge.shown, round: badge.round, size: badge.size, icon: badge.icon, fill: badge.fill }, { shown: true, round: '50%', size: '38x38', icon: 17, fill: 'none' });
+    await page.evaluate(`document.querySelector('#edit-indicator').click()`);
+    assert.equal(await page.evaluate(`state.edit`), false);
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('#edit-indicator')).display`), 'none');
     // With the full panel, only the switch itself toggles.
     await page.evaluate(`document.querySelector('.edit-panel-copy').click()`);
     assert.equal(await page.evaluate(`state.edit`), false);
