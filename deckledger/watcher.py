@@ -1,12 +1,16 @@
-"""Watching the posts a sheet was published as: new comments end up in the user's inbox.
+"""Watching what happens around a sheet: comments on the posts it was published as, and other
+people's posts that name its cards. Both end up in the user's inbox.
 
 Reading only -- nothing here ever posts or replies. A user links a post to a sheet by its URL;
 the watcher (post_watch.py, once a minute) then reads that post's comment feed and stores what
-is new. So far the only source is Reddit, read through its public Atom feeds without a login.
+is new. A user also lists communities per game; the watcher reads their newest posts and files
+those that fit one of the user's sheets: for a sheet of offers the posts that want one of its
+cards, for a sheet of wanted cards the posts that have one. So far the only source is Reddit,
+read through its public Atom feeds without a login.
 
 Reddit allows an anonymous client about one request a minute and says so in its answer's
 headers. Every request -- the background job's and a user's "check now" -- therefore goes through
-one gate (next_request_at in app_settings), and each run asks for a single post: the one that
+one gate (next_request_at in app_settings), and each run asks for a single feed: the one that
 has waited longest.
 """
 
@@ -25,7 +29,7 @@ from .config import jload, now_iso
 from .web import app, db, login_required, user_id
 from .sheets import own_sheet
 
-USER_AGENT = "DeckLedger/1.0 (self-hosted collection manager; reads comment feeds of the user's own posts)"
+USER_AGENT = "DeckLedger/1.0 (self-hosted collection manager; reads public feeds of posts the user follows)"
 ATOM = {"a": "http://www.w3.org/2005/Atom"}
 POSTS_PER_SHEET = 12
 # A post nobody has commented on for this long is no longer asked for.
@@ -35,6 +39,12 @@ IGNORED_AUTHORS = {"automoderator"}
 GATE_KEY = "reddit_next_request_at"
 FALLBACK_PAUSE_SECONDS = 65
 POST_STATES = ("watching", "done")
+COMMUNITIES_PER_GAME = 8
+# A community's newest posts do not change by the minute; it is read no more often than this.
+COMMUNITY_INTERVAL_SECONDS = 300
+# Posts older than this are not reported: whoever wrote them has most likely found a partner.
+FIND_DAYS = 7
+WANTED_KINDS = ("WTB", "WTTF", "WTB/WTTF")
 
 
 class FeedError(Exception):
@@ -67,6 +77,20 @@ def feed_url(source, external_id):
     return f"https://www.reddit.com/comments/{external_id}/.rss?limit=100&sort=new"
 
 
+COMMUNITY = re.compile(r"^(?:(?:https?://)?(?:[a-z0-9-]+\.)?reddit\.com)?/?(?:r/)?([A-Za-z0-9_]{2,21})/?$", re.I)
+
+
+def community_name(text):
+    """The name of a subreddit however it was typed -- "vcardtrades", "r/vcardtrades", its address --
+    in lower case; '' when it is none."""
+    match = COMMUNITY.match(str(text or "").strip())
+    return match.group(1).lower() if match else ""
+
+
+def listing_url(source, name):
+    return f"https://www.reddit.com/r/{name}/new/.rss?limit=100"
+
+
 def fetch_feed(url):
     """The feed's bytes and how many seconds to wait before the next request. Raises FeedError."""
     try:
@@ -78,7 +102,7 @@ def fetch_feed(url):
         if error.code == 429:
             raise FeedError("Reddit lässt gerade keine weitere Abfrage zu.", wait) from error
         if error.code in (403, 404):
-            raise FeedError(f"Der Post ist nicht (mehr) lesbar ({error.code}).", wait) from error
+            raise FeedError(f"Nicht (mehr) lesbar ({error.code}).", wait) from error
         raise FeedError(f"Reddit antwortet mit {error.code}.", wait) from error
     except (URLError, OSError) as error:
         raise FeedError(f"Reddit ist nicht erreichbar: {error}") from error
@@ -102,35 +126,50 @@ def plain_text(markup):
     return re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", text)).strip()
 
 
-def parse_feed(payload):
-    """(title of the post, community, [comment, ...]) from a post's comment feed. A comment is
-    {external_id, author, body, url, posted_at}; the post itself is not one of them."""
+def feed_entries(payload):
+    """(community, [entry, ...]) of a feed. An entry is {external_id, author, title, body, url,
+    posted_at}; its external_id says what it is: t3_ a post, t1_ a comment."""
     try:
         root = ET.fromstring(payload)
     except ET.ParseError as error:
         raise FeedError("Die Antwort von Reddit ist kein lesbarer Feed.") from error
-    title, community, comments = "", "", []
+    community, entries = "", []
     for category in root.findall("a:category", ATOM):
         term = (category.get("term") or "").strip()
         if term and term != "reddit.com":
             community = term
     for entry in root.findall("a:entry", ATOM):
-        external_id = (entry.findtext("a:id", default="", namespaces=ATOM) or "").strip()
         link = entry.find("a:link", ATOM)
-        if external_id.startswith("t3_"):
-            title = (entry.findtext("a:title", default="", namespaces=ATOM) or "").strip()
-            continue
-        if not external_id.startswith("t1_"):
-            continue
         author = (entry.findtext("a:author/a:name", default="", namespaces=ATOM) or "").strip()
-        comments.append({
-            "external_id": external_id,
+        entries.append({
+            "external_id": (entry.findtext("a:id", default="", namespaces=ATOM) or "").strip(),
             "author": re.sub(r"^/?u/", "", author),
+            "title": (entry.findtext("a:title", default="", namespaces=ATOM) or "").strip(),
             "body": plain_text(entry.findtext("a:content", default="", namespaces=ATOM))[:4000],
             "url": link.get("href") if link is not None else "",
-            "posted_at": (entry.findtext("a:updated", default="", namespaces=ATOM) or "").strip(),
+            "posted_at": (entry.findtext("a:published", default="", namespaces=ATOM) or entry.findtext("a:updated", default="", namespaces=ATOM) or "").strip(),
         })
-    return title, community, comments
+    return community, entries
+
+
+def parse_feed(payload):
+    """(title of the post, community, [comment, ...]) from a post's comment feed; the post itself
+    is not one of the comments."""
+    community, entries = feed_entries(payload)
+    title = next((entry["title"] for entry in entries if entry["external_id"].startswith("t3_")), "")
+    return title, community, [entry for entry in entries if entry["external_id"].startswith("t1_")]
+
+
+# What the feed appends to every post's text.
+SUBMITTED_BY = re.compile(r"\s*submitted by\s+/u/\S+\s*(?:\[link\])?\s*(?:\[comments\])?\s*$")
+
+
+def parse_listing(payload):
+    """The posts of a community's feed of new posts."""
+    posts = [entry for entry in feed_entries(payload)[1] if entry["external_id"].startswith("t3_")]
+    for post in posts:
+        post["body"] = SUBMITTED_BY.sub("", post["body"])
+    return posts
 
 
 # ---- Which cards a comment talks about --------------------------------------------------------
@@ -148,11 +187,11 @@ def cards_mentioned(body, cards):
     for card in cards:
         full = words(card["canonical_name"])
         base = words(re.sub(r"\([^)]*\)", "", card["canonical_name"]))
-        number = words(card["collector_number"]).lstrip("0")
-        has_number = bool(number) and re.search(rf"(?<![0-9])0*{re.escape(number)}(?![0-9])", text) is not None
         if full and f" {full} " in text:
             certain = True
         elif base and len(base) >= 3 and f" {base} " in text:
+            number = words(card["collector_number"]).lstrip("0")
+            has_number = bool(number) and re.search(rf"(?<![0-9])0*{re.escape(number)}(?![0-9])", text) is not None
             certain = has_number and base != full
         else:
             continue
@@ -160,6 +199,44 @@ def cards_mentioned(body, cards):
     # "Ember PL8" names one Ember for certain; the other Embers of the sheet are not meant then.
     settled = {match["base"] for match in found if match["certain"]}
     return [{key: value for key, value in match.items() if key != "base"} for match in found if match["certain"] or match["base"] not in settled]
+
+
+# ---- What a post offers and what it asks for ------------------------------------------------------
+
+HAVE_WANT = re.compile(r"\[\s*(h|have|haves|w|want|wants)\s*\]", re.I)
+SELLING = re.compile(r"\b(?:wts|fs|for sale|selling)\b|\[s\]", re.I)
+BUYING = re.compile(r"\b(?:wtb|lf|iso|looking for|buying)\b|\[b\]", re.I)
+
+
+def post_sides(title, body):
+    """[(side, text), ...] of a post: which of its text says what the author has ("has"), what
+    they want ("wants"), and which only mentions things ("mentions"). Trade communities put that
+    into the title -- "[H] Monarch PL8 [W] PayPal" -- or tag the whole post as WTS or WTB."""
+    parts = HAVE_WANT.split(title)
+    if len(parts) > 1:
+        sides = [("has" if marker.lower().startswith("h") else "wants", text) for marker, text in zip(parts[1::2], parts[2::2])]
+        return sides + [("mentions", body)]
+    selling, buying = bool(SELLING.search(title)), bool(BUYING.search(title))
+    side = "has" if selling and not buying else "wants" if buying and not selling else "mentions"
+    return [(side, f"{title}\n{body}")]
+
+
+def cards_found(post, cards, wanted):
+    """The sheet's cards a post is about, each with the side it stands on. For a sheet of wanted
+    cards (`wanted`) that is what the author has, for a sheet of offers what they want; a card
+    that only stands on the other side is no find."""
+    needed, found, other_side = "has" if wanted else "wants", {}, set()
+    for side, text in post_sides(post["title"], post["body"]):
+        for match in cards_mentioned(text, cards):
+            if side not in (needed, "mentions"):
+                other_side.add(match["variant_id"])
+                continue
+            known = found.get(match["variant_id"])
+            better = (side == needed, match["certain"])
+            if not known or better > (known["side"] == needed, known["certain"]):
+                found[match["variant_id"]] = {**match, "side": side}
+    # "[W] Ember PL8" says where the card stands; the text below repeating its name does not undo that.
+    return [match for match in found.values() if match["side"] == needed or match["variant_id"] not in other_side]
 
 
 # ---- Checking a post ----------------------------------------------------------------------------
@@ -205,10 +282,10 @@ def check_post(connection, post, cards):
         if author in IGNORED_AUTHORS or (own_name and author == own_name):
             continue
         inserted = connection.execute(
-            """INSERT OR IGNORE INTO inbox_items(user_id,post_id,kind,external_id,author,body,url,posted_at,matches,created_at)
-               VALUES(?,?,'comment',?,?,?,?,?,?,?)""",
-            (post["user_id"], post["id"], comment["external_id"], comment["author"], comment["body"], comment["url"],
-             comment["posted_at"], json.dumps(cards_mentioned(comment["body"], cards)), stamp),
+            """INSERT OR IGNORE INTO inbox_items(user_id,sheet_id,post_id,kind,external_id,author,body,url,community,posted_at,matches,created_at)
+               VALUES(?,?,?,'comment',?,?,?,?,?,?,?,?)""",
+            (post["user_id"], post["sheet_id"], post["id"], comment["external_id"], comment["author"], comment["body"], comment["url"],
+             community or post["community"], comment["posted_at"], json.dumps(cards_mentioned(comment["body"], cards)), stamp),
         ).rowcount
         new += inserted
     connection.execute(
@@ -225,10 +302,66 @@ def cards_of_sheet(connection, sheet_id):
            WHERE e.sheet_id=?""", (sheet_id,))]
 
 
+# ---- Searching a community ----------------------------------------------------------------------
+
+def is_recent(posted_at, days=FIND_DAYS):
+    try:
+        return datetime.fromisoformat(posted_at) >= datetime.now(timezone.utc) - timedelta(days=days)
+    except (TypeError, ValueError):
+        return True     # no readable date is no reason to drop a post
+
+
+def file_finds(connection, source, name, posts, stamp=None):
+    """Files the posts of a community that fit a sheet of somebody who has that community in
+    their list. Returns how many inbox entries were new."""
+    stamp, new = stamp or now_iso(), 0
+    posts = [post for post in posts if post["author"].lower() not in IGNORED_AUTHORS and is_recent(post["posted_at"])]
+    for reader in connection.execute("SELECT user_id,game_id FROM watch_communities WHERE source=? AND name=?", (source, name)).fetchall():
+        uid = reader["user_id"]
+        own_name = str(setting(connection, uid, "redditUsername") or "").strip().lower().removeprefix("u/")
+        # A post of one's own that is linked to a sheet is watched for its comments already.
+        linked = {f't3_{row[0]}' for row in connection.execute("SELECT external_id FROM sheet_posts WHERE user_id=? AND source=?", (uid, source))}
+        sheets = connection.execute("SELECT * FROM trade_sheets WHERE user_id=? AND game_id=? AND scout=1", (uid, reader["game_id"])).fetchall()
+        for sheet in sheets:
+            chosen = {entry for entry in sheet["scout_communities"].split(",") if entry}
+            cards = cards_of_sheet(connection, sheet["id"]) if not chosen or name in chosen else []
+            for post in posts if cards else []:
+                if post["external_id"] in linked or (own_name and post["author"].lower() == own_name):
+                    continue
+                matches = cards_found(post, cards, sheet["kind"] in WANTED_KINDS)
+                if not matches:
+                    continue
+                new += connection.execute(
+                    """INSERT OR IGNORE INTO inbox_items(user_id,sheet_id,kind,external_id,author,title,body,url,community,posted_at,matches,created_at)
+                       VALUES(?,?,'post',?,?,?,?,?,?,?,?,?)""",
+                    (uid, sheet["id"], post["external_id"], post["author"], post["title"][:300], post["body"][:1500], post["url"],
+                     name, post["posted_at"], json.dumps(matches), stamp),
+                ).rowcount
+    return new
+
+
+def check_community(connection, source, name):
+    """Reads a community's newest posts and files what fits. Returns how many entries were new.
+    The caller commits. Raises FeedError; the feed row then carries the reason."""
+    stamp = now_iso()
+    connection.execute("INSERT OR IGNORE INTO community_feeds(source,name) VALUES(?,?)", (source, name))
+    try:
+        payload, pause = fetch_feed(listing_url(source, name))
+        posts = parse_listing(payload)
+    except FeedError as error:
+        close_gate(connection, error.retry_after or FALLBACK_PAUSE_SECONDS)
+        connection.execute("UPDATE community_feeds SET last_checked_at=?,last_error=? WHERE source=? AND name=?", (stamp, str(error), source, name))
+        raise
+    close_gate(connection, pause)
+    new = file_finds(connection, source, name, posts, stamp)
+    connection.execute("UPDATE community_feeds SET last_checked_at=?,last_error='' WHERE source=? AND name=?", (stamp, source, name))
+    return new
+
+
 def run_due(connection):
     """What the background job does each time: retire posts that have gone quiet, then read the
-    one watched post that has waited longest -- if the source may be asked at all. Returns a
-    short summary for the log."""
+    one feed that has waited longest -- a watched post's comments or a community's new posts --
+    if the source may be asked at all. Returns a short summary for the log."""
     connection.row_factory = sqlite3.Row
     quiet = (datetime.now(timezone.utc) - timedelta(days=QUIET_DAYS)).replace(microsecond=0).isoformat()
     retired = connection.execute(
@@ -241,6 +374,19 @@ def run_due(connection):
     post = connection.execute(
         "SELECT * FROM sheet_posts WHERE status='watching' ORDER BY COALESCE(last_checked_at,'') ,id LIMIT 1",
     ).fetchone()
+    rested = (datetime.now(timezone.utc) - timedelta(seconds=COMMUNITY_INTERVAL_SECONDS)).replace(microsecond=0).isoformat()
+    community = connection.execute(
+        """SELECT w.source,w.name,COALESCE(f.last_checked_at,'') last_checked_at FROM watch_communities w
+           LEFT JOIN community_feeds f ON f.source=w.source AND f.name=w.name
+           WHERE COALESCE(f.last_checked_at,'')<? GROUP BY w.source,w.name ORDER BY last_checked_at,w.name LIMIT 1""", (rested,),
+    ).fetchone()
+    if community and (not post or community["last_checked_at"] <= (post["last_checked_at"] or "")):
+        try:
+            return {"retired": retired, "community": community["name"], "new": check_community(connection, community["source"], community["name"])}
+        except FeedError as error:
+            return {"retired": retired, "community": community["name"], "error": str(error)}
+        finally:
+            connection.commit()
     if not post:
         return {"retired": retired, "watching": 0}
     try:
@@ -330,6 +476,80 @@ def check_sheet_post(post_id):
     return jsonify({"new": new, "post": post_payload(own_post(post_id))})
 
 
+def community_payload(row):
+    return {key: row[key] for key in ("id", "game_id", "source", "name", "created_at", "last_checked_at", "last_error")}
+
+
+def own_community(community_id):
+    return db().execute(
+        """SELECT w.*,f.last_checked_at,COALESCE(f.last_error,'') last_error FROM watch_communities w
+           LEFT JOIN community_feeds f ON f.source=w.source AND f.name=w.name WHERE w.id=? AND w.user_id=?""", (community_id, user_id()),
+    ).fetchone()
+
+
+@app.route("/api/communities", methods=["GET", "POST"])
+@login_required
+def communities():
+    """The communities whose new posts are searched for the cards of the user's sheets, per game."""
+    if request.method == "POST":
+        payload = request.get_json(force=True)
+        payload = payload if isinstance(payload, dict) else {}
+        game_id, name = payload.get("game_id"), community_name(payload.get("name"))
+        if not db().execute("SELECT 1 FROM games WHERE id=?", (game_id,)).fetchone():
+            return jsonify({"error": "Spiel nicht gefunden"}), 404
+        if not name:
+            return jsonify({"error": "Das ist kein Name eines Subreddits (z. B. r/vcardtrades)."}), 400
+        if db().execute("SELECT 1 FROM watch_communities WHERE user_id=? AND game_id=? AND source='reddit' AND name=?", (user_id(), game_id, name)).fetchone():
+            return jsonify({"error": f"r/{name} steht schon auf der Liste."}), 409
+        if db().execute("SELECT COUNT(*) FROM watch_communities WHERE user_id=? AND game_id=?", (user_id(), game_id)).fetchone()[0] >= COMMUNITIES_PER_GAME:
+            return jsonify({"error": f"Je Spiel sind höchstens {COMMUNITIES_PER_GAME} Subreddits möglich."}), 400
+        cursor = db().execute("INSERT INTO watch_communities(user_id,game_id,source,name,created_at) VALUES(?,?,'reddit',?,?)", (user_id(), game_id, name, now_iso()))
+        db().execute("INSERT OR IGNORE INTO community_feeds(source,name) VALUES('reddit',?)", (name,))
+        db().commit()
+        return jsonify(community_payload(own_community(cursor.lastrowid))), 201
+    clauses, values = ["w.user_id=?"], [user_id()]
+    if request.args.get("game_id"):
+        clauses.append("w.game_id=?")
+        values.append(request.args["game_id"])
+    rows = db().execute(
+        f"""SELECT w.*,f.last_checked_at,COALESCE(f.last_error,'') last_error FROM watch_communities w
+            LEFT JOIN community_feeds f ON f.source=w.source AND f.name=w.name WHERE {' AND '.join(clauses)} ORDER BY w.name""", values,
+    ).fetchall()
+    return jsonify([community_payload(row) for row in rows])
+
+
+@app.delete("/api/communities/<int:community_id>")
+@login_required
+def remove_community(community_id):
+    """Takes a community off the list. What was found there stays in the inbox."""
+    community = own_community(community_id)
+    if not community:
+        return jsonify({"error": "community not found"}), 404
+    db().execute("DELETE FROM watch_communities WHERE id=?", (community_id,))
+    db().execute("DELETE FROM community_feeds WHERE source=? AND name=? AND NOT EXISTS(SELECT 1 FROM watch_communities w WHERE w.source=community_feeds.source AND w.name=community_feeds.name)",
+                 (community["source"], community["name"]))
+    db().commit()
+    return jsonify({"deleted": True})
+
+
+@app.post("/api/communities/<int:community_id>/check")
+@login_required
+def check_own_community(community_id):
+    community = own_community(community_id)
+    if not community:
+        return jsonify({"error": "community not found"}), 404
+    waiting = wait_seconds(db())
+    if waiting:
+        return jsonify({"error": f"Reddit erlaubt die nächste Abfrage in {waiting} Sekunden.", "wait": waiting}), 429
+    try:
+        new = check_community(db(), community["source"], community["name"])
+    except FeedError as error:
+        db().commit()
+        return jsonify({"error": str(error), "community": community_payload(own_community(community_id))}), 502
+    db().commit()
+    return jsonify({"new": new, "community": community_payload(own_community(community_id))})
+
+
 def inbox_count(uid):
     return db().execute("SELECT COUNT(*) FROM inbox_items WHERE user_id=? AND state='new'", (uid,)).fetchone()[0]
 
@@ -337,7 +557,9 @@ def inbox_count(uid):
 @app.get("/api/inbox")
 @login_required
 def inbox():
-    """Newest first. `state=all` includes what has been dealt with; `game_id` narrows to one game."""
+    """Newest first: comments on the user's posts (kind 'comment') and other people's posts that
+    fit a sheet (kind 'post'). `state=all` includes what has been dealt with; `game_id` narrows
+    to one game."""
     clauses, values = ["i.user_id=?"], [user_id()]
     if request.args.get("state") != "all":
         clauses.append("i.state='new'")
@@ -345,8 +567,8 @@ def inbox():
         clauses.append("t.game_id=?")
         values.append(request.args["game_id"])
     rows = db().execute(
-        f"""SELECT i.*,p.url post_url,p.title post_title,p.community,p.source,t.id sheet_id,t.name sheet_name,t.kind sheet_kind,t.game_id
-            FROM inbox_items i JOIN sheet_posts p ON p.id=i.post_id JOIN trade_sheets t ON t.id=p.sheet_id
+        f"""SELECT i.*,p.url post_url,p.title post_title,t.name sheet_name,t.kind sheet_kind,t.game_id
+            FROM inbox_items i JOIN trade_sheets t ON t.id=i.sheet_id LEFT JOIN sheet_posts p ON p.id=i.post_id
             WHERE {' AND '.join(clauses)} ORDER BY i.posted_at DESC,i.id DESC LIMIT 200""", values,
     ).fetchall()
     items = []

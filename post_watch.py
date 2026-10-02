@@ -1,6 +1,7 @@
-"""Reads the comments of the posts users linked to their sheets (see deckledger/watcher.py).
+"""Reads the comments of the posts users linked to their sheets, and the new posts of the
+communities they have searched for their cards (see deckledger/watcher.py).
 
-One run asks for at most one post -- the source allows about one anonymous request a minute --
+One run asks for at most one feed -- the source allows about one anonymous request a minute --
 so the container starts this once a minute. Runs do not overlap.
 
     python post_watch.py

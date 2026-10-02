@@ -85,11 +85,12 @@ function renderSettings(){
       </div>
     </section>
     <section class="settings-section user-settings-card settings-card-reddit settings-card-wide">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4.5 3.5V17H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"/><path d="M8.500 10.500h7M8.500 13.500h4"/></svg></span><div><span class="eyebrow">VERKAUF &amp; TAUSCH</span><h2>Reddit</h2><p>DeckLedger liest die Kommentare der Posts, die du mit einem Sheet verknüpfst. Mit deinem Reddit-Namen zählen deine eigenen Antworten nicht als neu.</p></div></div>
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4.5 3.5V17H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"/><path d="M8.500 10.500h7M8.500 13.500h4"/></svg></span><div><span class="eyebrow">VERKAUF &amp; TAUSCH</span><h2>Reddit</h2><p>DeckLedger liest die Kommentare der Posts, die du mit einem Sheet verknüpfst, und sucht in Subreddits nach Posts zu deinen Karten. Mit deinem Reddit-Namen zählen deine eigenen Posts und Antworten nicht als neu.</p></div></div>
       <div class="settings-grid settings-grid-account">
         <label class="settings-field"><span>Reddit-Name</span><input id="reddit-username" autocomplete="off" spellcheck="false" placeholder="ohne u/" value="${escapeHtml(settings.redditUsername||'')}"></label>
       </div>
       <div class="user-settings-actions"><button class="primary-button" id="reddit-username-save">Speichern</button></div>
+      <div id="reddit-communities" class="reddit-communities"></div>
     </section>
     <section class="settings-section user-settings-card settings-card-offline settings-card-wide" id="offline-save-card">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg></span><div><span class="eyebrow">UNTERWEGS</span><h2>Offline verfügbar machen</h2><p>Speichert Sammlung, Watchlists, Kartendetails und Kartenbilder auf diesem Gerät, damit sie auch ohne Verbindung zum Server da sind.</p></div></div>
@@ -140,6 +141,7 @@ function renderSettings(){
     state.boot.settings.homeBanner=updated;
     toast('Banner-Einstellung gespeichert');
   });
+  renderCommunities();
   $('#reddit-username-save',content).onclick=async()=>{
     const name=$('#reddit-username').value.trim().replace(/^\/?u\//i,'');
     if(name&&!/^[A-Za-z0-9_-]{3,20}$/.test(name)){toast('Ein Reddit-Name hat 3 bis 20 Zeichen: Buchstaben, Ziffern, _ und -.');return}

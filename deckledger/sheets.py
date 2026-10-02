@@ -28,6 +28,12 @@ SHEET_SORTS = ("number", "rarity")
 SHEET_CARD_LIMIT = 400
 
 
+def scout_communities(names):
+    """A list of community names as it is stored on a sheet: lower case, comma separated."""
+    names = names if isinstance(names, list) else []
+    return ",".join(sorted({str(name).lower() for name in names if re.fullmatch(r"[A-Za-z0-9_]{2,21}", str(name))}))[:400]
+
+
 def own_sheet(sheet_id):
     return db().execute("SELECT * FROM trade_sheets WHERE id=? AND user_id=?", (sheet_id, user_id())).fetchone()
 
@@ -139,9 +145,13 @@ def trade_sheet(sheet_id):
             "background": p.get("background") if p.get("background") in sheet_render.BACKGROUNDS or own_background(p.get("background")) else sheet["background"],
             "sort": p.get("sort") if p.get("sort") in SHEET_SORTS else sheet["sort"],
             "layout": p["layout"] if p.get("layout") == "auto" or sheet_render.parse_layout(p.get("layout")) else sheet["layout"],
+            # Other people's posts are searched for the sheet's cards (deckledger/watcher.py):
+            # whether at all, and in which of the game's communities ('' = all of them).
+            "scout": int(bool(p["scout"])) if "scout" in p else sheet["scout"],
+            "scout_communities": scout_communities(p["scout_communities"]) if "scout_communities" in p else sheet["scout_communities"],
         }
         db().execute(
-            "UPDATE trade_sheets SET name=?,subtitle=?,kind=?,background=?,sort=?,layout=?,updated_at=? WHERE id=?",
+            "UPDATE trade_sheets SET name=?,subtitle=?,kind=?,background=?,sort=?,layout=?,scout=?,scout_communities=?,updated_at=? WHERE id=?",
             (*values.values(), now_iso(), sheet_id),
         )
         db().commit()

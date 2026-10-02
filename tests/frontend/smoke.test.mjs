@@ -367,6 +367,35 @@ describe('app in the browser', { skip }, () => {
     noProblems();
   });
 
+  test('a post in a listed subreddit that fits a sheet shows up in the inbox', async () => {
+    await page.route('settings');
+    await page.waitFor(`document.querySelector('#reddit-community-form')`, { message: 'the list of subreddits in the settings' });
+    await page.evaluate(`(()=>{document.querySelector('#reddit-community-name').value='https://www.reddit.com/r/VcardTrades/';document.querySelector('#reddit-community-form').requestSubmit()})()`);
+    await page.waitFor(`document.querySelector('.community-row')`, { message: 'the subreddit to be listed' });
+    assert.match(await page.evaluate(`document.querySelector('.community-row').innerText`), /r\/vcardtrades\s+noch nicht geprüft/);
+    await sleep(3500);   // the stand-in source asks for a pause of two seconds after the earlier test's request
+    await page.evaluate(`document.querySelector('[data-community-check]').click()`);
+    await page.waitFor(`/geprüft/.test(document.querySelector('.community-row small')?.innerText||'')&&!/noch nicht/.test(document.querySelector('.community-row small').innerText)`, { message: 'the subreddit to be read' });
+    await page.waitFor(`(()=>{const badge=document.querySelector('.nav-item [data-inbox-count]');return badge.textContent==='1'&&!badge.classList.contains('hidden')})()`, { message: 'the find to be counted in the menu' });
+    // The sheet says where it is looked for, and can keep out of it.
+    await page.evaluate(`(state.sheetId=null,1)`);
+    await page.route('sheets');
+    const find = await page.evaluate(`(()=>{const entry=document.querySelector('.inbox-item.is-find');return entry&&{title:entry.querySelector('h4').innerText,body:entry.querySelector('p').innerHTML,match:entry.querySelector('.inbox-match').innerText,link:entry.querySelector('a').href}})()`);
+    assert.match(find.title, /^\[US\] \[H\] (PayPal \[W\] Ember PL8|Ember PL8 \[W\] PayPal)$/);
+    assert.equal(find.body, 'see pictures', 'the post is shown as text');
+    assert.match(find.match, /^Ember \(PL8\)\s*(gesucht|angeboten)$/);
+    assert.match(find.link, /^https:\/\/www\.reddit\.com\/r\/vcardtrades\/comments\/(want1|have1)\/post\/$/);
+    await page.evaluate(`document.querySelector('.inbox-item.is-find [data-inbox-sheet]').click()`);
+    await page.waitFor(`document.querySelector('[data-scout-community]')`, { message: 'the subreddits of the sheet' });
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[data-scout-community]')].map(chip=>chip.innerText+':'+chip.getAttribute('aria-pressed'))`), ['r/vcardtrades:true']);
+    await page.evaluate(`document.querySelector('#sheet-scout-switch').click()`);
+    await page.waitFor(`document.querySelector('#sheet-scout-switch')?.getAttribute('aria-checked')==='false'&&sheetView.payload.sheet.scout===0`, { message: 'the search to be switched off for the sheet' });
+    await page.evaluate(`document.querySelector('#sheet-scout-switch').click()`);
+    await page.waitFor(`sheetView.payload.sheet.scout===1`);
+    await page.evaluate(`post('/api/inbox/done',{}).then(()=>refreshInboxCount())`);
+    noProblems();
+  });
+
   test('search finds cards by name', async () => {
     await page.evaluate(`doSearch('Tide')`);
     await page.waitFor(`document.querySelector('#search-results')?.innerText.includes('Tide (PL8)')`);

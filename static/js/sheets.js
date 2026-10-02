@@ -60,6 +60,7 @@ async function renderSheets(){
       <div id="sheet-preview" class="sheet-preview"></div>
       <div class="sheet-text"><div class="sheet-section-head"><b>Text für den Post</b><button class="secondary-button" id="sheet-copy-text">Kopieren</button></div><textarea id="sheet-text" readonly rows="6"></textarea></div>
       <div id="sheet-posts" class="sheet-posts"></div>
+      <div id="sheet-scout" class="sheet-posts sheet-scout"></div>
       <div class="sheet-section-head"><b>Karten auf dem Sheet</b><span id="sheet-count"></span></div>
       <div id="sheet-entries" class="sheet-entries"></div>
     </section>
@@ -117,6 +118,7 @@ async function renderSheets(){
   applySheetPayload(payload,true);
   sheetView.picker.cards=null;sheetView.picker.wanted=null;sheetView.picker.found=null;
   renderSheetPosts();
+  renderSheetScout();
   renderSheetPicker();
 }
 

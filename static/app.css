@@ -958,6 +958,21 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .inbox-match.maybe { background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted); }
 .inbox-item footer { display:flex;justify-content:flex-end;gap:8px;margin-top:10px; }
 .inbox-item footer .secondary-button { min-height:30px;padding:0 12px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center; }
+.inbox-kind { padding:1px 8px;border-radius:999px;background:var(--mt-gold-soft,rgba(188,151,75,.14));color:var(--mt-gold,#bc974b);font-size:9px;font-style:normal;font-weight:800;letter-spacing:.06em;text-transform:uppercase; }
+.inbox-item h4 { margin:8px 0 0;font-size:13px;line-height:1.35;overflow-wrap:anywhere; }
+.inbox-item.is-find p { margin-top:4px;color:var(--muted);font-size:12px;-webkit-line-clamp:3; }
+.inbox-match i { margin-left:6px;color:var(--muted);font-size:9px;font-style:normal;font-weight:600; }
+.community-chips { display:flex;flex-wrap:wrap;gap:6px; }
+.community-chips.is-off { opacity:.5; }
+.community-chip { padding:5px 12px;border:0;border-radius:999px;background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer; }
+.community-chip.active { background:color-mix(in srgb,var(--brand) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 34%,transparent);color:var(--ink); }
+.community-chip:disabled { cursor:default; }
+.sheet-scout .sheet-section-head .switch { margin-left:auto; }
+.text-link { padding:0;border:0;background:none;color:var(--ink);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer; }
+.reddit-communities { margin-top:18px;padding-top:16px;border-top:1px solid var(--line); }
+.community-list { display:grid;gap:8px;margin:8px 0; }
+.community-row { display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:var(--surface-2); }
+.community-row .secondary-button { flex:none;min-height:30px;padding:0 11px;font-size:11px; }
 .sheet-posts { margin:18px 0; }
 .sheet-posts .sheet-section-head span { color:var(--muted);font-size:11px; }
 .sheet-post-form { display:flex;gap:8px;margin:10px 0; }
