@@ -2,6 +2,7 @@
 import gzip
 import json
 import re
+from pathlib import Path
 
 from conftest import ELSA, EMBER8, TIDE8, deckledger, query
 
@@ -79,9 +80,9 @@ def test_static_urls_carry_a_content_hash(client, tmp_path, monkeypatch):
     monkeypatch.setattr(deckledger.app, "static_folder", str(tmp_path))
     (tmp_path / "probe.js").write_text("one")
     with deckledger.app.test_request_context():
-        first = deckledger.asset_url("probe.js")
+        first = deckledger.web.asset_url("probe.js")
         (tmp_path / "probe.js").write_text("two, and longer")
-        second = deckledger.asset_url("probe.js")
+        second = deckledger.web.asset_url("probe.js")
     assert first != second and first.startswith("/static/probe.js?v=")
 
 
@@ -103,5 +104,5 @@ def test_card_back_that_ships_with_the_app_is_served(anonymous):
     """Deployments mount their own public folder, so a bundled back must not depend on it."""
     response = anonymous.get("/card-back/vcard")
     assert response.status_code == 200 and response.mimetype == "image/jpeg"
-    assert len(response.get_data()) == (deckledger.Path(deckledger.app.static_folder) / "assets" / "vcard" / "vcard-back.jpg").stat().st_size
+    assert len(response.get_data()) == (Path(deckledger.app.static_folder) / "assets" / "vcard" / "vcard-back.jpg").stat().st_size
     assert anonymous.get("/card-back/unknown-game").status_code == 404

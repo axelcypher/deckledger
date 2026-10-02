@@ -50,7 +50,7 @@ def test_only_changes_are_stored_and_they_form_the_history(client):
 
 def test_a_correction_in_the_same_second_replaces_the_entry(client, monkeypatch):
     from conftest import deckledger
-    monkeypatch.setattr(deckledger, "now_iso", lambda: "2026-10-01T12:00:00+00:00")
+    monkeypatch.setattr(deckledger.prices, "now_iso", lambda: "2026-10-01T12:00:00+00:00")
     client.put(URL, json={"amount": 4})
     client.put(URL, json={"amount": 40})
     assert [row["amount"] for row in query("SELECT amount FROM price_observations WHERE provider_id='manual'")] == [40.0]
@@ -79,7 +79,7 @@ def test_price_sync_leaves_manual_prices_alone(client):
     from conftest import deckledger
 
     client.put(URL, json={"amount": 3})
-    connection = sqlite3.connect(deckledger.DB_PATH)
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
     try:
         price_sync.compact_price_history(connection, __import__("datetime").date(2027, 6, 1))
         price_sync.drop_unchanged_observations(connection)

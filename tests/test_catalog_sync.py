@@ -87,8 +87,8 @@ def test_one_failing_provider_does_not_block_the_others(monkeypatch, client):
 
 
 def reseed():
-    connection = sqlite3.connect(deckledger.DB_PATH)
-    deckledger.seed_default_providers(connection)
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    deckledger.schema.seed_default_providers(connection)
     connection.commit()
     connection.close()
     return query("SELECT code,provider_version,last_synced_version,customized FROM catalog_providers WHERE id='vcard'")[0]
@@ -98,7 +98,7 @@ def test_shipped_provider_code_replaces_a_stale_database_copy():
     """Regression: provider fixes in the repository never reached an existing database."""
     query("UPDATE catalog_providers SET code='stale', provider_version='old', last_synced_version='old' WHERE id='vcard'")
     row = reseed()
-    assert row["code"] == deckledger.default_provider_code("vcard")
+    assert row["code"] == deckledger.schema.default_provider_code("vcard")
     assert row["provider_version"] != row["last_synced_version"], "the new code has to trigger a re-import"
 
 
@@ -106,7 +106,7 @@ def test_admin_edited_provider_code_is_kept(admin):
     custom = "def fetch_catalog():\n    return {}\n"
     assert admin.patch("/api/admin/providers/vcard", json={"code": custom}).status_code == 200
     assert reseed()["code"] == custom
-    admin.patch("/api/admin/providers/vcard", json={"code": deckledger.default_provider_code("vcard")})
+    admin.patch("/api/admin/providers/vcard", json={"code": deckledger.schema.default_provider_code("vcard")})
     assert reseed()["customized"] == 0, "saving the shipped code again hands the provider back to the repository"
 
 

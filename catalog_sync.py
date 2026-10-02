@@ -17,7 +17,8 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 
-from app import DB_PATH, SCHEMA
+from deckledger.config import DB_PATH
+from deckledger.schema import SCHEMA
 from catalog_provider_contract import fill_missing_printed_card_counts
 from catalog_provider_registry import dispatch_provider, get_provider, load_enabled_providers, mark_provider_result, provider_already_current
 

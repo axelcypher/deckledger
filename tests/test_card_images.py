@@ -22,9 +22,9 @@ def print_file(path, size, image_format="PNG"):
 def scans(tmp_path, monkeypatch):
     """Stands in for the download: every card's image is a print file from the temp folder."""
     for name in ("IMAGE_TRIM_CACHE", "IMAGE_THUMB_CACHE", "IMAGE_FOIL_MASK_CACHE", "IMAGE_LOCK_CACHE"):
-        monkeypatch.setattr(deckledger, name, tmp_path / name.lower())
+        monkeypatch.setattr(deckledger.images, name, tmp_path / name.lower())
     source = print_file(tmp_path / "source.img", (690, 940))
-    monkeypatch.setattr(deckledger, "cached_real_image", lambda row, variant_id: (source, "image/png", f"key-{row['game_id']}"))
+    monkeypatch.setattr(deckledger.images, "cached_real_image", lambda row, variant_id: (source, "image/png", f"key-{row['game_id']}"))
     return tmp_path
 
 
@@ -64,16 +64,16 @@ def test_trimming_happens_once(client, scans, monkeypatch):
 
 def test_an_image_without_bleed_is_remembered_and_served_as_it_is(client, scans, monkeypatch):
     source = print_file(scans / "cut.img", (630, 880))
-    monkeypatch.setattr(deckledger, "cached_real_image", lambda row, variant_id: (source, "image/png", "cut-key"))
+    monkeypatch.setattr(deckledger.images, "cached_real_image", lambda row, variant_id: (source, "image/png", "cut-key"))
     assert Image.open(io.BytesIO(client.get(f"/art/{EMBER8}.svg").get_data())).size == (630, 880)
-    assert (deckledger.IMAGE_TRIM_CACHE / "cut-key.keep").exists()
+    assert (deckledger.images.IMAGE_TRIM_CACHE / "cut-key.keep").exists()
     monkeypatch.setattr(sheet_render, "trim_bleed", lambda *args: (_ for _ in ()).throw(AssertionError("opened again")))
     assert client.get(f"/art/{EMBER8}.svg").status_code == 200
 
 
 def test_a_jpeg_scan_stays_a_jpeg(client, scans, monkeypatch):
     source = print_file(scans / "photo.img", (690, 940), "JPEG")
-    monkeypatch.setattr(deckledger, "cached_real_image", lambda row, variant_id: (source, "image/jpeg", "photo-key"))
+    monkeypatch.setattr(deckledger.images, "cached_real_image", lambda row, variant_id: (source, "image/jpeg", "photo-key"))
     response = client.get(f"/art/{EMBER8}.svg")
     assert response.mimetype == "image/jpeg" and Image.open(io.BytesIO(response.get_data())).size == (630, 880)
 

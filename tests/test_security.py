@@ -57,7 +57,7 @@ def test_image_placeholder_is_not_cached_as_the_real_image(client):
 
 def resolve(mode, email, verified=True):
     with deckledger.app.app_context():
-        row = deckledger.resolve_oauth_identity({"account_matching": mode}, "subject-1", email, "Name", email_verified=verified)
+        row = deckledger.auth.resolve_oauth_identity({"account_matching": mode}, "subject-1", email, "Name", email_verified=verified)
         return dict(row) if row else None
 
 

@@ -14,7 +14,7 @@ TODAY = date(2026, 10, 1)
 
 
 def connect():
-    connection = sqlite3.connect(deckledger.DB_PATH)
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
     connection.row_factory = sqlite3.Row
     return connection
 
