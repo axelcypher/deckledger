@@ -18,7 +18,7 @@ import sys
 from datetime import datetime, timezone
 
 from deckledger.config import DB_PATH
-from deckledger.schema import SCHEMA
+import deckledger  # noqa: F401  -- importing the app brings the database to the current schema
 from catalog_provider_contract import fill_missing_printed_card_counts
 from catalog_provider_registry import dispatch_provider, get_provider, load_enabled_providers, mark_provider_result, provider_already_current
 
@@ -171,7 +171,6 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
     # one side briefly waiting -- this run holds a write lock for its whole
     # multi-table BEGIN IMMEDIATE transaction below.
     connection.execute("PRAGMA busy_timeout = 10000")
-    connection.executescript(SCHEMA)
     connection.execute("BEGIN IMMEDIATE")
     try:
         connection.executemany(

@@ -12,7 +12,6 @@ import sheet_render
 from .config import jload, now_iso
 from .games import game as game_rules
 from .web import app, db, login_required, user_id
-from .schema import SALE_LIST_NAME
 from .prices import latest_price_sql
 from .catalog import match_collector_number, split_set_prefix
 from .sheets import SHEET_KINDS, SHEET_SORTS
@@ -209,10 +208,14 @@ def import_json_preview():
     return jsonify(rows)
 
 
+# The name of the fixed sale list older versions kept among the watchlists.
+SALE_LIST_NAME = "Verkaufsliste"
+
+
 def is_legacy_sale_list(item):
     """A backup from before the trade sheets marks every watchlist with is_sale_list; newer ones
     no longer have the key. In such a backup the sale list is the flagged list or, where the
-    account had its own list of that name instead, that one -- see migrate_sale_lists()."""
+    account had its own list of that name instead, that one -- see migrations/m0002_sale_lists_to_sheets.py."""
     return "is_sale_list" in item and bool(item["is_sale_list"] or (not item.get("is_default") and item.get("name") == SALE_LIST_NAME))
 
 

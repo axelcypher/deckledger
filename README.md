@@ -162,13 +162,23 @@ otherwise lets a direct client spoof those headers.
 
 | Module | What it holds |
 | --- | --- |
-| `config`, `web`, `schema` | paths and constants; the Flask app, request guards and login decorators; database schema, migrations and seed data |
+| `config`, `web`, `schema` | paths and constants; the Flask app, request guards and login decorators; seed data and bringing the database up to date at start-up |
+| `migrations/` | the database schema, as numbered migrations |
 | `games/` | everything that differs per game, one module each (`lorcana`, `one_piece`, `hololive`, `vcard`) plus the `Game` description they fill in |
 | `catalog`, `collection`, `watchlists`, `decks`, `sheets` | the views of the same names |
 | `prices`, `images`, `assets` | price lookup and manual prices; card images, thumbnails, trimming, foil masks; logos, set visuals, card backs |
 | `auth`, `account`, `admin`, `pages`, `backup` | sign-in and SSO; a user's own settings; the admin API; page shell and dashboard data; import, export and restore |
 
 Modules import each other in one direction only (the order `deckledger/__init__.py` lists them in). No module outside `games/` branches on a game's id: it asks `games.game(game_id)` for the playset size, the rarity ladder, the deck rules, where images and prices come from. Adding a game is one module there, its provider under `providers/`, and an icon. The frontend receives the rules it needs (playset size, copy limits, icon) with each game.
+
+### Database schema
+
+The schema is what the migrations in `deckledger/migrations/` produce, applied in order; nothing else creates or alters tables (a test enforces it). The table `schema_migrations` records which ones a database has had, so each runs exactly once, in a transaction of its own: it happens completely or leaves no trace, and the next start picks up where it stopped. `/health` reports `schema_version` and `schema_expected`.
+
+- `m0001_baseline` is the schema as it stood when migrations were introduced. It also brings a database of any earlier version to that same state, so every installation continues from one known point.
+- To change the schema, add `mNNNN_<what>.py` with `NAME` and `apply(connection, context)` and list it in `MIGRATIONS`. A released migration is never edited.
+- Before an existing database is migrated, a copy is written next to it (`deckledger.db.before-migration-NNNN`); the two newest are kept. It needs as much free space as the database itself.
+- A database written by a newer version than the running image is refused at start-up rather than opened: roll the image forward again, or restore the copy.
 
 The frontend has no build step. `static/js/` holds plain scripts that share one global scope and are loaded in a fixed order (`core.js` first, `main.js` last, see `templates/index.html`): `core` (state, API client, navigation), `finish`, `filters`, `catalog`, `offline`, `collection`, `watchlist`, `decks`, `card-modal`, `dashboard`, `settings`, `admin`, `import`, `sheets`, `main` (wiring and start-up). Each file gets its own content-hashed URL, so a changed file is the only one a browser fetches again.
 

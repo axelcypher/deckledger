@@ -1,8 +1,18 @@
-"""The fixed "Verkaufsliste" among the watchlists is gone: existing ones become trade sheets at
-start-up, and a backup that still carries one restores it as a sheet."""
-import sqlite3
+"""The fixed "Verkaufsliste" among the watchlists is gone: migration 2 turns existing ones into
+trade sheets, and a backup that still carries one restores it as a sheet."""
+import pytest
 
 from conftest import BOOST, ELSA, EMBER8, EMBER8_HOLO, TIDE8, deckledger, query
+
+
+@pytest.fixture(autouse=True)
+def before_the_migration():
+    """Puts the database back to where migration 1 leaves it; init_database() then runs migration 2."""
+    query("ALTER TABLE named_watchlists ADD COLUMN is_sale_list INTEGER NOT NULL DEFAULT 0")
+    query("ALTER TABLE named_watchlist_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+    query("DELETE FROM schema_migrations WHERE version>=2")
+    yield
+    deckledger.schema.init_database()
 
 
 def legacy_sale_list(game_id="vcard", user="demo", entries=()):
@@ -36,7 +46,8 @@ def sheets():
 
 
 def sale_lists_left():
-    return query("SELECT COUNT(*) n FROM named_watchlists WHERE is_sale_list=1")[0]["n"]
+    assert "is_sale_list" not in {row["name"] for row in query("PRAGMA table_info(named_watchlists)")}, "the column goes with the lists"
+    return query("SELECT COUNT(*) n FROM named_watchlists WHERE name='Verkaufsliste'")[0]["n"]
 
 
 def test_a_sale_list_becomes_a_sheet_with_the_same_cards():
@@ -89,7 +100,6 @@ def test_an_own_list_of_that_name_stood_in_for_the_fixed_one():
     fixed list, its own one was the sale list. It moves too, but only on the first start."""
     legacy_sale_list(entries=[(EMBER8, 2, "manual")])
     query("UPDATE named_watchlists SET is_sale_list=0 WHERE name='Verkaufsliste'")
-    query("DELETE FROM app_settings WHERE key='sale_lists_migrated'")
 
     deckledger.schema.init_database()
 
@@ -98,6 +108,9 @@ def test_an_own_list_of_that_name_stood_in_for_the_fixed_one():
 
 
 def test_a_watchlist_named_like_that_later_stays_a_watchlist(client):
+    """The previous release converted the lists at start-up and left a note; a list of that name
+    made since then is the user's own."""
+    query("INSERT INTO app_settings(key,value) VALUES('sale_lists_migrated','2026-10-02T00:00:00+00:00')")
     created = client.post("/api/watchlists", json={"game_id": "vcard", "name": "Verkaufsliste"}).get_json()["id"]
     client.post("/api/watchlist", json={"variant_id": EMBER8, "list_id": created})
 
@@ -134,20 +147,12 @@ def test_other_watchlists_are_untouched(client):
     assert [(item["name"], item["kind"], item["card_count"]) for item in sheet] == [("Verkaufsliste", "WTS", 1)]
 
 
-def test_a_failing_migration_leaves_the_list_in_place(monkeypatch):
-    """Everything happens in one transaction: either the sheet exists and the list is gone, or
-    nothing changed."""
-    legacy_sale_list(entries=[(EMBER8, 2, "manual")])
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
-    connection.execute("BEGIN IMMEDIATE")
-    monkeypatch.setattr(deckledger.schema, "playset_size", lambda game_id: (_ for _ in ()).throw(RuntimeError("boom")))
-    try:
-        deckledger.schema.migrate_sale_lists(connection)
-    except RuntimeError:
-        connection.rollback()
-    connection.close()
-    assert sale_lists_left() == 1 and sheets() == []
-    assert query("SELECT COUNT(*) n FROM named_watchlist_entries WHERE variant_id=?", (EMBER8,))[0]["n"] == 1
+def test_the_columns_of_the_sale_list_are_gone():
+    legacy_sale_list(entries=[(EMBER8, 2, "auto")])
+    deckledger.schema.init_database()
+    assert "source" not in {row["name"] for row in query("PRAGMA table_info(named_watchlist_entries)")}
+    assert query("SELECT COUNT(*) n FROM app_settings WHERE key='sale_lists_migrated'")[0]["n"] == 0
+    assert query("SELECT name FROM schema_migrations WHERE version=2")[0]["name"] == "sale lists become trade sheets"
 
 
 def test_new_accounts_and_games_get_no_sale_list(client):

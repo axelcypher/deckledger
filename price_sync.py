@@ -47,25 +47,6 @@ HOLOLIVE_RARITY_CODES = {
 def local_today() -> date:
     return datetime.now(ZoneInfo("Europe/Berlin")).date()
 
-PRICE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS marketplace_products (
-  provider_id TEXT NOT NULL,
-  external_product_id TEXT NOT NULL,
-  variant_id TEXT NOT NULL REFERENCES variants(id),
-  game_id TEXT NOT NULL REFERENCES games(id),
-  source_url TEXT NOT NULL,
-  match_method TEXT NOT NULL,
-  matched_at TEXT NOT NULL,
-  attributes TEXT NOT NULL,
-  PRIMARY KEY(provider_id, variant_id)
-);
-CREATE INDEX IF NOT EXISTS idx_marketplace_external
-  ON marketplace_products(provider_id, external_product_id);
-CREATE INDEX IF NOT EXISTS idx_prices_variant_metric
-  ON price_observations(variant_id, provider_id, metric, observed_at DESC);
-"""
-
-
 DAILY_HISTORY_DAYS = 92
 MONTHLY_STAMP = "-15T12:00:00+00:00"
 HISTORY_FORMAT = "changes"
@@ -903,7 +884,6 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout = 10000")
     try:
-        connection.executescript(PRICE_SCHEMA)
         assignments = resolve_price_assignments(connection)
         cardmarket_game_ids = assignments.get("cardmarket", set())
         hololive_tcgcsv = "hololive" in assignments.get("tcgcsv", set())

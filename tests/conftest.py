@@ -121,7 +121,8 @@ def query(statement, args=()):
 def fresh_database():
     connection = sqlite3.connect(deckledger.config.DB_PATH)
     connection.execute("PRAGMA foreign_keys=OFF")
-    for (table,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
+    tables = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='schema_migrations'"
+    for (table,) in connection.execute(tables).fetchall():
         connection.execute(f"DELETE FROM {table}")
     connection.commit()
     connection.close()

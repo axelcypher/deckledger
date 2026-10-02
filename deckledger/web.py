@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from flask import Flask, g, jsonify, redirect, request, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from . import migrations
 from .config import DB_PATH, ROOT
 
 
@@ -144,4 +145,5 @@ def user_id():
 
 @app.get("/health")
 def health():
-    return jsonify({"status":"ok","database":os.path.basename(DB_PATH)})
+    version, expected = migrations.status(db())
+    return jsonify({"status": "ok", "database": os.path.basename(DB_PATH), "schema_version": version, "schema_expected": expected})
