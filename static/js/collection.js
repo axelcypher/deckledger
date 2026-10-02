@@ -232,8 +232,7 @@ function wireAdvancedPanel(variantId,panel){
 }
 
 function activeAdvancedPanel(){
-  const useFooter=document.body.classList.contains('mobile-modern');
-  return $(useFooter?'#footer-advanced-panel':'#advanced-panel');
+  return $('#footer-advanced-panel');
 }
 
 async function loadAdvancedPanel(){

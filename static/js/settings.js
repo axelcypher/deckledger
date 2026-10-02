@@ -45,7 +45,7 @@ function openAccountPasswordDialog(user){
 }
 
 function renderSettings(){
-  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],mobileTheme=settings.mobileTheme!=='classic'?'modern':'classic',mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
   const user=state.boot.user,oauth=state.boot.oauth||{enabled:false};
   content.innerHTML=`<div class="page-head compact-page-head user-settings-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
     <div class="user-settings-layout">
@@ -64,10 +64,9 @@ function renderSettings(){
         :`<a class="primary-button" href="/oauth/login">Mit ${escapeHtml(oauth.provider_name)} verbinden</a>`}</div>
     </section>`:''}
     <section class="settings-section user-settings-card settings-card-appearance">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-1-.8-1.5-1.7-1.2a4 4 0 0 1-5.1-5.1C14.5 4.8 14 4 13 4l-1-.1Z"/><circle cx="7.5" cy="12" r=".7"/><circle cx="10" cy="17" r=".7"/></svg></span><div><span class="eyebrow">OBERFLÄCHE</span><h2>Darstellung</h2><p>Wähle Layout und Farbgebung der Oberfläche.</p></div></div>
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-1-.8-1.5-1.7-1.2a4 4 0 0 1-5.1-5.1C14.5 4.8 14 4 13 4l-1-.1Z"/><circle cx="7.5" cy="12" r=".7"/><circle cx="10" cy="17" r=".7"/></svg></span><div><span class="eyebrow">OBERFLÄCHE</span><h2>Darstellung</h2><p>Wähle die Farbgebung der Oberfläche.</p></div></div>
       <div class="appearance-settings-grid">
-        <div class="segmented mobile-theme-toggle"><button type="button" data-mobile-theme="modern" class="${mobileTheme==='modern'?'active':''}">Modern</button><button type="button" data-mobile-theme="classic" class="${mobileTheme==='classic'?'active':''}">Klassisch</button></div>
-        ${mobileTheme==='modern'?`<div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>`:''}
+        <div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>
       </div>
     </section>
     <section class="settings-section user-settings-card settings-card-language">
@@ -108,14 +107,6 @@ function renderSettings(){
       toast('SSO-Verbindung getrennt');
       renderSettings();
     }catch(error){toast(error.message)}
-  });
-  $$('[data-mobile-theme]',content).forEach(b=>b.onclick=async()=>{
-    const value=b.dataset.mobileTheme;
-    await post('/api/settings',{mobileTheme:value});
-    state.boot.settings.mobileTheme=value;
-    document.body.classList.toggle('mobile-modern',value!=='classic');
-    renderSettings();
-    toast('Darstellung gespeichert');
   });
   $$('[data-mobile-appearance]',content).forEach(b=>b.onclick=async()=>{
     const value=b.dataset.mobileAppearance;

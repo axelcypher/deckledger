@@ -70,14 +70,8 @@ function renderCardModal(){
   const idx=physicalVariants.findIndex(x=>x.id===v.id), gridIdx=state.cards.findIndex(c=>c.identity_id===card.id);
   const variantLabel=x=>`${x.set_code} · ${x.collector_number} · ${variantName(x)}`;
   const languages=[...new Set(card.variants.map(x=>x.language))];
-  const modernTheme=document.body.classList.contains('mobile-modern');
-  if(modernTheme&&state.modalTab==='relationships')state.modalTab='collection';
-  const modalTabs=modernTheme
-    ?[['collection','Overview'],['market','Price History'],['card','Info']]
-    :[['collection','Sammlung'],['market','Markt'],['card','Karte'],['relationships','Beziehungen']];
-  const quickMenuContent=modernTheme
-    ?`<div class="modal-relationship-popup"><div class="modal-relationship-title">Beziehungen</div>${modalRelationshipContent(card,v)}</div>`
-    :`<div class="language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${language}</button>`).join('')}</div>`;
+  const modalTabs=[['collection','Overview'],['market','Price History'],['card','Info']];
+  const quickMenuContent=`<div class="modal-relationship-popup"><div class="modal-relationship-title">Beziehungen</div>${modalRelationshipContent(card,v)}</div>`;
   const visual=finishPresentation(v);
   // Card names are "<Titel> - <Untertitel>" (Lorcana convention) -- split so the two
   // halves can be styled distinctly (mobile-modern: subtitle smaller + lighter). Safe
@@ -312,15 +306,13 @@ function modalTabContent(card,v){
   const modalIsLorcana=v.game_id==='lorcana';
   if(state.modalTab==='collection'){
     const variantButtons=`<div class="variant-selector">${physicalVariants.map(x=>`<button class="variant-option ${x.id===v.id?'active':''}" data-variant="${x.id}">${finishThumb(x,artUrl(x.id),card.canonical_name,'variant-thumb')}<span><b>${escapeHtml(variantName(x))}</b><small>${escapeHtml(x.set_code)} · ${escapeHtml(x.collector_number)} · ${price(x.price)} · ${x.quantity}×</small></span></button>`).join('')}</div>`;
-    const classicPicker=`<div class="detail-section"><div class="detail-section-title">AUSFÜHRUNG · SPRACHE ${v.language}</div>${variantButtons}</div>`;
     const languages=[...new Set(card.variants.map(x=>x.language))];
     const mobilePicker=`<div class="variant-settings">
       <div class="variant-setting"><button type="button" class="variant-setting-row" data-variant-setting-toggle aria-expanded="false"><span>Sprache</span><b>${escapeHtml(v.language)}</b><i aria-hidden="true">›</i></button><div class="variant-setting-options"><div class="variant-setting-options-inner"><div class="language-switcher">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${escapeHtml(language)}</button>`).join('')}</div></div></div></div>
       <div class="variant-setting"><button type="button" class="variant-setting-row" data-variant-setting-toggle aria-expanded="false"><span>Print</span><b>${escapeHtml(variantName(v))}</b><i aria-hidden="true">›</i></button><div class="variant-setting-options"><div class="variant-setting-options-inner">${variantButtons}</div></div></div>
     </div>`;
     const desktopPicker=`<div class="desktop-variant-settings">${variantButtons}<div class="language-switcher desktop-language-switcher" aria-label="Sprachversion">${languages.map(language=>`<button data-language="${language}" class="${language===v.language?'active':''}">${escapeHtml(language)}</button>`).join('')}</div></div>`;
-    const modernTheme=document.body.classList.contains('mobile-modern');
-    const picker=modernTheme?(window.innerWidth<=760?mobilePicker:desktopPicker):classicPicker;
+    const picker=window.innerWidth<=760?mobilePicker:desktopPicker;
     return `${picker}<div class="detail-section mobile-collection-controls"><div class="detail-section-title">DEINE SAMMLUNG</div><div class="modal-quantity"><span><b>Menge</b></span><div class="controls"><button class="modal-qty-btn" data-delta="-1">−</button><b>${v.quantity}</b><button class="modal-qty-btn" data-delta="1">＋</button></div></div><div class="watchlist-picker"><select id="modal-watchlist" class="select-control">${state.activeWatchlists.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('')}</select><button class="secondary-button watchlist-action watchlist-action-wide modal-watch ${v.watchlisted?'active':''}" aria-pressed="${Boolean(v.watchlisted)}">${watchlistIcon(v.watchlisted)}<span>Watchlist</span></button></div><button type="button" class="secondary-button advanced-toggle" id="advanced-toggle" aria-expanded="${advancedPanelExpanded}">Erweitert ${advancedPanelExpanded?'▴':'▾'}</button><div class="advanced-panel ${advancedPanelExpanded?'':'hidden'}" id="advanced-panel"></div></div><div class="detail-grid collection-info-grid"><div class="detail-field"><span>Sprachversion</span><b>${v.language}</b></div><div class="detail-field"><span>Sammlungswert</span><b>${(v.price==null&&!v.override_value)?'Kein Preis verfügbar':money((v.override_value||0)+(v.unpriced_quantity||0)*(v.price||0))}</b></div><div class="detail-field"><span>Datenquelle</span><b>${escapeHtml(v.source_type)}</b></div></div>`;
   }
   if(state.modalTab==='market'){
