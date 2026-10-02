@@ -117,6 +117,7 @@ function setEditMode(enabled,announce=false){
   state.edit=Boolean(enabled);
   document.body.classList.toggle('editing',state.edit);
   $('#edit-panel')?.classList.toggle('on',state.edit);
+  $('#edit-panel')?.setAttribute('title',state.edit?'Bearbeiten ist an':'Bearbeiten ist aus');
   $('#edit-toggle')?.setAttribute('aria-checked',String(state.edit));
   $('#edit-toggle')?.setAttribute('aria-label',state.edit?'Bearbeitungsmodus deaktivieren':'Bearbeitungsmodus aktivieren');
   const mobileToggle=$('#mobile-edit-toggle');

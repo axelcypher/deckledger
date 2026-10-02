@@ -49,6 +49,26 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`(setActiveGame('vcard'),1)`);
   });
 
+  test('the edit switch fits into the collapsed sidebar and still works there', async () => {
+    // Regression: in the collapsed sidebar the whole panel was shown and spilled over the page.
+    const measure = () => page.evaluate(`(()=>{const rail=document.querySelector('.sidebar').getBoundingClientRect(),panel=document.querySelector('#edit-panel').getBoundingClientRect();
+      return {inside:panel.left>=rail.left&&panel.right<=rail.right,visible:panel.width>20,copy:getComputedStyle(document.querySelector('.edit-panel-copy')).display}})()`);
+    assert.deepEqual(await measure(), { inside: true, visible: true, copy: 'block' });
+    await page.evaluate(`(document.body.classList.add('sidebar-collapsed'),1)`);
+    try {
+      await sleep(350);   // the sidebar animates to its new width
+      assert.deepEqual(await measure(), { inside: true, visible: true, copy: 'none' });
+      await page.evaluate(`document.querySelector('#edit-panel').click()`);
+      assert.equal(await page.evaluate(`state.edit`), true);
+      await page.evaluate(`document.querySelector('#edit-panel').click()`);
+      assert.equal(await page.evaluate(`state.edit`), false);
+    } finally { await page.evaluate(`(document.body.classList.remove('sidebar-collapsed'),1)`); await sleep(350); }
+    // With the full panel, only the switch itself toggles.
+    await page.evaluate(`document.querySelector('.edit-panel-copy').click()`);
+    assert.equal(await page.evaluate(`state.edit`), false);
+    noProblems();
+  });
+
   test('choosing another game keeps the view that is open', async () => {
     const choose = async game => {
       await page.evaluate(`(()=>{document.querySelector('#content').firstElementChild?.setAttribute('data-previous-view','');const select=document.querySelector('#global-game-filter');select.value=${JSON.stringify(game)};select.dispatchEvent(new Event('change'))})()`);

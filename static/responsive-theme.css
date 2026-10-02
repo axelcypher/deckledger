@@ -144,6 +144,10 @@
   body.sidebar-collapsed.dark.mobile-modern .app-shell { padding-left:82px; }
   body.sidebar-collapsed.dark.mobile-modern .sidebar { width:82px;padding-inline:14px; }
   body.sidebar-collapsed.dark.mobile-modern .sidebar-collapse { right:12px;transform:translateY(-50%) rotate(180deg); }
+  /* In the narrow rail the edit switch shrinks to its icon, which then is the switch (see
+     main.js). The full panel does not fit there and used to spill over the page. */
+  body.sidebar-collapsed.dark.mobile-modern .edit-panel { justify-content:center;margin-inline:auto;padding:8px;width:max-content;cursor:pointer; }
+  body.sidebar-collapsed.dark.mobile-modern .edit-panel :is(.edit-panel-copy,.switch) { display:none; }
 
   /* Shared controls and focus/hover behaviour */
   body.dark.mobile-modern :is(.primary-button,.secondary-button,.danger-button,.icon-button,.select-control,.filter-search input) {
@@ -593,7 +597,8 @@
   body.dark.mobile-modern .sidebar,body.sidebar-collapsed.dark.mobile-modern .sidebar { width:82px;padding-inline:14px; }
   body.dark.mobile-modern .sidebar-collapse { display:none; }
   body.dark.mobile-modern .brand { justify-content:center;padding-inline:0; }
-  body.dark.mobile-modern .brand-word,body.dark.mobile-modern .nav-item>span:not(.nav-icon),body.dark.mobile-modern .sidebar-label,body.dark.mobile-modern .edit-panel,body.dark.mobile-modern .user-menu-info,body.dark.mobile-modern .user-menu form { display:none; }
+  body.dark.mobile-modern .brand-word,body.dark.mobile-modern .nav-item>span:not(.nav-icon),body.dark.mobile-modern .sidebar-label,body.dark.mobile-modern .edit-panel :is(.edit-panel-copy,.switch),body.dark.mobile-modern .user-menu-info,body.dark.mobile-modern .user-menu form { display:none; }
+  body.dark.mobile-modern .edit-panel { justify-content:center;margin-inline:auto;padding:8px;width:max-content;cursor:pointer; }
   body.dark.mobile-modern .nav-item { justify-content:center;padding:0; }
   body.dark.mobile-modern .nav-icon { width:auto; }
   body.dark.mobile-modern .user-menu { justify-content:center;padding-inline:0; }

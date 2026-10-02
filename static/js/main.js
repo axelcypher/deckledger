@@ -225,6 +225,8 @@ function wireGlobalEvents(){
     else routeTo(route);
   };
   $('#edit-toggle').onclick=toggleEditMode;
+  // Where the sidebar is a narrow rail the panel shows only its icon; the panel itself is the switch then.
+  $('#edit-panel').onclick=event=>{if(!event.target.closest('#edit-toggle')&&getComputedStyle($('#edit-toggle')).display==='none')toggleEditMode()};
   $('#mobile-edit-toggle')?.addEventListener('click',toggleEditMode);
   setEditMode(state.edit);
   const searchOpen=()=>{openOverlay('search-overlay');setTimeout(()=>$('#global-search-input').focus(),50)}; $('#global-search-open').onclick=searchOpen;
