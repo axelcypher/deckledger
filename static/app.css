@@ -933,7 +933,24 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .sheet-shell { display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:26px;align-items:start; }
 .sheet-head { display:flex;align-items:center;gap:10px;margin-bottom:14px; }
 .sheet-name-input { flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:17px;font-weight:700; }
-.sheet-kind-toggle button { min-width:52px;font-weight:800; }
+/* What a sheet is for: independent switches with a box each, not one segmented control. */
+.sheet-head { flex-wrap:wrap; }
+.sheet-head .sheet-name-input { min-width:220px; }
+.sheet-kinds { display:flex;align-items:center;gap:6px;flex:none; }
+.sheet-kinds-label { color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
+.sheet-kind-chip+.sheet-kinds-label { margin-left:8px; }
+.sheet-kind-chip { --kind:#f0a04a;display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 12px 0 10px;border:1.5px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.04em;cursor:pointer;transition:border-color .15s,color .15s,background .15s; }
+.sheet-kind-chip-wtt { --kind:#8fd0f5; }
+.sheet-kind-chip-wtb { --kind:#9ad6a4; }
+.sheet-kind-chip-wttf { --kind:#c9a8f0; }
+.sheet-kind-chip i { display:grid;place-items:center;width:15px;height:15px;border:1.5px solid currentColor;border-radius:4px;font-style:normal;font-size:10px;line-height:1; }
+.sheet-kind-chip:hover { border-color:color-mix(in srgb,var(--kind) 60%,var(--line));color:var(--ink); }
+.sheet-kind-chip.active { border-color:var(--kind);background:color-mix(in srgb,var(--kind) 16%,transparent);color:color-mix(in srgb,var(--kind) 62%,var(--ink)); }
+.sheet-kind-chip.active i { border-color:var(--kind);background:var(--kind);color:#14171c; }
+.sheet-kind-chip.active i::before { content:"✓"; }
+.sheet-kind-wtb { background:rgba(154,214,164,.18);color:#9ad6a4; }
+.sheet-kind-wttf { background:rgba(201,168,240,.18);color:#c9a8f0; }
+.sheet-kind-wtb-wttf { background:linear-gradient(90deg,rgba(154,214,164,.2),rgba(201,168,240,.2));color:#dfe6d8; }
 .sheet-options { display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:12px;margin-bottom:12px; }
 .sheet-options label { display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase; }
 .sheet-options input,.sheet-options select { width:100%;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:12px;text-transform:none;letter-spacing:0; }

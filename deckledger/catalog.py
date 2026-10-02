@@ -520,15 +520,18 @@ def global_search():
     q = request.args.get("q", "").strip()
     game_id = request.args.get("game_id")
     if len(q) < 2: return jsonify([])
+    limit = min(80, max(1, request.args.get("limit", 24, type=int)))
     like = f"%{q}%"
     rows = db().execute(
         f"""SELECT DISTINCT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,p.rarity,s.name set_name,
           g.id game_id,g.short_name game_name,g.accent,v.id variant_id,v.finish,{latest_price_sql('v')} price,
+          s.code set_code,v.variant_code,v.is_parallel,
+          COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) quantity,
           CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted
           FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id
           JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=i.game_id
           WHERE (? IS NULL OR g.id=?) AND (i.canonical_name LIKE ? OR p.collector_number LIKE ? OR s.name LIKE ?
             OR i.rules_text LIKE ? OR json_extract(p.attributes,'$.localizedName') LIKE ? OR json_extract(p.attributes,'$.localizedRulesText') LIKE ?)
-          LIMIT 24""", (user_id(),game_id,game_id,like,like,like,like,like,like)
+          LIMIT ?""", (user_id(),user_id(),game_id,game_id,like,like,like,like,like,like,limit)
     ).fetchall()
     return jsonify([dict(r) for r in rows])

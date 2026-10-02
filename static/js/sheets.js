@@ -4,7 +4,16 @@
 // Pick cards from the collection, group them into a sheet, get the sheet as images for a
 // "want to sell" / "want to trade" post. The images are rendered by the server (sheet_render.py);
 // this page is selection, options and preview.
-const sheetView={options:null,payload:null,picker:{source:'collection',q:'',cards:null},previewTimer:null};
+const sheetView={options:null,payload:null,picker:{source:'collection',q:'',cards:null,wanted:null,found:null,foundFor:''},previewTimer:null};
+// Where the cards of a sheet come from: what is offered comes out of the collection, what is
+// looked for off the watchlists or out of the whole catalogue.
+const SHEET_SOURCES={
+  offer:[['collection','Sammlung'],['duplicates','Doppelte'],['surplus','Über Playset']],
+  wanted:[['watchlist','Watchlists'],['catalog','Katalog']],
+};
+const SHEET_KIND_GROUPS={offer:['WTS','WTT'],wanted:['WTB','WTTF']};
+const sheetIsWanted=kind=>SHEET_KIND_GROUPS.wanted.includes(kind.split('/')[0]);
+const SHEET_KIND_TITLES={WTS:'Want to sell – ich verkaufe',WTT:'Want to trade – ich tausche',WTB:'Want to buy – ich kaufe',WTTF:'Want to trade for – ich suche zum Tausch'};
 const SHEET_PICKER_LIMIT=80;
 
 async function renderSheets(){
@@ -31,11 +40,13 @@ async function renderSheets(){
   try{payload=await api(`/api/trade-sheets/${state.sheetId}`)}catch(error){state.sheetId=null;return renderSheets()}
   if(state.route!=='sheets')return;
   sheetView.payload=payload;
-  const sheet=payload.sheet,options=sheetView.options;
+  const sheet=payload.sheet,options=sheetView.options,wanted=sheetIsWanted(sheet.kind),sources=SHEET_SOURCES[wanted?'wanted':'offer'];
+  if(!sources.some(([id])=>id===sheetView.picker.source))sheetView.picker.source=sources[0][0];
+  const kindChip=kind=>`<button type="button" class="sheet-kind-chip sheet-kind-chip-${kind.toLowerCase()} ${sheet.kind.split('/').includes(kind)?'active':''}" data-sheet-kind="${kind}" aria-pressed="${sheet.kind.split('/').includes(kind)}" title="${SHEET_KIND_TITLES[kind]}"><i aria-hidden="true"></i>${kind}</button>`;
   content.innerHTML=`<div class="sheet-shell">
     <section class="sheet-editor">
       <header class="sheet-head"><button class="compact-back-button" id="sheet-back" title="Alle Sheets" aria-label="Alle Sheets">←</button>
-        <div class="segmented sheet-kind-toggle" title="Eins oder beide auswählen">${['WTS','WTT'].map(kind=>`<button type="button" data-sheet-kind="${kind}" aria-pressed="${sheet.kind.split('/').includes(kind)}" class="${sheet.kind.split('/').includes(kind)?'active':''}" title="${kind==='WTS'?'Want to sell – Verkauf':'Want to trade – Tausch'}">${kind}</button>`).join('')}</div>
+        <div class="sheet-kinds" role="group" aria-label="Art des Sheets"><span class="sheet-kinds-label">Biete</span>${SHEET_KIND_GROUPS.offer.map(kindChip).join('')}<span class="sheet-kinds-label">Suche</span>${SHEET_KIND_GROUPS.wanted.map(kindChip).join('')}</div>
         <input id="sheet-name" class="sheet-name-input" value="${escapeHtml(sheet.name)}" maxlength="80" aria-label="Titel des Sheets">
         <button class="icon-button" id="sheet-delete" title="Sheet löschen" aria-label="Sheet löschen">🗑</button></header>
       <div class="sheet-options">
@@ -51,8 +62,8 @@ async function renderSheets(){
     </section>
     <aside class="sheet-picker">
       <div class="sheet-section-head"><b>Karten hinzufügen</b></div>
-      <div class="segmented sheet-source">${[['collection','Sammlung'],['duplicates','Doppelte'],['surplus','Über Playset']].map(([id,label])=>`<button type="button" data-sheet-source="${id}" class="${sheetView.picker.source===id?'active':''}">${label}</button>`).join('')}</div>
-      <div class="filter-search"><span>⌕</span><input id="sheet-picker-q" value="${escapeHtml(sheetView.picker.q)}" placeholder="Name, Nummer oder Set"></div>
+      <div class="segmented sheet-source">${sources.map(([id,label])=>`<button type="button" data-sheet-source="${id}" class="${sheetView.picker.source===id?'active':''}">${label}</button>`).join('')}</div>
+      <div class="filter-search"><span>⌕</span><input id="sheet-picker-q" value="${escapeHtml(sheetView.picker.q)}" placeholder="${wanted?'Karte suchen: Name, Nummer oder Set':'Name, Nummer oder Set'}"></div>
       <div id="sheet-picker-list" class="sheet-picker-list"></div>
     </aside></div>`;
   $('#sheet-sort').value=sheet.sort;$('#sheet-layout').value=sheet.layout;
@@ -63,13 +74,21 @@ async function renderSheets(){
   $('#sheet-subtitle').onchange=event=>patchSheet({subtitle:event.target.value});
   $('#sheet-sort').onchange=event=>patchSheet({sort:event.target.value});
   $('#sheet-layout').onchange=event=>patchSheet({layout:event.target.value});
-  // Two switches, not a choice: a sheet can be for sale, for trade, or both -- but not neither.
-  $$('[data-sheet-kind]',content).forEach(button=>button.onclick=()=>{
-    const buttons=$$('[data-sheet-kind]',content),active=buttons.filter(item=>item.classList.contains('active'));
-    if(active.length===1&&active[0]===button)return;
-    button.classList.toggle('active');
-    buttons.forEach(item=>item.setAttribute('aria-pressed',String(item.classList.contains('active'))));
-    patchSheet({kind:buttons.filter(item=>item.classList.contains('active')).map(item=>item.dataset.sheetKind).join('/')});
+  // Two pairs of switches: what is offered (sell, trade) and what is looked for (buy, trade for).
+  // Within a pair one or both can be on, never neither; a sheet is on one side only, so a switch
+  // of the other pair moves the sheet over -- and with it where the picker gets its cards from.
+  $$('[data-sheet-kind]',content).forEach(button=>button.onclick=async()=>{
+    const current=sheetView.payload.sheet.kind,kind=button.dataset.sheetKind,active=current.split('/');
+    const group=Object.values(SHEET_KIND_GROUPS).find(kinds=>kinds.includes(kind));
+    let chosen=group.filter(item=>active.includes(item));
+    if(!chosen.length)chosen=[kind];
+    else if(!chosen.includes(kind))chosen=group.filter(item=>item===kind||chosen.includes(item));
+    else if(chosen.length>1)chosen=chosen.filter(item=>item!==kind);
+    const next=chosen.join('/');
+    if(next===current)return;
+    await patchSheet({kind:next});
+    if(sheetIsWanted(next)!==sheetIsWanted(current)){renderSheets();return}
+    $$('[data-sheet-kind]',content).forEach(item=>{const on=chosen.includes(item.dataset.sheetKind);item.classList.toggle('active',on);item.setAttribute('aria-pressed',String(on))});
   });
   $$('[data-sheet-background]',content).forEach(button=>button.onclick=()=>{$$('[data-sheet-background]',content).forEach(item=>{item.classList.toggle('active',item===button);item.setAttribute('aria-checked',String(item===button))});patchSheet({background:button.dataset.sheetBackground})});
   // The option list is cached; after an upload or a delete it is fetched again with the view.
@@ -93,7 +112,7 @@ async function renderSheets(){
   $$('[data-sheet-source]',content).forEach(button=>button.onclick=()=>{sheetView.picker.source=button.dataset.sheetSource;$$('[data-sheet-source]',content).forEach(item=>item.classList.toggle('active',item===button));renderSheetPicker()});
   let searchTimer;$('#sheet-picker-q').oninput=event=>{sheetView.picker.q=event.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(renderSheetPicker,150)};
   applySheetPayload(payload,true);
-  sheetView.picker.cards=null;
+  sheetView.picker.cards=null;sheetView.picker.wanted=null;sheetView.picker.found=null;
   renderSheetPicker();
 }
 
@@ -107,11 +126,11 @@ function applySheetPayload(payload,immediate=false){
   $('#sheet-text').value=payload.cards.length?payload.text:'';
   box.innerHTML=payload.cards.length?payload.cards.map(card=>`<div class="sheet-entry" data-variant="${escapeHtml(card.variant_id)}">
       ${finishThumb(card,artUrl(card.variant_id),card.canonical_name,'sheet-thumb')}
-      <div class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_code)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${escapeHtml(variantName(card))}${card.price!=null?` · ${price(card.price)}`:''}</small>${card.quantity>card.owned?`<small class="sheet-warning">Nur ${card.owned}× in der Sammlung</small>`:''}</div>
+      <div class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_code)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${escapeHtml(variantName(card))}${card.price!=null?` · ${price(card.price)}`:''}</small>${sheetIsWanted(payload.sheet.kind)?(card.owned?`<small>${card.owned}× schon in der Sammlung</small>`:''):card.quantity>card.owned?`<small class="sheet-warning">Nur ${card.owned}× in der Sammlung</small>`:''}</div>
       <input class="sheet-label" value="${escapeHtml(card.label)}" maxlength="24" placeholder="Preis / Notiz" aria-label="Preis oder Notiz">
       <div class="sheet-stepper"><button type="button" data-sheet-delta="-1" aria-label="Weniger">−</button><b>${card.quantity}</b><button type="button" data-sheet-delta="1" aria-label="Mehr">＋</button></div>
       <button type="button" class="sheet-remove" title="Entfernen" aria-label="Entfernen">×</button></div>`).join('')
-    :'<div class="deck-zone-empty">Noch keine Karten. Wähle rechts Karten aus deiner Sammlung.</div>';
+    :`<div class="deck-zone-empty">${sheetIsWanted(payload.sheet.kind)?'Noch keine Karten. Wähle rechts die Karten, die du suchst.':'Noch keine Karten. Wähle rechts Karten aus deiner Sammlung.'}</div>`;
   $$('.sheet-entry',box).forEach(row=>{
     const variantId=row.dataset.variant;
     $$('[data-sheet-delta]',row).forEach(button=>button.onclick=()=>changeSheetCard({variant_id:variantId,delta:Number(button.dataset.sheetDelta)}));
@@ -145,25 +164,47 @@ function markPickedRow(row){
 async function renderSheetPicker(){
   const box=$('#sheet-picker-list');if(!box)return;
   const picker=sheetView.picker,gameId=state.activeGameId;
-  try{
-    if(!picker.cards){
-      box.innerHTML='<div class="page-loader compact"><span></span></div>';
-      picker.cards=(await api(`/api/collection?game_id=${encodeURIComponent(gameId)}&sort=number`)).cards;
-    }
-  }catch(error){box.innerHTML=`<div class="deck-zone-empty">${escapeHtml(error.message)}</div>`;return}
-  if(!$('#sheet-picker-list'))return;
-  const query=picker.q.trim().toLowerCase();
+  const query=picker.q.trim().toLowerCase(),loading=()=>{box.innerHTML='<div class="page-loader compact"><span></span></div>'};
+  const matches=card=>[card.canonical_name,card.collector_number,card.set_name,card.set_code].some(value=>String(value||'').toLowerCase().includes(query));
   // "Über Playset": what is owned beyond a full playset, offered with exactly that surplus.
   const playset=state.boot.games.find(game=>game.id===gameId)?.playset_size||4;
-  let cards=picker.source==='surplus'?picker.cards.filter(card=>card.quantity>playset).map(card=>({...card,pick_quantity:card.quantity-playset}))
-    :picker.cards.filter(card=>picker.source!=='duplicates'||card.quantity>1);
-  if(query)cards=cards.filter(card=>[card.canonical_name,card.collector_number,card.set_name,card.set_code].some(value=>String(value||'').toLowerCase().includes(query)));
+  let cards=[],empty='Keine Karten in der Sammlung.';
+  try{
+    if(picker.source==='catalog'){
+      // The whole catalogue is searched on the server; nothing is listed before there is a query.
+      empty='Tippe mindestens zwei Zeichen, um im Katalog zu suchen.';
+      if(query.length>=2){
+        if(picker.foundFor!==`${gameId}:${query}`||!picker.found){loading();picker.found=await api(`/api/search?game_id=${encodeURIComponent(gameId)}&limit=${SHEET_PICKER_LIMIT}&q=${encodeURIComponent(query)}`);picker.foundFor=`${gameId}:${query}`}
+        cards=picker.found;empty='Keine Treffer.';
+      }
+    }else if(picker.source==='watchlist'){
+      if(!picker.wanted){
+        loading();
+        const lists=await api(`/api/watchlists?game_id=${encodeURIComponent(gameId)}`),seen=new Map();
+        for(const list of lists)for(const card of (await api(`/api/watchlists/${list.id}/cards`)).cards){
+          const known=seen.get(card.variant_id);
+          if(known)known.pick_quantity=Math.max(known.pick_quantity,card.desired_quantity||1);
+          else seen.set(card.variant_id,{...card,pick_quantity:card.desired_quantity||1});
+        }
+        picker.wanted=[...seen.values()];
+      }
+      cards=picker.wanted;empty='Deine Watchlists sind leer.';
+    }else{
+      if(!picker.cards){loading();picker.cards=(await api(`/api/collection?game_id=${encodeURIComponent(gameId)}&sort=number`)).cards}
+      cards=picker.source==='surplus'?picker.cards.filter(card=>card.quantity>playset).map(card=>({...card,pick_quantity:card.quantity-playset}))
+        :picker.cards.filter(card=>picker.source!=='duplicates'||card.quantity>1);
+      if(picker.source==='surplus')empty=`Keine Karte liegt öfter als ${playset}× in der Sammlung.`;
+      if(picker.source==='duplicates')empty='Keine doppelten Karten in der Sammlung.';
+    }
+  }catch(error){box.innerHTML=`<div class="deck-zone-empty">${escapeHtml(error.message)}</div>`;return}
+  if(!$('#sheet-picker-list')||picker!==sheetView.picker)return;
+  if(query&&picker.source!=='catalog'){cards=cards.filter(matches);empty='Keine Treffer.'}
   const shown=cards.slice(0,SHEET_PICKER_LIMIT);
-  box.innerHTML=(picker.source==='surplus'&&cards.length?`<button type="button" class="secondary-button sheet-take-all" id="sheet-take-all">Alle ${cards.length} übernehmen</button>`:'')
+  box.innerHTML=(['surplus','watchlist'].includes(picker.source)&&cards.length?`<button type="button" class="secondary-button sheet-take-all" id="sheet-take-all">Alle ${cards.length} übernehmen</button>`:'')
     +(shown.length?shown.map(card=>`<button type="button" class="sheet-pick" data-pick="${escapeHtml(card.variant_id)}" data-quantity="${card.pick_quantity||1}">
         ${finishThumb(card,artUrl(card.variant_id),card.canonical_name,'sheet-thumb')}
         <span class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_name||card.set_code||'')} · ${escapeHtml(card.collector_number)} · ${escapeHtml(variantName({...card,game_id:gameId}))} · ${card.quantity}× im Besitz</small><small class="sheet-picked"></small></span><i>＋</i></button>`).join('')
-      :`<div class="deck-zone-empty">${query?'Keine Treffer.':picker.source==='surplus'?`Keine Karte liegt öfter als ${playset}× in der Sammlung.`:picker.source==='duplicates'?'Keine doppelten Karten in der Sammlung.':'Keine Karten in der Sammlung.'}</div>`)
+      :`<div class="deck-zone-empty">${empty}</div>`)
     +(cards.length>shown.length?`<div class="sheet-picker-more">${cards.length-shown.length} weitere – Suche eingrenzen</div>`:'');
   $$('[data-pick]',box).forEach(row=>{markPickedRow(row);row.onclick=()=>changeSheetCard({variant_id:row.dataset.pick,delta:Number(row.dataset.quantity)||1})});
   $('#sheet-take-all')?.addEventListener('click',()=>changeSheetCard({entries:cards.map(card=>({variant_id:card.variant_id,quantity:Math.min(99,card.pick_quantity||1)}))}));

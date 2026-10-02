@@ -20,8 +20,10 @@ from .catalog import natural_code_key
 # A sheet is a named selection of cards (with a quantity and an optional short label each) that
 # is rendered as one or more images for a "want to sell" / "want to trade" post. Layout and
 # drawing live in sheet_render.py; this part is storage, sorting and handing over card images.
-# For sale, for trade, or both at once.
-SHEET_KINDS = ("WTS", "WTT", "WTS/WTT")
+# A sheet shows either what is offered -- for sale (WTS), for trade (WTT) or both -- or what is
+# looked for -- to buy (WTB), to trade for (WTTF) or both. The two sides are separate sheets:
+# one picture cannot say which of its cards are on offer and which are wanted.
+SHEET_KINDS = ("WTS", "WTT", "WTS/WTT", "WTB", "WTTF", "WTB/WTTF")
 SHEET_SORTS = ("number", "rarity")
 SHEET_CARD_LIMIT = 400
 
@@ -65,7 +67,7 @@ def sheet_text(sheet, cards):
             details.append(card["language"])
         if card["finish"] not in ("Normal", "standard"):
             details.append(card["finish"])
-        price = card["label"] or (f'{card["price"]:.2f} €'.replace(".", ",") if card["price"] is not None and "WTS" in sheet["kind"] else "")
+        price = card["label"] or (f'{card["price"]:.2f} €'.replace(".", ",") if card["price"] is not None and "WTS" in sheet["kind"].split("/") else "")
         lines.append(f'* {card["quantity"]}x **{card["canonical_name"]}** ({", ".join(details)})' + (f" – {price}" if price else ""))
     return "\n".join(lines) + "\n"
 

@@ -60,7 +60,37 @@ def test_a_sheet_can_be_for_sale_and_for_trade_at_once(client, sheet):
     image = client.get(f"/api/trade-sheets/{sheet}/image/1.jpg?download=1")
     assert image.status_code == 200 and image.headers["Content-Disposition"] == "attachment; filename=wts-wtt-holos.jpg"
     assert client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTT/WTS"}).get_json()["sheet"]["kind"] == "WTS/WTT", "anything else is ignored"
-    assert client.get("/api/trade-sheets/options").get_json()["kinds"] == ["WTS", "WTT", "WTS/WTT"]
+    assert client.get("/api/trade-sheets/options").get_json()["kinds"] == ["WTS", "WTT", "WTS/WTT", "WTB", "WTTF", "WTB/WTTF"]
+
+
+def test_a_sheet_of_wanted_cards(client, sheet):
+    """Cards one is looking for -- to buy, to trade for, or both -- need not be owned."""
+    from test_prices_and_assets import observe
+
+    observe(TIDE8, "cardmarket", 4.0, "2026-09-01T06:00:00+00:00")
+    wanted = client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTB/WTTF"}).get_json()
+    assert wanted["sheet"]["kind"] == "WTB/WTTF"
+    payload = client.post(f"/api/trade-sheets/{sheet}/cards", json={"variant_id": TIDE8, "quantity": 2, "label": "bis 5 €"}).get_json()
+    assert (payload["cards"][0]["owned"], payload["cards"][0]["quantity"]) == (0, 2)
+    assert payload["text"].splitlines() == ["**[WTB/WTTF] Holos**", "", "* 2x **Tide (PL8)** (1 003) – bis 5 €"]
+    client.post(f"/api/trade-sheets/{sheet}/cards", json={"variant_id": TIDE8, "quantity": 2, "label": ""})
+    assert "4,00" not in client.get(f"/api/trade-sheets/{sheet}").get_json()["text"], "a market price is no offer of mine"
+    for kind in ("WTB", "WTTF"):
+        assert client.patch(f"/api/trade-sheets/{sheet}", json={"kind": kind}).get_json()["sheet"]["kind"] == kind
+    assert client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTS/WTB"}).get_json()["sheet"]["kind"] == "WTTF", "offer and wanted do not mix"
+    image = client.get(f"/api/trade-sheets/{sheet}/image/1.jpg?download=1")
+    assert image.status_code == 200 and image.headers["Content-Disposition"] == "attachment; filename=wttf-holos.jpg"
+
+
+def test_catalogue_search_serves_the_wanted_picker(client):
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 2})
+    found = client.get("/api/search?game_id=vcard&q=Ember&limit=80").get_json()
+    ember = next(item for item in found if item["variant_id"] == EMBER8)
+    assert (ember["quantity"], ember["set_code"], ember["variant_code"]) == (2, "1", "normal")
+    assert all(item["game_id"] == "vcard" for item in found) and len(found) > 3
+    assert len(client.get("/api/search?game_id=vcard&q=Filler&limit=5").get_json()) == 5
+    assert len(client.get("/api/search?q=e&limit=500").get_json()) == 0, "too short a query"
+    assert len(client.get("/api/search?q=Filler&limit=500").get_json()) <= 80
 
 
 def test_cards_quantities_labels_and_removal(client, sheet):

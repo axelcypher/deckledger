@@ -205,6 +205,20 @@ describe('app in the browser', { skip }, () => {
     await press('WTT');
     await sleep(300);
     assert.equal(await kind(), 'WTT', 'the last one cannot be switched off');
+    // The other side: a sheet of cards that are looked for, picked from the watchlists or the catalogue.
+    await press('WTTF');
+    await page.waitFor(`sheetView.payload.sheet.kind==='WTTF'&&document.querySelector('[data-sheet-source="catalog"]')`, { message: 'the picker to offer the wanted sources' });
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[data-sheet-source]')].map(button=>button.dataset.sheetSource)`), ['watchlist', 'catalog']);
+    await press('WTB');
+    await page.waitFor(`sheetView.payload.sheet.kind==='WTB/WTTF'&&document.querySelector('#sheet-text').value.startsWith('**[WTB/WTTF]')`);
+    await page.evaluate(`document.querySelector('[data-sheet-source="catalog"]').click()`);
+    await page.evaluate(`(()=>{const input=document.querySelector('#sheet-picker-q');input.value='Tide';input.dispatchEvent(new Event('input'))})()`);
+    await page.waitFor(`document.querySelector('#sheet-picker-list [data-pick="vcard-print-tide8-en-normal"]')`, { message: 'a card that is not owned to be found in the catalogue' });
+    await page.evaluate(`document.querySelector('#sheet-picker-list [data-pick="vcard-print-tide8-en-normal"]').click()`);
+    await page.waitFor(`sheetView.payload.cards.some(card=>card.variant_id==='vcard-print-tide8-en-normal')`);
+    assert.ok(!(await page.evaluate(`document.querySelector('#sheet-entries').innerText`)).includes('Nur 0×'), 'no stock warning on a wanted sheet');
+    await press('WTS');
+    await page.waitFor(`sheetView.payload.sheet.kind==='WTS'&&document.querySelector('[data-sheet-source="collection"]')`, { message: 'the sheet to go back to the offer side' });
     noProblems();
   });
 
