@@ -150,6 +150,22 @@ Most OAuth/OIDC providers require an `https://` redirect URI. Set
 enable this when the proxy is the sole way to reach the container, since it
 otherwise lets a direct client spoof those headers.
 
+## Code layout
+
+`app.py` is only the entry point (`gunicorn app:app`). The application is the `deckledger` package:
+
+| Module | What it holds |
+| --- | --- |
+| `config`, `web`, `schema` | paths and constants; the Flask app, request guards and login decorators; database schema, migrations and seed data |
+| `games/` | everything that differs per game, one module each (`lorcana`, `one_piece`, `hololive`, `vcard`) plus the `Game` description they fill in |
+| `catalog`, `collection`, `watchlists`, `decks`, `sheets` | the views of the same names |
+| `prices`, `images`, `assets` | price lookup and manual prices; card images, thumbnails, trimming, foil masks; logos, set visuals, card backs |
+| `auth`, `account`, `admin`, `pages`, `backup` | sign-in and SSO; a user's own settings; the admin API; page shell and dashboard data; import, export and restore |
+
+Modules import each other in one direction only (the order `deckledger/__init__.py` lists them in). No module outside `games/` branches on a game's id: it asks `games.game(game_id)` for the playset size, the rarity ladder, the deck rules, where images and prices come from. Adding a game is one module there, its provider under `providers/`, and an icon. The frontend receives the rules it needs (playset size, copy limits, icon) with each game.
+
+The catalogue and price jobs (`catalog_sync.py`, `price_sync.py`), the sheet renderer (`sheet_render.py`) and the providers stay standalone scripts and modules next to the package.
+
 ## Tests
 
 ```bash

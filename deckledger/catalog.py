@@ -2,12 +2,11 @@
 
 import re
 from functools import cmp_to_key
-from urllib.parse import quote_plus
 
 from flask import jsonify, request
 
 from .config import jload
-from .games import LORCANA_PREMIUM_RANKS, LORCANA_RARITY_KEYS, playset_size, rarity_rank
+from .games import game as game_rules, playset_size, rarity_filter_ranks, rarity_rank
 from .web import app, db, login_required, user_id
 from .prices import MANUAL_PRICE_PROVIDER, latest_price_meta_sql, latest_price_sql
 from .assets import set_visual_version
@@ -158,6 +157,7 @@ def query_matches_row(query, row):
 
 
 def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell="", finish="normal"):
+    rules = game_rules(game_id)
     raw = [dict(row) for row in raw]
     if language != "combined":
         raw = [row for row in raw if row["language"] == language]
@@ -199,8 +199,8 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
         # being reachable by hovering the base printing's tile. Kept in a separate bucket so
         # they're browsable/filterable like any other card but don't inflate Base/Playset% --
         # those track completion of the base+foil ladder, which premium tiers sit outside of.
-        if game_id == "lorcana":
-            premium_printing_ids = {v["printing_id"] for v in language_variants if rarity_rank(game_id, v["rarity"]) in LORCANA_PREMIUM_RANKS and v["printing_id"] != representative["printing_id"]}
+        if rules.premium_ranks:
+            premium_printing_ids = {v["printing_id"] for v in language_variants if rules.rarity_rank(v["rarity"]) in rules.premium_ranks and v["printing_id"] != representative["printing_id"]}
             for printing_id in premium_printing_ids:
                 printing_variants = [v for v in variants if v["printing_id"] == printing_id]
                 printing_language_variants = [v for v in printing_variants if v["language"] == preferred_language]
@@ -235,15 +235,15 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     if mode == "missing": cards = [card for card in cards if card["quantity"] == 0]
     if rarity: cards = [card for card in cards if card["rarity"] == rarity]
     if rarities:
-        selected_ranks = {LORCANA_RARITY_KEYS[key] for key in rarities if key in LORCANA_RARITY_KEYS}
+        selected_ranks = rarity_filter_ranks(game_id, rarities)
         cards = [card for card in cards if rarity_rank(game_id, card["rarity"]) in selected_ranks]
     if costs:
         def cost_matches(card_cost):
             if card_cost is None:
                 return False
             for value in costs:
-                if value == "7" and game_id == "lorcana":
-                    if card_cost >= 7:
+                if rules.cost_filter_cap is not None and value == str(rules.cost_filter_cap):
+                    if card_cost >= rules.cost_filter_cap:
                         return True
                 elif str(card_cost) == value:
                     return True
@@ -266,16 +266,8 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     all_variants = [variant for variants in identities.values() for variant in variants]
     total = len(unfiltered_cards)
     owned = sum(1 for card in unfiltered_cards if card["quantity"] > 0)
-    # Foil% tracks the standard Silver alternate; Lorcana's Epic/Enchanted/Iconic prints use
-    # their own one-off finish names (Lava, Magma, ...) that also aren't "Normal" but belong to
-    # the separate premium-tier bucket (see premium_cards above), not the base+foil ladder.
-    if game_id == "lorcana":
-        foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal" and rarity_rank(game_id, variant["rarity"]) not in LORCANA_PREMIUM_RANKS]
-    elif game_id == "vcard":
-        # Every card also exists as a non-holo First Edition print, which is not "Normal" either.
-        foil_variants = [variant for variant in all_variants if "Holo" in variant["finish"]]
-    else:
-        foil_variants = [variant for variant in all_variants if variant["finish"] != "Normal"]
+    # What counts for Foil% is the game's call (see Game.is_foil).
+    foil_variants = [variant for variant in all_variants if rules.is_foil(variant, rules)]
     playset_owned = sum(1 for card in unfiltered_cards if card["quantity"] >= playset_size(game_id))
     stats = {
         "owned": owned,
@@ -441,34 +433,7 @@ def card_detail(identity_id):
                 provider_metrics.setdefault(metric_row["metric"], metric_row["amount"])
             variant["price_low"] = provider_metrics.get("low")
             variant["price_avg30"] = provider_metrics.get("avg30")
-        if variant["game_id"] == "lorcana":
-            variant["price_source"] = "Cardmarket" if variant.get("price_provider") == "cardmarket" else variant_attrs.get("priceSource") or "Cardmarket"
-            variant["price_url"] = (market_mapping or {}).get("source_url") or variant_attrs.get("priceUrl") or f"https://www.cardmarket.com/en/Lorcana/Products/Search?searchString={quote_plus(search_term)}"
-            variant["image_source"] = variant_attrs.get("imageSource") or "Ravensburger-Kartenbild via LorcanaJSON"
-            variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://lorcanajson.org/"
-        elif variant["game_id"] == "one-piece":
-            variant["price_source"] = "Cardmarket"
-            variant["price_url"] = (market_mapping or {}).get("source_url") or f"https://www.cardmarket.com/en/OnePiece/Products/Search?searchString={quote_plus(search_term)}"
-            variant["image_source"] = variant_attrs.get("imageSource") or "Offizieller One Piece Card-Katalog"
-            variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://en.onepiece-cardgame.com/cardlist/"
-        elif variant["game_id"] == "vcard":
-            # No marketplace price feed carries VCard yet, so the market tab links to a plain
-            # eBay search for the exact print instead of a mapped product page.
-            variant["price_source"] = "eBay"
-            variant["price_url"] = (market_mapping or {}).get("source_url") or f"https://www.ebay.com/sch/i.html?_nkw={quote_plus('VCard ' + search_term)}"
-            variant["image_source"] = "Offizielle VCard-Kartendatenbank"
-            variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://www.vcardtcg.com/cards"
-        else:
-            provider_labels = {"tcgplayer": "TCGplayer", "yuyutei": "Yuyutei"}
-            variant["price_source"] = provider_labels.get(variant.get("price_provider")) or ("Yuyutei" if variant["language"] == "JP" else "TCGplayer")
-            fallback_url = (
-                f"https://yuyu-tei.jp/sell/hocg/s/{variant['set_code'].lower()}"
-                if variant["language"] == "JP"
-                else f"https://www.tcgplayer.com/search/all/product?q={quote_plus(search_term)}&view=grid"
-            )
-            variant["price_url"] = (market_mapping or {}).get("source_url") or fallback_url
-            variant["image_source"] = "Offizieller hololive Card-Katalog"
-            variant["image_source_url"] = variant_attrs.get("imageSourceUrl") or "https://en.hololive-official-cardgame.com/cardlist/"
+        variant.update(game_rules(variant["game_id"]).market_links(variant, variant_attrs, market_mapping, search_term))
         # price_source/price_url keep naming the marketplace, so its link stays useful next to
         # a price entered by hand.
         variant["price_manual"] = variant.get("price_provider") == MANUAL_PRICE_PROVIDER

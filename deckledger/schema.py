@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash
 from catalog_provider_contract import digest
 
 from .config import DB_PATH, ROOT, now_iso
-from .games import DEFAULT_CARDMARKET_GAME_IDS, DEFAULT_DECK_RULESETS, DEFAULT_PRICE_METHODS, DEFAULT_PRICE_OVERRIDES, DEFAULT_PROVIDERS, GAME_DATA, playset_size
+from .games import GAMES, playset_size
 
 
 SCHEMA = """
@@ -157,7 +157,9 @@ def default_provider_code(game_id: str) -> str:
 
 
 def seed_default_providers(connection):
-    for game_id, (minimum_sets, minimum_cards, timeout_seconds) in DEFAULT_PROVIDERS.items():
+    # The provider's code lives in providers/<id>.py -- read at seed time, not embedded, so it
+    # stays normal, lintable Python in the repository.
+    for game_id, (minimum_sets, minimum_cards, timeout_seconds) in ((game.id, game.provider) for game in GAMES.values() if game.provider):
         code = default_provider_code(game_id)
         version = digest(code)
         existing = connection.execute("SELECT kind,code,customized FROM catalog_providers WHERE id=?", (game_id,)).fetchone()
@@ -187,33 +189,39 @@ def seed_default_providers(connection):
 
 
 def seed_default_deck_rulesets(connection):
-    for game_id, ruleset in DEFAULT_DECK_RULESETS.items():
-        connection.execute("UPDATE games SET deck_ruleset=? WHERE id=? AND deck_ruleset IS NULL", (ruleset, game_id))
+    for game in GAMES.values():
+        if game.ruleset:
+            connection.execute("UPDATE games SET deck_ruleset=? WHERE id=? AND deck_ruleset IS NULL", (game.ruleset, game.id))
 
 
 def seed_default_price_methods(connection):
-    for game_id, method in DEFAULT_PRICE_METHODS.items():
-        connection.execute("UPDATE games SET price_method=? WHERE id=? AND price_method IS NULL", (method, game_id))
-    for game_id, language, method in DEFAULT_PRICE_OVERRIDES:
-        connection.execute(
-            "INSERT OR IGNORE INTO game_price_overrides(game_id, language, price_method) VALUES(?,?,?)",
-            (game_id, language, method),
-        )
+    for game in GAMES.values():
+        if game.price_method:
+            connection.execute("UPDATE games SET price_method=? WHERE id=? AND price_method IS NULL", (game.price_method, game.id))
+        for language, method in game.price_overrides:
+            connection.execute(
+                "INSERT OR IGNORE INTO game_price_overrides(game_id, language, price_method) VALUES(?,?,?)",
+                (game.id, language, method),
+            )
 
 
 def seed_default_cardmarket_game_ids(connection):
-    for game_id, cardmarket_id in DEFAULT_CARDMARKET_GAME_IDS.items():
-        connection.execute(
-            "UPDATE games SET cardmarket_game_id=? WHERE id=? AND cardmarket_game_id IS NULL", (cardmarket_id, game_id),
-        )
+    # Cardmarket's numeric idGame is stable but has no discovery endpoint: for a game without a
+    # module it is a one-time lookup on cardmarket.com, entered in the admin UI.
+    for game in GAMES.values():
+        if game.cardmarket_game_id:
+            connection.execute(
+                "UPDATE games SET cardmarket_game_id=? WHERE id=? AND cardmarket_game_id IS NULL", (game.cardmarket_game_id, game.id),
+            )
 
 
 def seed_database(connection):
+    game_rows = [
+        (game.id, game.module_id, game.name, game.short_name, game.module_version, json.dumps(list(game.languages)), game.accent)
+        for game in GAMES.values()
+    ]
     if connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
-        connection.executemany(
-            f"INSERT OR IGNORE INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)",
-            [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA],
-        )
+        connection.executemany(f"INSERT OR IGNORE INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", game_rows)
         seed_default_providers(connection)
         seed_default_deck_rulesets(connection)
         seed_default_price_methods(connection)
@@ -226,7 +234,7 @@ def seed_database(connection):
             ("admin", "DeckLedger Admin", generate_password_hash("admin"), "admin", now_iso()),
         ],
     )
-    connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", [(a,b,c,d,e,json.dumps(f),g) for a,b,c,d,e,f,g in GAME_DATA])
+    connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", game_rows)
     seed_default_providers(connection)
     seed_default_deck_rulesets(connection)
     seed_default_price_methods(connection)

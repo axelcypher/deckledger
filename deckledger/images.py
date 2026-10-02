@@ -2,12 +2,11 @@
 
 import fcntl
 import hashlib
-import json
 import os
 import re
 import xml.sax.saxutils as xml_escape
 from pathlib import Path
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from flask import Response, jsonify, request, send_file, url_for
@@ -16,6 +15,7 @@ import ravensburger_foil
 import sheet_render
 
 from .config import IMAGE_CACHE, IMAGE_FOIL_MASK_CACHE, IMAGE_LOCK_CACHE, IMAGE_SOURCE_CACHE, IMAGE_THUMB_CACHE, IMAGE_TRIM_CACHE, jload
+from .games import game as game_rules
 from .web import app, db, login_required
 
 
@@ -24,41 +24,8 @@ def remote_image_url(row):
     attributes = jload(row["variant_attributes"], {}) if "variant_attributes" in row.keys() else {}
     if attributes.get("imageUrl"):
         return attributes["imageUrl"]
-    if row["game_id"] == "one-piece":
-        host = "https://en.onepiece-cardgame.com" if row["language"] == "EN" else "https://www.onepiece-cardgame.com"
-        suffix = "_p1" if row["variant_code"] in ("parallel", "manga") else ""
-        return f'{host}/images/cardlist/card/{row["collector_number"]}{suffix}.png'
-
-    if row["game_id"] == "hololive":
-        expansion = row["set_code"]
-        official_number = row["collector_number"]
-        if expansion.startswith("BP"):
-            expansion = f"h{expansion}"
-            official_number = f"h{official_number}"
-        host = "https://en.hololive-official-cardgame.com" if row["language"] == "EN" else "https://hololive-official-cardgame.com"
-        listing = f"{host}/cardlist/cardsearch/?expansion={quote_plus(expansion)}"
-        page = urlopen(Request(listing, headers={"User-Agent": "DeckLedger/0.1"}), timeout=12).read().decode("utf-8", "ignore")
-        prefix = "EN_" if row["language"] == "EN" else ""
-        pattern = rf'(?:src|data-src)="([^"]*{re.escape(prefix + official_number)}[^"]*\.png[^"]*)"'
-        match = re.search(pattern, page, re.I)
-        if not match and row["language"] == "EN":
-            # Some early cards were published only in the Japanese catalogue.
-            fallback = f"https://hololive-official-cardgame.com/cardlist/cardsearch/?expansion={quote_plus(expansion)}"
-            page = urlopen(Request(fallback, headers={"User-Agent": "DeckLedger/0.1"}), timeout=12).read().decode("utf-8", "ignore")
-            match = re.search(rf'(?:src|data-src)="([^"]*{re.escape(official_number)}[^"]*\.png[^"]*)"', page, re.I)
-            return urljoin(fallback, match.group(1)) if match else None
-        return urljoin(listing, match.group(1)) if match else None
-
-    if row["game_id"] == "lorcana":
-        # Lorcast exposes stable image URIs from its API; do not construct CDN URLs.
-        base_name = re.sub(r"\s·\s(?:Awakened|New Journey|Altitude)$", "", row["canonical_name"])
-        base_name = base_name.replace(" · ", " ")
-        endpoint = f"https://api.lorcast.com/v0/cards/search?q={quote_plus(base_name)}&unique=prints"
-        payload = json.loads(urlopen(Request(endpoint, headers={"User-Agent": "DeckLedger/0.1"}), timeout=12).read())
-        results = payload.get("results", [])
-        if results:
-            return results[0].get("image_uris", {}).get("digital", {}).get("normal")
-    return None
+    resolve = game_rules(row["game_id"]).remote_image_url
+    return resolve(row) if resolve else None
 
 
 def sniff_image_type(payload):
@@ -149,10 +116,6 @@ def download_real_image(url, legacy_data, legacy_mime):
         return data_path, content_type, source_key
 
 
-# Games whose card images are the print files, bleed included (see sheet_render.trim_bleed).
-IMAGE_BLEED = {"vcard": sheet_render.PRINT_BLEED}
-
-
 def cached_trimmed_image(source_path: Path, cache_key: str, bleed) -> tuple[Path, str] | None:
     """The image without its print bleed, made once. None for an image that has none to cut --
     remembered with a marker file, so it is not opened again on every request."""
@@ -198,7 +161,7 @@ def card_image(row, variant_id):
     publishes its print files. The cache key changes with it, so thumbnails and foil masks made
     from the untrimmed image are not reused."""
     real_image = cached_real_image(row, variant_id)
-    bleed = IMAGE_BLEED.get(row["game_id"])
+    bleed = game_rules(row["game_id"]).image_bleed
     if not real_image or not bleed:
         return real_image
     trimmed = cached_trimmed_image(real_image[0], real_image[2], bleed)
@@ -362,7 +325,7 @@ def _official_foil_variant(variant_id):
     Never raises -- both routes treat "no data" as a normal 404, not a 500."""
     row = db().execute("""SELECT v.finish, v.game_id, v.attributes variant_attributes, p.language
       FROM variants v JOIN printings p ON p.id=v.printing_id WHERE v.id=?""", (variant_id,)).fetchone()
-    if not row or row["game_id"] != "lorcana":
+    if not row or not game_rules(row["game_id"]).official_foil_layers:
         return None
     attributes = jload(row["variant_attributes"], {})
     try:

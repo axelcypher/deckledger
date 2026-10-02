@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash
 from catalog_provider_contract import digest, slug
 
 from .config import CARD_BACK_UPLOAD_DIR, OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, ROOT, jload, now_iso
-from .games import DEFAULT_PROVIDERS
+from .games import GAMES
 from .web import admin_required, app, db, user_id
 from .schema import default_provider_code, ensure_user_lists
 from .auth import resolve_oauth_config
@@ -290,7 +290,7 @@ def admin_update_provider(provider_id):
         code = p["code"] or ""
         if not code.strip():
             return jsonify({"error": "Code darf nicht leer sein"}), 400
-        shipped = default_provider_code(provider_id) if provider_id in DEFAULT_PROVIDERS else None
+        shipped = default_provider_code(provider_id) if provider_id in GAMES and GAMES[provider_id].provider else None
         fields += ["code=?", "provider_version=?", "customized=?"]
         values += [code, digest(code), 0 if code == shipped else 1]
     for key in ("label", "minimum_sets", "minimum_cards", "timeout_seconds"):

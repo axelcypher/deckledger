@@ -250,7 +250,7 @@ function setActiveGame(gameId, persist=true) {
   const isInitial=!previousGameId;
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
-  const iconName={'one-piece':'one-piece',lorcana:'lorcana',hololive:'hololive',vcard:'vcard'}[gameId]||'generic';
+  const iconName=state.game.icon||'generic';
   if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=3')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
   state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null; state.sheetId=null;
@@ -334,7 +334,6 @@ function statPill(items,{className='',columns=items.length,mobileColumns=Math.mi
     return `<div data-stat${itemClass}><span>${escapeHtml(item.label)}</span><b>${item.value}</b></div>`;
   }).join('')}</deckledger-stat-pill>`;
 }
-function symbol(game){return {'lorcana':'✦','one-piece':'☠','hololive':'◈','vcard':'✪'}[game]||'◆'}
 
 const SET_GROUP_ORDER=['Booster','Decks','Promos','Quests','Sammlungen','Produkte','Zubehör'];
 function setGroup(set){
@@ -1198,7 +1197,10 @@ function lorcanaVariantBadges(languageVariants){
 }
 
 // Mirrors playset_size() in app.py: the constructed copy limit a full playset is measured against.
-function playsetSize(gameId){return gameId==='vcard'?3:4}
+// What differs per game (playset size, copy limits, icon) comes with the game from the server
+// (deckledger/games); nothing here knows a game by its id.
+const gameRules=gameId=>state.boot?.games.find(game=>game.id===gameId)||{};
+function playsetSize(gameId){return gameRules(gameId).playset_size||4}
 
 // VCard prints every card in up to four edition/finish combinations; show all of them, base first.
 function tileChipVariants(variants,gameId){
@@ -2047,7 +2049,7 @@ function bindDeckImagePreviews(){
 function deckCatalogCard(c,profile,quantities={}){
   const zone=profile.zones.find(item=>item.id===c.suggested_zone)||profile.zones[0];
   const quantity=Number(quantities[c.variant_id])||0;
-  const maximum=zone.id==='cheer'?20:zone.id==='don'?10:zone.id==='leader'||zone.id==='oshi'?1:deckCopyLimit(c);
+  const maximum=deckZoneMaximum(zone,c);
   const counter=`<div class="catalog-deck-counter" title="Menge im Deck"><button data-catalog-delta="-1" ${quantity<1?'disabled':''}>−</button><b>${quantity}</b><button data-catalog-delta="1" ${quantity>=maximum?'disabled':''}>＋</button></div>`;
   if(state.deckView==='grid')return `<article class="catalog-card-grid" data-catalog-variant="${c.variant_id}" data-identity="${c.identity_id}"><div class="catalog-grid-image card-finish-frame ${finishPresentation(c).effect}"><img loading="lazy" decoding="async" fetchpriority="low" data-deck-preview data-full-src="${artUrl(c.variant_id,'full')}" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}">${counter}</div><b>${escapeHtml(c.canonical_name)}</b><small>${escapeHtml(c.collector_number)} · ${c.language}</small><span>${escapeHtml(zone.name)}</span></article>`;
   return `<div class="catalog-card" data-catalog-variant="${c.variant_id}" data-identity="${c.identity_id}"><img loading="lazy" decoding="async" fetchpriority="low" data-deck-preview data-full-src="${artUrl(c.variant_id,'full')}" src="${artUrl(c.variant_id)}" alt="${escapeHtml(c.canonical_name)}"><div><b>${escapeHtml(c.canonical_name)}</b><small>${escapeHtml(c.collector_number)} · ${c.language} · ${escapeHtml(c.rarity)}${c.owned?` · ${c.owned}× vorhanden`:''}</small><span>${escapeHtml(zone.name)}</span></div>${counter}</div>`;
@@ -2231,13 +2233,15 @@ function deckOverviewCard(deck,game,formats){
 }
 
 // Copy limit of a regular deck card (leader/DON-style zones have their own fixed sizes).
-function deckCopyLimit(card){return state.activeGameId==='vcard'?(card.card_type==='Mascot'?2:3):4}
+function deckCopyLimit(card){const rules=gameRules(state.activeGameId);return rules.copy_limits?.[card.card_type]??rules.playset_size??4}
+// The main deck is limited per card, every other zone (leader, DON!!, cheer, ...) by its size.
+function deckZoneMaximum(zone,card){return zone.id==='main'?deckCopyLimit(card):(zone.target||deckCopyLimit(card))}
 function closeDeckAddPopup(){const modal=$('#deck-add-modal');if(modal)modal.remove();document.body.style.overflow='';}
 
 function openDeckAddPopup(card,profile){
   closeDeckAddPopup();
   const zone=profile.zones.find(item=>item.id===card.suggested_zone)||profile.zones[0];
-  const maximum=zone.id==='cheer'?20:zone.id==='don'?10:zone.id==='leader'||zone.id==='oshi'?1:deckCopyLimit(card);
+  const maximum=deckZoneMaximum(zone,card);
   const modal=document.createElement('div');modal.id='deck-add-modal';modal.className='overlay deck-add-overlay';
   modal.innerHTML=`<div class="deck-add-dialog"><button class="close-button" data-deck-add-close>×</button><div class="deck-add-image card-finish-frame ${finishPresentation(card).effect}"><img src="${artUrl(card.variant_id,'full')}" alt="${escapeHtml(card.canonical_name)}"></div><div class="deck-add-copy"><span class="eyebrow">KARTE HINZUFÜGEN</span><h2>${escapeHtml(card.canonical_name)}</h2><p>${escapeHtml(card.collector_number)} · ${card.language} · ${escapeHtml(card.rarity)}</p><div class="automatic-zone"><span>Automatischer Bereich</span><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(card.card_type)} wird nach dem Regelprofil einsortiert.</small></div><label>Menge<select id="deck-add-quantity" class="select-control">${Array.from({length:maximum},(_,index)=>`<option value="${index+1}">${index+1}</option>`).join('')}</select></label><div class="dialog-actions"><button class="secondary-button" data-deck-add-close>Abbrechen</button><button class="primary-button" id="confirm-deck-add">Zu ${escapeHtml(zone.name)} hinzufügen</button></div></div></div>`;
   document.body.append(modal);document.body.style.overflow='hidden';

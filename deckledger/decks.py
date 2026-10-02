@@ -5,7 +5,7 @@ import re
 from flask import Response, jsonify, request
 
 from .config import jload, now_iso
-from .games import DECK_RULESETS, FORMAT_PROFILES, LORCANA_RARITY_KEYS, VCARD_PLAYABLE_TYPES, rarity_case_sql, rarity_rank, zone_for_card_type
+from .games import DECK_RULESETS, game as game_rules, rarity_case_sql, rarity_filter_ranks, rarity_rank, zone_for_card_type
 from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
 from .catalog import match_collector_number, split_set_prefix
@@ -19,7 +19,7 @@ def game_deck_ruleset(game_id):
 @app.get("/api/games/<game_id>/formats")
 @login_required
 def game_formats(game_id):
-    return jsonify(FORMAT_PROFILES.get(game_id,[]))
+    return jsonify(list(game_rules(game_id).formats))
 
 
 
@@ -30,7 +30,8 @@ def deck_catalog():
     game_id = request.args.get("game_id")
     q = request.args.get("q", "").strip().lower()
     set_id = request.args.get("set_id", "")
-    language = request.args.get("language", "EN" if game_id == "one-piece" else "all")
+    rules = game_rules(game_id)
+    language = request.args.get("language", rules.deck_language)
     card_type = request.args.get("type", "")
     color = request.args.get("color", "")
     selected_types = [value for value in request.args.get("types", "").split(",") if value]
@@ -49,7 +50,7 @@ def deck_catalog():
     # The deck catalogue shows one base printing per gameplay identity and
     # language. Alternate art, foil and reprint variants stay available in the
     # card detail view, but do not flood the builder browser.
-    if game_id == "one-piece":
+    if rules.deck_catalog_across_printings:
         base_variant_filter = (
             "v.id=(SELECT v2.id FROM variants v2 JOIN printings p2 ON p2.id=v2.printing_id "
             "JOIN sets s2 ON s2.id=p2.set_id WHERE p2.identity_id=i.id AND p2.language=p.language "
@@ -64,12 +65,12 @@ def deck_catalog():
         )
     filters = ["v.game_id=?", base_variant_filter]
     values = [game_id]
-    if game_id == "lorcana":
-        filters.append("lower(s.set_type)<>'quest'")
-    if game_id == "vcard":
-        # Box Toppers, Promos and God Rares are collectibles without a gameplay role.
-        filters.append(f"i.card_type IN ({','.join('?' for _ in VCARD_PLAYABLE_TYPES)})")
-        values.extend(VCARD_PLAYABLE_TYPES)
+    if rules.excluded_deck_set_types:
+        filters.append(f"lower(COALESCE(s.set_type,'')) NOT IN ({','.join('?' for _ in rules.excluded_deck_set_types)})")
+        values.extend(rules.excluded_deck_set_types)
+    if rules.playable_types:
+        filters.append(f"i.card_type IN ({','.join('?' for _ in rules.playable_types)})")
+        values.extend(rules.playable_types)
     if q:
         # Matches the English name, the localized (DE/JP/...) name and rules text for this
         # printing, and the English rules text -- a search box that only understood the English
@@ -98,7 +99,7 @@ def deck_catalog():
         filters.append("p.rarity=?")
         values.append(rarity)
     if selected_rarities:
-        selected_ranks = [LORCANA_RARITY_KEYS[key] for key in selected_rarities if key in LORCANA_RARITY_KEYS]
+        selected_ranks = sorted(rarity_filter_ranks(game_id, selected_rarities))
         if selected_ranks:
             filters.append(f"{rarity_case_sql(game_id, 'p.rarity')} IN ({','.join('?' for _ in selected_ranks)})")
             values.extend(selected_ranks)
@@ -112,8 +113,8 @@ def deck_catalog():
         cost_expr = "CAST(json_extract(i.attributes,'$.cost') AS INTEGER)"
         cost_clauses = []
         for value in selected_costs:
-            if value == "7" and game_id == "lorcana":
-                cost_clauses.append(f"{cost_expr}>=7")
+            if rules.cost_filter_cap is not None and value == str(rules.cost_filter_cap):
+                cost_clauses.append(f"{cost_expr}>={rules.cost_filter_cap}")
             else:
                 cost_clauses.append(f"{cost_expr}=?")
                 values.append(value)
@@ -194,7 +195,7 @@ def deck_catalog():
 @login_required
 def decks():
     if request.method=="POST":
-        p=request.get_json(force=True);game_id=p.get("game_id");profiles=FORMAT_PROFILES.get(game_id,[]);format_id=p.get("format_id") or (profiles[0]["id"] if profiles else "standard");stamp=now_iso()
+        p=request.get_json(force=True);game_id=p.get("game_id");profiles=game_rules(game_id).formats;format_id=p.get("format_id") or (profiles[0]["id"] if profiles else "standard");stamp=now_iso()
         cur=db().execute("INSERT INTO decks(user_id,game_id,name,format_id,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(user_id(),game_id,p.get("name","Neues Deck").strip()[:100] or "Neues Deck",format_id,"",stamp,stamp));db().commit()
         return jsonify({"id":cur.lastrowid}),201
     game_id=request.args.get("game_id")
@@ -258,12 +259,12 @@ def deck_validation(deck_id):
       FROM deck_cards dc JOIN variants v ON v.id=dc.variant_id JOIN printings p ON p.id=v.printing_id
       JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id WHERE dc.deck_id=?""",(deck_id,))]
     game=deck["game_id"]
-    profile=next((p for p in FORMAT_PROFILES.get(game,[]) if p["id"]==deck["format_id"]),FORMAT_PROFILES.get(game,[{}])[0])
+    profile=game_rules(game).format(deck["format_id"])
     zone_ids=[z["id"] for z in profile.get("zones",[])] or ["main"]
     counts={zone:sum(c["quantity"] for c in cards if c["zone"]==zone) for zone in zone_ids}
     ruleset=DECK_RULESETS.get(game_deck_ruleset(game))
-    if ruleset:
-        errors,warnings=ruleset["validate"](deck,cards,counts)
+    if ruleset and ruleset.validate_deck:
+        errors,warnings=ruleset.validate_deck(deck,cards,counts)
     else:
         # No bespoke ruleset assigned: fall back to checking each zone's target
         # count from the format profile, without any game-specific extra rules.
@@ -275,17 +276,19 @@ def deck_validation(deck_id):
     return {"valid":not errors,"errors":errors,"warnings":warnings,"counts":counts,"rules_url":profile.get("rules_url"),"profile":profile}
 
 
-def default_one_piece_don(quantity):
+def auto_filled_card(zone,variant_id,quantity):
+    """The standard card a game fills a zone's open slots with (Game.auto_fill_zone) -- shown in
+    the deck, not stored: One Piece's DON!! deck needs no artwork picked for it."""
     if quantity<=0:return None
     row=db().execute(
         f"""SELECT v.id variant_id,v.finish,v.is_parallel,i.id identity_id,i.canonical_name,i.card_type,
           p.collector_number,p.language,p.rarity,p.set_id,s.code set_code,{latest_price_sql('v')} price
           FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
-          JOIN sets s ON s.id=p.set_id WHERE v.id='one-piece-print-don-008-en-standard'"""
+          JOIN sets s ON s.id=p.set_id WHERE v.id=?""",(variant_id,)
     ).fetchone()
     if not row:return None
     card=dict(row);card.update({
-        "zone":"don","quantity":quantity,"collection_quantity":quantity,"owned_quantity":quantity,
+        "zone":zone,"quantity":quantity,"collection_quantity":quantity,"owned_quantity":quantity,
         "missing_quantity":0,"auto_filled":True,
     })
     return card
@@ -307,8 +310,11 @@ def deck_detail_api(deck_id):
         db().execute("UPDATE decks SET name=?,format_id=?,notes=?,cover_variant_id=?,updated_at=? WHERE id=?",(p.get("name",deck["name"])[:100],p.get("format_id",deck["format_id"]),p.get("notes",deck["notes"] or ""),cover_variant_id,now_iso(),deck_id));db().commit();return jsonify({"saved":True,"cover_variant_id":cover_variant_id,"validation":deck_validation(deck_id)})
     cards=deck_cards_with_ownership(deck_id)
     summary=deck_market_summaries([deck_id],user_id()).get(deck_id,empty_deck_market_summary())
-    explicit_don=sum(card["quantity"] for card in cards if card["zone"]=="don")
-    default_don=default_one_piece_don(max(0,10-explicit_don)) if deck["game_id"]=="one-piece" else None
+    auto_fill=game_rules(deck["game_id"]).auto_fill_zone
+    default_don=None
+    if auto_fill:
+        zone,size,variant_id=auto_fill
+        default_don=auto_filled_card(zone,variant_id,max(0,size-sum(card["quantity"] for card in cards if card["zone"]==zone)))
     return jsonify({"deck":dict(deck),"cards":cards,"validation":deck_validation(deck_id),"summary":summary,"default_don":default_don})
 
 
@@ -334,7 +340,7 @@ def deck_cards_with_ownership(deck_id):
 
 
 def deck_zone_names(game_id, format_id):
-    profile=next((p for p in FORMAT_PROFILES.get(game_id,[]) if p["id"]==format_id),FORMAT_PROFILES.get(game_id,[{}])[0])
+    profile=game_rules(game_id).format(format_id)
     return {z["id"]:z["name"] for z in profile.get("zones",[])}
 
 
@@ -463,7 +469,7 @@ def deck_import_apply(deck_id):
     if not deck: return jsonify({"error": "deck not found"}), 404
     p = request.get_json(force=True)
     rows = parse_deck_text(p.get("text", ""), deck["game_id"])
-    profile = next((item for item in FORMAT_PROFILES.get(deck["game_id"], []) if item["id"] == deck["format_id"]), None)
+    profile = next((item for item in game_rules(deck["game_id"]).formats if item["id"] == deck["format_id"]), None)
     allowed_zones = {item["id"] for item in (profile or {}).get("zones", [])} or {"main"}
     if p.get("strategy") == "replace":
         db().execute("DELETE FROM deck_cards WHERE deck_id=?", (deck_id,))
@@ -494,9 +500,9 @@ def update_deck_card(deck_id):
     card=db().execute("""SELECT v.game_id,i.card_type,s.set_type,pr.rarity FROM variants v JOIN printings pr ON pr.id=v.printing_id
       JOIN card_identities i ON i.id=pr.identity_id JOIN sets s ON s.id=pr.set_id WHERE v.id=?""",(variant_id,)).fetchone()
     if not card or card["game_id"]!=deck["game_id"]:return jsonify({"error":"Karte gehört nicht zu diesem TCG."}),400
-    if deck["game_id"]=="lorcana" and str(card["set_type"] or "").lower()=="quest":return jsonify({"error":"Quest-Karten sind nicht für Lorcana-Constructed-Decks zulässig."}),400
-    if deck["game_id"]=="vcard" and card["card_type"] not in VCARD_PLAYABLE_TYPES and int(p.get("quantity",p.get("delta",0)) or 0)>0:return jsonify({"error":f'{card["rarity"]}-Karten sind Sammelkarten und nicht spielbar.'}),400
-    profile=next((item for item in FORMAT_PROFILES.get(deck["game_id"],[]) if item["id"]==deck["format_id"]),None)
+    refusal=game_rules(deck["game_id"]).deck_card_error(card,adding=int(p.get("quantity",p.get("delta",0)) or 0)>0)
+    if refusal:return jsonify({"error":refusal}),400
+    profile=next((item for item in game_rules(deck["game_id"]).formats if item["id"]==deck["format_id"]),None)
     allowed_zones={item["id"] for item in (profile or {}).get("zones",[])} or {"main"}
     suggested_zone=zone_for_card_type(game_deck_ruleset(deck["game_id"]),card["card_type"])
     zone=p.get("zone")

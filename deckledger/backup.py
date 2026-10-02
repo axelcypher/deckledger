@@ -10,7 +10,7 @@ from flask import Response, jsonify, request
 import sheet_render
 
 from .config import jload, now_iso
-from .games import FORMAT_PROFILES
+from .games import game as game_rules
 from .web import app, db, login_required, user_id
 from .schema import SALE_LIST_NAME
 from .prices import latest_price_sql
@@ -240,7 +240,7 @@ def restore_backup_decks(decks, strategy, changes):
         game_id, name = games.get(deck.get("game")), str(deck.get("name") or "").strip()[:100]
         if not game_id or not name:
             continue
-        profiles = FORMAT_PROFILES.get(game_id, [])
+        profiles = game_rules(game_id).formats
         profile = next((item for item in profiles if item["id"] == deck.get("format_id")), profiles[0] if profiles else None)
         zones = {zone["id"] for zone in (profile or {}).get("zones", [])} or {"main"}
         entries = deck.get("cards") or []

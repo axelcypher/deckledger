@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import jsonify, render_template, request, send_file
 
 from .config import PUBLIC_DIR, jload
-from .games import playset_size
+from .games import game as game_rules
 from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
 from .auth import resolve_oauth_config
@@ -59,12 +59,6 @@ def bootstrap():
     current = db().execute("SELECT id,username,display_name,role,email,oauth_subject,password_hash FROM users WHERE id=?", (uid,)).fetchone()
     settings = {r["key"]: jload(r["value"], r["value"]) for r in db().execute("SELECT key,value FROM user_settings WHERE user_id=?", (uid,))}
     default_languages = settings.get("defaultLanguages") or {}
-    main_set_types = {
-        "one-piece": ("booster set",),
-        "lorcana": ("expansion",),
-        "hololive": ("booster", "boosters"),
-        "vcard": ("booster set",),
-    }
     games = []
     for row in db().execute("SELECT * FROM games WHERE enabled=1 ORDER BY name"):
         game_id = row["id"]
@@ -82,7 +76,8 @@ def bootstrap():
             "SELECT COUNT(*) FROM variants v JOIN printings p ON p.id=v.printing_id WHERE v.game_id=? AND (? IS NULL OR p.language=?)",
             (game_id, lang, lang),
         ).fetchone()[0]
-        types = main_set_types.get(game_id, ())
+        rules = game_rules(game_id)
+        types = rules.main_set_types
         if types:
             placeholders = ",".join("?" for _ in types)
             main_stats = db().execute(
@@ -114,7 +109,7 @@ def bootstrap():
             "completion": round(stats["unique_cards"] / total * 100) if total else 0,
             "main_completion": round(main_owned / main_total * 100) if main_total else 0,
             "set_count": set_count, "deck_count": deck_count, "watch_count": watch_count, "sheet_count": sheet_count,
-            "playset_size": playset_size(game_id),
+            **rules.client_rules(),
         })
         games.append(game)
     imports = [dict(r) for r in db().execute("SELECT id,created_at,game_id,undone_at FROM import_operations WHERE user_id=? ORDER BY id DESC LIMIT 4", (uid,))]

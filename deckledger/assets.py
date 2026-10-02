@@ -4,31 +4,20 @@ import math
 import re
 import xml.sax.saxutils as xml_escape
 from pathlib import Path
-from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 
 from flask import Response, send_file
 
 from .config import CARD_BACK_UPLOAD_DIR, IMAGE_CACHE, PUBLIC_DIR, PUBLIC_IMAGE_EXTENSIONS, PUBLIC_OP_ICON_DIR, PUBLIC_SET_DIR, ROOT
-from .games import GAME_LOGOS
+from .games import game as game_rules
 from .web import app, db, login_required
-
-
-LORCANA_PRODUCT_PATHS = {
-    "1": "the-first-chapter", "2": "rise-of-the-floodborn", "3": "into-the-inklands",
-    "4": "ursulas-return", "5": "shimmering-skies", "6": "azurite-sea",
-    "7": "archazias-island", "8": "reign-of-jafar", "9": "fabled", "10": "whispers",
-    "11": "winterspell", "12": "wilds-unknown", "13": "attack-of-the-vine",
-    "14": "hyperia-city", "15": "into-the-inkdark", "Q1": "deep-trouble",
-    "Q2": "palace-heist", "Q3": "great-hunny-rescue",
-}
 
 
 @app.get("/game-logo/<game_id>")
 @login_required
 def game_logo(game_id):
     """Cache the official TCG wordmarks used by catalogue and game tiles."""
-    source_url = GAME_LOGOS.get(game_id)
+    source_url = game_rules(game_id).logo_url
     if not source_url:
         return Response(status=404)
     IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
@@ -50,66 +39,11 @@ def game_logo(game_id):
         return Response(status=502)
 
 
-def provider_html(url):
-    request = Request(url, headers={"User-Agent": "DeckLedger/1.0", "Accept": "text/html"})
-    return urlopen(request, timeout=18).read(2_000_000).decode("utf-8", "ignore")
-
-
 def remote_set_visual(set_row):
-    """Resolve a set-specific visual from each game's official provider."""
-    if set_row["game_id"] == "lorcana":
-        path = LORCANA_PRODUCT_PATHS.get(set_row["code"])
-        if not path:
-            return None
-        page_url = f"https://www.disneylorcana.com/en-US/product/{path}"
-        page = provider_html(page_url)
-        images = re.findall(r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]*)"', page, re.I | re.S)
-        header = next((src for src, alt in images if "header" in alt.lower() or "logo" in alt.lower()), None)
-        return urljoin(page_url, header) if header else None
-
-    if set_row["game_id"] == "hololive":
-        for base in ("https://en.hololive-official-cardgame.com", "https://hololive-official-cardgame.com"):
-            page_url = f"{base}/cardlist/"
-            page = provider_html(page_url)
-            pattern = rf'<a class="anchor" href="(/cardlist/cardsearch/\?expansion={re.escape(set_row["code"])})">(.*?)</a>'
-            product = re.search(pattern, page, re.I | re.S)
-            if product:
-                image = re.search(r'<img[^>]+src="([^"]+)"', product.group(2), re.I)
-                if image:
-                    return urljoin(base, image.group(1))
-        return None
-
-    if set_row["game_id"] == "vcard":
-        # The set id is "vcard-<official slug>"; each official set page embeds its own logo path.
-        page_url = f"https://www.vcardtcg.com/cards/{set_row['id'].removeprefix('vcard-')}"
-        logo = re.search(r'\\"logo\\":\{\\"main\\":\\"(.*?)\\"', provider_html(page_url))
-        return urljoin(page_url, quote(logo.group(1), safe=":/%")) if logo else None
-
-    if set_row["game_id"] != "one-piece":
-        # Games without an official visual source of their own get the generated wordmark.
-        return None
-
-    code = re.sub(r"[^a-z0-9]", "", set_row["code"].lower())
-    category = "decks" if set_row["code"].startswith("ST-") else "boosters"
-    filenames = [code]
-    starter_number = re.fullmatch(r"st(\d{2})", code)
-    if starter_number:
-        number = int(starter_number.group(1))
-        for first, last in ((1, 4), (8, 9), (15, 20), (23, 28), (31, 36)):
-            if first <= number <= last:
-                filenames.append(f"st{first:02d}-{last:02d}")
-    for base in ("https://en.onepiece-cardgame.com", "https://www.onepiece-cardgame.com"):
-        for filename in filenames:
-            page_url = f"{base}/products/{category}/{filename}.php"
-            try:
-                page = provider_html(page_url)
-            except Exception:
-                continue
-            images = re.findall(r'<img[^>]+(?:src|data-src)="([^"]+)"', page, re.I)
-            hero = next((src for src in images if "/images/products/" in src and re.search(r"/mv(?:_|\.)", src, re.I)), None)
-            if hero:
-                return urljoin(page_url, hero)
-    return None
+    """A set-specific visual from the game's official source; games without one get the
+    generated wordmark."""
+    resolve = game_rules(set_row["game_id"]).remote_set_visual
+    return resolve(set_row) if resolve else None
 
 
 def set_wordmark(set_row):
@@ -127,14 +61,12 @@ def set_wordmark(set_row):
 
 def public_set_visual(set_row) -> Path | None:
     """Return a server-provided set visual before consulting any fallback."""
-    # Lorcana's numbered-set logos live alongside its other icon assets now
-    # (set{code}-logo.png), not the shared per-game PUBLIC_SET_DIR -- checked first, falling
-    # through to the generic lookup below for anything not covered there (promo sets, or any
-    # numbered set that hasn't been added to that folder).
-    if set_row["game_id"] == "lorcana" and set_row["code"].isdigit():
-        candidate = PUBLIC_DIR / "icons" / "lorcana" / f"set{int(set_row['code']):02d}-logo.png"
-        if candidate.is_file():
-            return candidate
+    # A game may ship logos of its own; anything it does not cover falls through to the shared
+    # public set folder.
+    bundled = game_rules(set_row["game_id"]).bundled_set_logo
+    candidate = bundled(set_row, PUBLIC_DIR) if bundled else None
+    if candidate:
+        return candidate
     stems = []
     for value in (set_row["id"], set_row["code"]):
         safe = re.sub(r"[^A-Za-z0-9_.-]", "-", value).strip("-.")
