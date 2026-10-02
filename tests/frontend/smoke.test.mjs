@@ -49,6 +49,19 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`(setActiveGame('vcard'),1)`);
   });
 
+  test('the page behind an open dialog stands still', async () => {
+    // Regression: the dialog's backdrop blur was redone every frame while the reel kept moving.
+    await page.route('dashboard');
+    const reel = () => page.evaluate(`getComputedStyle(document.querySelector('#home-banner-track')).animationPlayState`);
+    assert.equal(await reel(), 'running');
+    await page.evaluate(`openCard('vcard-card-ember8',${JSON.stringify(EMBER8)})`);
+    await page.waitFor(`document.querySelector('#card-dialog [data-tab]')`);
+    assert.equal(await reel(), 'paused');
+    await page.evaluate(`(closeOverlay('card-modal'),1)`);
+    assert.equal(await reel(), 'running');
+    noProblems();
+  });
+
   test('the edit switch fits into the collapsed sidebar and still works there', async () => {
     // Regression: in the collapsed sidebar the whole panel was shown and spilled over the page.
     const measure = () => page.evaluate(`(()=>{const rail=document.querySelector('.sidebar').getBoundingClientRect(),panel=document.querySelector('#edit-panel').getBoundingClientRect();
