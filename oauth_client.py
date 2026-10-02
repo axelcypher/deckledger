@@ -11,7 +11,9 @@ behaves identically whether the config came from the mounted file or the
 database, and stays independently exercisable (e.g. against a mocked HTTP
 response) without spinning up the whole app.
 """
+import base64
 import functools
+import json
 import time
 
 import requests
@@ -19,6 +21,10 @@ from authlib.common.security import generate_token
 from authlib.integrations.requests_client import OAuth2Session
 
 _REQUEST_TIMEOUT = 10
+# Sent with every request this module makes itself. Proxies and bot filters in front of an
+# identity provider commonly refuse the default "python-requests/x.y" (the token request, made
+# by Authlib under its own name, got through where the userinfo request was answered with 403).
+_HEADERS = {"User-Agent": "DeckLedger (OAuth client)", "Accept": "application/json"}
 _DISCOVERY_TTL_SECONDS = 300
 _discovery_cache = {}
 
@@ -55,7 +61,7 @@ def discover_endpoints(discovery_url):
     cached = _discovery_cache.get(discovery_url)
     if cached and time.monotonic() - cached[0] < _DISCOVERY_TTL_SECONDS:
         return cached[1]
-    response = requests.get(discovery_url, timeout=_REQUEST_TIMEOUT)
+    response = requests.get(discovery_url, headers=_HEADERS, timeout=_REQUEST_TIMEOUT)
     response.raise_for_status()
     document = response.json()
     endpoints = {
@@ -119,10 +125,41 @@ def fetch_userinfo(config, token):
     endpoints = resolved_endpoints(config)
     access_token = token.get("access_token") if isinstance(token, dict) else token
     response = requests.get(
-        endpoints["userinfo_url"], headers={"Authorization": f"Bearer {access_token}"}, timeout=_REQUEST_TIMEOUT,
+        endpoints["userinfo_url"], headers={**_HEADERS, "Authorization": f"Bearer {access_token}"}, timeout=_REQUEST_TIMEOUT,
     )
-    response.raise_for_status()
+    if not response.ok:
+        # What the provider says about its refusal is the only clue to why; it goes to the log.
+        raise OAuthConfigError(f"Userinfo-Endpunkt {endpoints['userinfo_url']} antwortet mit {response.status_code}: {response.text[:300].strip() or '(leer)'}")
     return response.json()
+
+
+def id_token_claims(config, token):
+    """The identity claims an OIDC provider sends along with the tokens, or {}.
+
+    The ID token came straight from the provider's token endpoint, over TLS and in answer to a
+    request authenticated with the client secret; OIDC Core (3.1.3.7) lets a client rely on that
+    instead of checking the signature. It still has to be meant for this client and not expired.
+    """
+    raw = token.get("id_token") if isinstance(token, dict) else None
+    if not raw or raw.count(".") != 2:
+        return {}
+    try:
+        payload = raw.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (ValueError, UnicodeDecodeError):
+        return {}
+    if not isinstance(claims, dict):
+        return {}
+    audience = claims.get("aud")
+    audiences = audience if isinstance(audience, list) else [audience]
+    if config.get("client_id") not in audiences:
+        return {}
+    try:
+        if float(claims.get("exp", 0)) < time.time():
+            return {}
+    except (TypeError, ValueError):
+        return {}
+    return claims
 
 
 def extract_identity(config, claims):

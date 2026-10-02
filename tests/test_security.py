@@ -117,3 +117,74 @@ def test_a_failed_sso_login_says_why_in_the_log(anonymous, monkeypatch, caplog):
     assert response.status_code == 302 and response.headers["Location"].endswith("/login?error=provider_error")
     assert "token exchange" in caplog.text and "invalid_client" in caplog.text and "/oauth/callback" in caplog.text
     assert "secret" not in caplog.text.replace("invalid_client", "") and "abc" not in caplog.text
+
+
+def id_token(claims):
+    import base64
+    part = lambda value: base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b"=").decode()
+    return f'{part({"alg": "RS256"})}.{part(claims)}.signature'
+
+
+SSO_CONFIG = {"enabled": True, "client_id": "deckledger", "client_secret": "secret", "account_matching": "email"}
+
+
+def sso_callback(anonymous, monkeypatch, token, userinfo):
+    import oauth_client
+
+    monkeypatch.setattr(deckledger.auth, "resolve_oauth_config", lambda: {**deckledger.config.OAUTH_CONFIG_DEFAULTS, **SSO_CONFIG})
+    monkeypatch.setattr(deckledger.auth, "exchange_code", lambda *args: token)
+
+    def fetch(config, token):
+        if isinstance(userinfo, Exception):
+            raise userinfo
+        return userinfo
+
+    monkeypatch.setattr(deckledger.auth, "fetch_userinfo", fetch)
+    with anonymous.session_transaction() as session:
+        session["oauth_state"], session["oauth_code_verifier"] = "state-1", "verifier"
+    return anonymous.get("/oauth/callback?code=abc&state=state-1"), oauth_client
+
+
+def test_sso_login_works_when_the_provider_refuses_the_userinfo_request(anonymous, monkeypatch, caplog):
+    """Regression: Authentik answered the userinfo request with 403 although the token exchange
+    had succeeded; the ID token that came with the tokens already says who signed in."""
+    import time
+
+    query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
+    token = {"access_token": "at", "id_token": id_token({"sub": "abc-123", "email": "demo@example.com", "email_verified": True, "aud": "deckledger", "exp": time.time() + 300})}
+    refusal = deckledger.auth.OAuthConfigError("Userinfo-Endpunkt antwortet mit 403: Forbidden")
+    with caplog.at_level("WARNING"):
+        response, _ = sso_callback(anonymous, monkeypatch, token, refusal)
+    assert response.status_code == 302 and response.headers["Location"].endswith("/")
+    assert anonymous.get("/api/bootstrap").get_json()["user"]["username"] == "demo"
+    assert query("SELECT oauth_subject s FROM users WHERE username='demo'")[0]["s"] == "abc-123"
+    assert "userinfo request failed" in caplog.text and "403" in caplog.text
+
+
+def test_sso_userinfo_wins_over_the_id_token_and_no_claims_at_all_fail(anonymous, monkeypatch):
+    import time
+
+    query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
+    token = {"access_token": "at", "id_token": id_token({"sub": "from-id-token", "aud": "deckledger", "exp": time.time() + 300})}
+    response, _ = sso_callback(anonymous, monkeypatch, token, {"sub": "from-userinfo", "email": "demo@example.com"})
+    assert response.headers["Location"].endswith("/")
+    assert query("SELECT oauth_subject s FROM users WHERE username='demo'")[0]["s"] == "from-userinfo"
+
+    fresh = deckledger.app.test_client()
+    refused, _ = sso_callback(fresh, monkeypatch, {"access_token": "at"}, deckledger.auth.OAuthConfigError("403"))
+    assert refused.headers["Location"].endswith("/login?error=provider_error")
+
+
+def test_an_id_token_for_someone_else_or_out_of_date_is_not_used():
+    import time
+
+    import oauth_client
+
+    config, soon = {"client_id": "deckledger"}, time.time() + 300
+    claims = lambda **changes: oauth_client.id_token_claims(config, {"id_token": id_token({"sub": "s", "aud": "deckledger", "exp": soon, **changes})})
+    assert claims()["sub"] == "s"
+    assert claims(aud=["other", "deckledger"])["sub"] == "s"
+    assert claims(aud="another-client") == {} and claims(exp=time.time() - 5) == {} and claims(exp="never") == {}
+    assert oauth_client.id_token_claims(config, {"id_token": "not.a-token"}) == {}
+    assert oauth_client.id_token_claims(config, {"id_token": "a.%%%.c"}) == {}
+    assert oauth_client.id_token_claims(config, {"access_token": "only"}) == {} and oauth_client.id_token_claims(config, "plain") == {}

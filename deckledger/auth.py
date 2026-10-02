@@ -7,7 +7,7 @@ from flask import redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
 from catalog_provider_contract import slug
-from oauth_client import OAuthConfigError, build_authorization_request, exchange_code, extract_identity, fetch_userinfo
+from oauth_client import OAuthConfigError, build_authorization_request, exchange_code, extract_identity, fetch_userinfo, id_token_claims
 
 from .config import OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, OAUTH_PROVIDER_KEY, jload, now_iso
 from .web import app, db
@@ -164,7 +164,16 @@ def oauth_callback():
         redirect_uri = url_for("oauth_callback", _external=True)
         token = exchange_code(config, redirect_uri, code, code_verifier)
         step = "userinfo request"
-        claims = fetch_userinfo(config, token)
+        # An OIDC provider states who signed in twice: in the ID token that comes with the tokens,
+        # and at its userinfo endpoint. Either is enough; a provider that refuses the second
+        # request (Authentik does for some provider setups) must not make the login fail.
+        claims = id_token_claims(config, token)
+        try:
+            claims = {**claims, **fetch_userinfo(config, token)}
+        except OAuthConfigError as error:
+            if not claims.get(config.get("subject_claim") or "sub"):
+                raise
+            app.logger.warning("SSO: the userinfo request failed, using the ID token's claims instead: %s", error)
         step = "reading the identity"
         subject, email, display_name = extract_identity(config, claims)
     except OAuthConfigError as error:
