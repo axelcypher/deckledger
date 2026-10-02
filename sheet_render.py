@@ -275,8 +275,9 @@ def holo_sheen(image: Image.Image) -> Image.Image:
 
 @lru_cache(maxsize=8)
 def holo_frame(size: tuple[int, int]) -> tuple[Image.Image, int]:
-    """An iridescent rim around a card of `size`, with a faint glow so it also stands out on the
-    light mats. Returns the image and how far it reaches beyond the card on every side."""
+    """A pearly rim around a card of `size`: silver with a slight shift from cool to warm, not the
+    whole spectrum -- it should say "foil" without out-shouting the card. A faint glow lets it
+    stand out on the light mats too. Returns the image and how far it reaches beyond the card."""
     width, height = size
     border = max(3, round(width * .022))
     pad = border * 3
@@ -284,11 +285,11 @@ def holo_frame(size: tuple[int, int]) -> tuple[Image.Image, int]:
     ring = Image.new("L", outer, 0)
     ring.paste(rounded_mask((width + border * 2, height + border * 2), width * .045 + border), (pad - border, pad - border))
     ring.paste(0, (pad, pad), rounded_mask(size, width * .045))
-    colours = rainbow(outer, cycles=2.2, saturation=.78)
+    colours = rainbow(outer, cycles=.45, saturation=.3)
     frame = Image.new("RGBA", outer, (0, 0, 0, 0))
     glow = ring.filter(ImageFilter.GaussianBlur(border * .9)).point(lambda value: int(value * .7))
     frame.paste(colours, (0, 0), glow)
-    frame.paste(ImageChops.screen(colours, Image.new("RGB", outer, "#3c3c3c")), (0, 0), ring)
+    frame.paste(ImageChops.screen(colours, Image.new("RGB", outer, "#5a5a5a")), (0, 0), ring)
     return frame, pad
 
 
