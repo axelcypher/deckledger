@@ -929,6 +929,7 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .sheet-kind { display:inline-block;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.08em; }
 .sheet-kind-wts { background:rgba(240,160,74,.18);color:#f0a04a; }
 .sheet-kind-wtt { background:rgba(143,208,245,.18);color:#8fd0f5; }
+.sheet-kind-wts-wtt { background:linear-gradient(90deg,rgba(240,160,74,.2),rgba(143,208,245,.2));color:#e8dcc0; }
 .sheet-shell { display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:26px;align-items:start; }
 .sheet-head { display:flex;align-items:center;gap:10px;margin-bottom:14px; }
 .sheet-name-input { flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:17px;font-weight:700; }

@@ -47,6 +47,22 @@ def test_create_edit_and_delete(client, sheet):
     assert query("SELECT COUNT(*) n FROM trade_sheets")[0]["n"] == 0
 
 
+def test_a_sheet_can_be_for_sale_and_for_trade_at_once(client, sheet):
+    from test_prices_and_assets import observe
+
+    add(client, sheet, EMBER8)
+    observe(EMBER8, "cardmarket", 2.5, "2026-09-01T06:00:00+00:00")
+    both = client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTS/WTT"}).get_json()
+    assert both["sheet"]["kind"] == "WTS/WTT"
+    assert both["text"].startswith("**[WTS/WTT] Holos**") and "2,50 €" in both["text"], "prices are listed whenever the sheet sells"
+    assert "2,50" not in client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTT"}).get_json()["text"]
+    client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTS/WTT"})
+    image = client.get(f"/api/trade-sheets/{sheet}/image/1.jpg?download=1")
+    assert image.status_code == 200 and image.headers["Content-Disposition"] == "attachment; filename=wts-wtt-holos.jpg"
+    assert client.patch(f"/api/trade-sheets/{sheet}", json={"kind": "WTT/WTS"}).get_json()["sheet"]["kind"] == "WTS/WTT", "anything else is ignored"
+    assert client.get("/api/trade-sheets/options").get_json()["kinds"] == ["WTS", "WTT", "WTS/WTT"]
+
+
 def test_cards_quantities_labels_and_removal(client, sheet):
     add(client, sheet, EMBER8)
     add(client, sheet, EMBER8)
@@ -142,7 +158,7 @@ def test_holo_detection_agrees_with_the_frontend():
 
 
 def test_holo_cards_are_marked_in_the_image(tmp_path):
-    """A holo gets a rainbow rim outside the card and a sheen on it; a regular card neither."""
+    """A holo gets a bright, pearly rim outside the card and a sheen on it; a regular card neither."""
     scan = tmp_path / "card.png"
     Image.new("RGB", (300, 420), "#3a6ea5").save(scan)
     card = {"image_path": str(scan), "name": "Karte", "set_code": "1", "number": "001", "quantity": 1, "label": ""}
@@ -152,8 +168,10 @@ def test_holo_cards_are_marked_in_the_image(tmp_path):
     left, top = (regular.width - 300) // 2, round(300 * .34) + round(300 * .44)
     saturation = lambda image, point: (lambda pixel: max(pixel) - min(pixel))(image.getpixel(point))
     rim = [(left - 4, top + 210), (left + 303, top + 210), (left + 150, top - 4), (left + 150, top + 423)]
-    assert all(saturation(holo, point) > 90 for point in rim), "rainbow rim on all four sides"
-    assert all(saturation(regular, point) < 40 for point in rim), "the mat itself is nearly grey there"
+    assert all(min(holo.getpixel(point)) > 150 for point in rim), "a light rim on all four sides"
+    assert all(max(regular.getpixel(point)) < 110 for point in rim), "the mat itself is dark there"
+    assert all(saturation(holo, point) < 80 for point in rim), "silver with a tint, not the whole spectrum"
+    assert len({holo.getpixel(point) for point in rim}) > 1, "... but it does shift along the rim"
     inside = [(left + x, top + y) for x in (40, 150, 260) for y in (60, 210, 360)]
     assert {regular.getpixel(point) for point in inside} == {(58, 110, 165)}
     assert len({holo.getpixel(point) for point in inside}) > 3, "the sheen varies across the card"
@@ -173,8 +191,8 @@ def test_sheet_image_marks_the_holo_variant(client, sheet):
     holo = Image.open(io.BytesIO(client.get(f"/api/trade-sheets/{sheet}/image/1.png").get_data())).convert("RGB")
     plain = Image.open(io.BytesIO(plain)).convert("RGB")
     left, top = (holo.width - 300) // 2, round(300 * .34) + round(300 * .44)
-    spread = lambda image: (lambda pixel: max(pixel) - min(pixel))(image.getpixel((left - 4, top + 210)))
-    assert spread(holo) > 90 and spread(plain) < 40
+    rim = (left - 4, top + 210)
+    assert min(holo.getpixel(rim)) > 150 and max(plain.getpixel(rim)) < 110
 
 
 def test_bundled_font_has_the_glyphs_labels_need():

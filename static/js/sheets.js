@@ -19,7 +19,7 @@ async function renderSheets(){
     content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · VERKAUF &amp; TAUSCH</span><h1>Deine Sheets</h1><p>Stelle Karten für WTS- und WTT-Posts zusammen und gib sie als Bild aus.</p></div><button class="primary-button" id="new-sheet">＋ Neues Sheet</button></div>
       ${sheets.length?`<section class="sheet-overview-grid">${sheets.map(sheet=>`<button class="sheet-overview-card" data-sheet="${sheet.id}">
         <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
-        <div class="sheet-overview-copy"><span class="sheet-kind sheet-kind-${sheet.kind.toLowerCase()}">${escapeHtml(sheet.kind)}</span><h3>${escapeHtml(sheet.name)}</h3><small>${sheet.card_count} Karten · ${sheet.copies} Exemplare</small></div></button>`).join('')}</section>`
+        <div class="sheet-overview-copy"><span class="sheet-kind sheet-kind-${sheet.kind.toLowerCase().replace('/','-')}">${escapeHtml(sheet.kind)}</span><h3>${escapeHtml(sheet.name)}</h3><small>${sheet.card_count} Karten · ${sheet.copies} Exemplare</small></div></button>`).join('')}</section>`
       :`<div class="deck-empty"><span>▦</span><h2>Dein erstes Sheet</h2><p>Wähle Karten aus deiner Sammlung, lege Menge und Preis fest und lade die fertige Collage herunter.</p><button class="primary-button" id="first-sheet">Sheet erstellen</button></div>`}`;
     const create=async()=>{const created=await post('/api/trade-sheets',{game_id:game.id,name:'Neues Sheet',kind:'WTS'});state.sheetId=created.id;renderSheets()};
     $('#new-sheet').onclick=create;$('#first-sheet')?.addEventListener('click',create);
@@ -35,7 +35,7 @@ async function renderSheets(){
   content.innerHTML=`<div class="sheet-shell">
     <section class="sheet-editor">
       <header class="sheet-head"><button class="compact-back-button" id="sheet-back" title="Alle Sheets" aria-label="Alle Sheets">←</button>
-        <div class="segmented sheet-kind-toggle">${options.kinds.map(kind=>`<button type="button" data-sheet-kind="${kind}" class="${sheet.kind===kind?'active':''}" title="${kind==='WTS'?'Want to sell – Verkauf':'Want to trade – Tausch'}">${kind}</button>`).join('')}</div>
+        <div class="segmented sheet-kind-toggle" title="Eins oder beide auswählen">${['WTS','WTT'].map(kind=>`<button type="button" data-sheet-kind="${kind}" aria-pressed="${sheet.kind.split('/').includes(kind)}" class="${sheet.kind.split('/').includes(kind)?'active':''}" title="${kind==='WTS'?'Want to sell – Verkauf':'Want to trade – Tausch'}">${kind}</button>`).join('')}</div>
         <input id="sheet-name" class="sheet-name-input" value="${escapeHtml(sheet.name)}" maxlength="80" aria-label="Titel des Sheets">
         <button class="icon-button" id="sheet-delete" title="Sheet löschen" aria-label="Sheet löschen">🗑</button></header>
       <div class="sheet-options">
@@ -63,7 +63,14 @@ async function renderSheets(){
   $('#sheet-subtitle').onchange=event=>patchSheet({subtitle:event.target.value});
   $('#sheet-sort').onchange=event=>patchSheet({sort:event.target.value});
   $('#sheet-layout').onchange=event=>patchSheet({layout:event.target.value});
-  $$('[data-sheet-kind]',content).forEach(button=>button.onclick=()=>{$$('[data-sheet-kind]',content).forEach(item=>item.classList.toggle('active',item===button));patchSheet({kind:button.dataset.sheetKind})});
+  // Two switches, not a choice: a sheet can be for sale, for trade, or both -- but not neither.
+  $$('[data-sheet-kind]',content).forEach(button=>button.onclick=()=>{
+    const buttons=$$('[data-sheet-kind]',content),active=buttons.filter(item=>item.classList.contains('active'));
+    if(active.length===1&&active[0]===button)return;
+    button.classList.toggle('active');
+    buttons.forEach(item=>item.setAttribute('aria-pressed',String(item.classList.contains('active'))));
+    patchSheet({kind:buttons.filter(item=>item.classList.contains('active')).map(item=>item.dataset.sheetKind).join('/')});
+  });
   $$('[data-sheet-background]',content).forEach(button=>button.onclick=()=>{$$('[data-sheet-background]',content).forEach(item=>{item.classList.toggle('active',item===button);item.setAttribute('aria-checked',String(item===button))});patchSheet({background:button.dataset.sheetBackground})});
   // The option list is cached; after an upload or a delete it is fetched again with the view.
   $('#sheet-background-file').onchange=async event=>{

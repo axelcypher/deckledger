@@ -175,6 +175,16 @@ describe('app in the browser', { skip }, () => {
     await page.waitFor(`(()=>{const image=document.querySelector('#sheet-preview img');return image&&image.complete&&image.naturalWidth>300})()`, { message: 'the rendered sheet image' });
     assert.match(await page.evaluate(`document.querySelector('#sheet-text').value`), /Ember \(PL8\)/);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[data-sheet-source]')].map(button=>button.dataset.sheetSource)`), ['collection', 'duplicates', 'surplus']);
+    // For sale, for trade, or both -- never neither.
+    const kind = () => page.evaluate(`sheetView.payload.sheet.kind`);
+    const press = which => page.evaluate(`document.querySelector('[data-sheet-kind="${which}"]').click()`);
+    await press('WTT');
+    await page.waitFor(`sheetView.payload.sheet.kind==='WTS/WTT'&&document.querySelector('#sheet-text').value.startsWith('**[WTS/WTT]')`, { message: 'the sheet to be both' });
+    await press('WTS');
+    await page.waitFor(`sheetView.payload.sheet.kind==='WTT'`);
+    await press('WTT');
+    await sleep(300);
+    assert.equal(await kind(), 'WTT', 'the last one cannot be switched off');
     noProblems();
   });
 

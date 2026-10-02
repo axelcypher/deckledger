@@ -20,7 +20,8 @@ from .catalog import natural_code_key
 # A sheet is a named selection of cards (with a quantity and an optional short label each) that
 # is rendered as one or more images for a "want to sell" / "want to trade" post. Layout and
 # drawing live in sheet_render.py; this part is storage, sorting and handing over card images.
-SHEET_KINDS = ("WTS", "WTT")
+# For sale, for trade, or both at once.
+SHEET_KINDS = ("WTS", "WTT", "WTS/WTT")
 SHEET_SORTS = ("number", "rarity")
 SHEET_CARD_LIMIT = 400
 
@@ -58,7 +59,7 @@ def sheet_text(sheet, cards):
     lines = [f'**[{sheet["kind"]}] {sheet["name"]}**', ""]
     for card in cards:
         finish = "" if card["finish"] in ("Normal", "standard") else f', {card["finish"]}'
-        price = card["label"] or (f'{card["price"]:.2f} €'.replace(".", ",") if card["price"] is not None and sheet["kind"] == "WTS" else "")
+        price = card["label"] or (f'{card["price"]:.2f} €'.replace(".", ",") if card["price"] is not None and "WTS" in sheet["kind"] else "")
         lines.append(f'* {card["quantity"]}x **{card["canonical_name"]}** ({card["set_code"]} {card["collector_number"]}, {card["language"]}{finish})' + (f" – {price}" if price else ""))
     return "\n".join(lines) + "\n"
 
