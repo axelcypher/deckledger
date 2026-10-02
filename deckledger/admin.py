@@ -16,6 +16,7 @@ from .games import GAMES
 from .web import admin_required, app, db, user_id
 from .schema import default_provider_code, ensure_user_lists
 from .auth import resolve_oauth_config
+from .sheets import remove_user_backgrounds
 
 
 # ---- User management (admin) -------------------------------------------------------------------
@@ -133,6 +134,7 @@ def admin_delete_user(target_id):
     db().execute("DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE user_id=?)", (target_id,))
     db().execute("DELETE FROM named_watchlist_entries WHERE list_id IN (SELECT id FROM named_watchlists WHERE user_id=?)", (target_id,))
     db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id IN (SELECT id FROM trade_sheets WHERE user_id=?)", (target_id,))
+    remove_user_backgrounds(target_id)
     for table in ("decks", "named_watchlists", "trade_sheets", "watchlist_entries", "collection_entries", "import_operations", "user_settings", "applied_requests"):
         db().execute(f"DELETE FROM {table} WHERE user_id=?", (target_id,))
     db().execute("DELETE FROM users WHERE id=?", (target_id,))

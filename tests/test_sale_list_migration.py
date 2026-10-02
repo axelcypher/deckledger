@@ -10,7 +10,7 @@ def before_the_migration():
     """Puts the database back to where migration 1 leaves it; init_database() then runs migration 2."""
     query("ALTER TABLE named_watchlists ADD COLUMN is_sale_list INTEGER NOT NULL DEFAULT 0")
     query("ALTER TABLE named_watchlist_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
-    query("DELETE FROM schema_migrations WHERE version>=2")
+    query("DELETE FROM schema_migrations WHERE version=2")
     yield
     deckledger.schema.init_database()
 

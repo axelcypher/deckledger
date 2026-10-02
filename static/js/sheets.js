@@ -43,7 +43,7 @@ async function renderSheets(){
         <label>Sortierung<select id="sheet-sort" class="select-control"><option value="number">Set &amp; Nummer</option><option value="rarity">Seltenheit, dann Nummer</option></select></label>
         <label>Raster<select id="sheet-layout" class="select-control">${options.layouts.map(layout=>`<option value="${layout}">${layout==='auto'?'Automatisch nach Anzahl':layout.replace('x',' × ')}</option>`).join('')}</select></label>
       </div>
-      <div class="sheet-backgrounds" role="radiogroup" aria-label="Hintergrund">${options.backgrounds.map(bg=>`<button type="button" role="radio" aria-checked="${sheet.background===bg.id}" data-sheet-background="${bg.id}" class="${sheet.background===bg.id?'active':''}" title="${escapeHtml(bg.label)}"><img src="/api/trade-sheets/backgrounds/${bg.id}.jpg" alt=""><span>${escapeHtml(bg.label)}</span></button>`).join('')}</div>
+      <div class="sheet-backgrounds" role="radiogroup" aria-label="Hintergrund">${options.backgrounds.map(bg=>`<button type="button" role="radio" aria-checked="${sheet.background===bg.id}" data-sheet-background="${bg.id}" class="${sheet.background===bg.id?'active':''}" title="${escapeHtml(bg.label)}"><img src="/api/trade-sheets/backgrounds/${bg.id}.jpg" alt=""><span>${escapeHtml(bg.label)}</span>${bg.custom?`<i class="sheet-background-delete" role="button" tabindex="0" data-delete-background="${bg.id}" title="Hintergrund löschen" aria-label="Hintergrund ${escapeHtml(bg.label)} löschen">×</i>`:''}</button>`).join('')}<label class="sheet-background-upload" title="Eigenes Bild als Hintergrund hochladen (JPEG, PNG, WebP)"><input type="file" id="sheet-background-file" accept="image/jpeg,image/png,image/webp" hidden><b>＋</b><span>Eigenes Bild</span></label></div>
       <div id="sheet-preview" class="sheet-preview"></div>
       <div class="sheet-text"><div class="sheet-section-head"><b>Text für den Post</b><button class="secondary-button" id="sheet-copy-text">Kopieren</button></div><textarea id="sheet-text" readonly rows="6"></textarea></div>
       <div class="sheet-section-head"><b>Karten auf dem Sheet</b><span id="sheet-count"></span></div>
@@ -65,6 +65,23 @@ async function renderSheets(){
   $('#sheet-layout').onchange=event=>patchSheet({layout:event.target.value});
   $$('[data-sheet-kind]',content).forEach(button=>button.onclick=()=>{$$('[data-sheet-kind]',content).forEach(item=>item.classList.toggle('active',item===button));patchSheet({kind:button.dataset.sheetKind})});
   $$('[data-sheet-background]',content).forEach(button=>button.onclick=()=>{$$('[data-sheet-background]',content).forEach(item=>{item.classList.toggle('active',item===button);item.setAttribute('aria-checked',String(item===button))});patchSheet({background:button.dataset.sheetBackground})});
+  // The option list is cached; after an upload or a delete it is fetched again with the view.
+  $('#sheet-background-file').onchange=async event=>{
+    const file=event.target.files[0];if(!file)return;
+    const form=new FormData();form.append('file',file);
+    try{
+      const response=await fetch('/api/trade-sheets/backgrounds',{method:'POST',body:form}),created=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(created.error||`Upload fehlgeschlagen (${response.status})`);
+      await api(`/api/trade-sheets/${state.sheetId}`,{method:'PATCH',body:JSON.stringify({background:created.id})});
+      sheetView.options=null;toast('Hintergrund hinzugefügt');renderSheets();
+    }catch(error){toast(error.message);event.target.value=''}
+  };
+  $$('[data-delete-background]',content).forEach(control=>control.onclick=async event=>{
+    event.stopPropagation();
+    if(!confirm('Diesen Hintergrund löschen? Sheets, die ihn verwenden, bekommen wieder den Standard-Hintergrund.'))return;
+    try{await api(`/api/trade-sheets/backgrounds/${control.dataset.deleteBackground}`,{method:'DELETE'});sheetView.options=null;toast('Hintergrund gelöscht');renderSheets()}
+    catch(error){toast(error.message)}
+  });
   $('#sheet-copy-text').onclick=async()=>{try{await navigator.clipboard.writeText($('#sheet-text').value);toast('Text kopiert')}catch{$('#sheet-text').select();toast('Text markiert – mit Strg+C kopieren')}};
   $$('[data-sheet-source]',content).forEach(button=>button.onclick=()=>{sheetView.picker.source=button.dataset.sheetSource;$$('[data-sheet-source]',content).forEach(item=>item.classList.toggle('active',item===button));renderSheetPicker()});
   let searchTimer;$('#sheet-picker-q').oninput=event=>{sheetView.picker.q=event.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(renderSheetPicker,150)};

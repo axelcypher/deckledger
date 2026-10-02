@@ -939,6 +939,12 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .sheet-backgrounds { display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-bottom:16px; }
 .sheet-backgrounds button { position:relative;padding:0;overflow:hidden;border:2px solid transparent;border-radius:10px;background:var(--surface-2);cursor:pointer; }
 .sheet-backgrounds button.active { border-color:var(--brand); }
+.sheet-background-upload { display:grid;place-content:center;justify-items:center;gap:2px;aspect-ratio:16/10;border:2px dashed var(--line);border-radius:10px;color:var(--muted);cursor:pointer; }
+.sheet-background-upload:hover { border-color:var(--brand);color:var(--ink); }
+.sheet-background-upload b { font-size:18px;line-height:1; }
+.sheet-backgrounds .sheet-background-upload span { position:static;padding:0;background:none;color:inherit;font-size:9px;font-weight:700; }
+.sheet-background-delete { position:absolute;top:4px;right:4px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-style:normal;font-size:13px;line-height:1; }
+.sheet-background-delete:hover { background:#b3261e; }
 .sheet-backgrounds img { display:block;width:100%;aspect-ratio:16/10;object-fit:cover; }
 .sheet-backgrounds span { position:absolute;left:0;right:0;bottom:0;padding:3px 6px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:700;text-align:left; }
 .sheet-preview { display:grid;gap:14px;margin-bottom:18px; }

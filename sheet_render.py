@@ -15,7 +15,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 # Grid shapes by how many cards they hold, landscape like a playmat. A sheet takes the smallest
 # shape that fits; beyond the largest one the cards continue on further pages.
@@ -153,6 +153,41 @@ def mat_background(size: tuple[int, int], name: str) -> Image.Image:
     mat = mat.convert("RGBA")
     mat.alpha_composite(overlay)
     return mat
+
+
+# ---- Uploaded backgrounds --------------------------------------------------------------------
+PHOTO_MAX_SIDE = 3600     # as wide as the widest sheet gets
+
+
+def prepare_photo(source, target: Path) -> str:
+    """Stores an uploaded picture as the background file: upright, RGB, no larger than a sheet
+    needs, JPEG. Returns the accent colour to use on it. Raises OSError for anything that is not
+    an image Pillow can read."""
+    with Image.open(source) as opened:
+        opened.load()
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+    image.thumbnail((PHOTO_MAX_SIDE, PHOTO_MAX_SIDE), Image.LANCZOS)
+    image.save(target, format="JPEG", quality=92, subsampling=0)
+    return accent_of(image)
+
+
+def accent_of(image: Image.Image) -> str:
+    """A light tint of the picture's overall colour, for the badge and the labels on it."""
+    red, green, blue = image.convert("RGB").resize((1, 1), Image.BOX).getpixel((0, 0))
+    hue, saturation, _ = colorsys.rgb_to_hsv(red / 255, green / 255, blue / 255)
+    tint = colorsys.hsv_to_rgb(hue, min(.45, max(.18, saturation)), .96)
+    return "#" + "".join(f"{round(channel * 255):02x}" for channel in tint)
+
+
+def photo_background(size: tuple[int, int], path) -> Image.Image:
+    """The uploaded picture filling the sheet (cropped around its centre, never stretched), a
+    little darker towards the top so the heading stays readable on a bright picture."""
+    with Image.open(path) as opened:
+        photo = ImageOps.fit(opened.convert("RGB"), size, Image.LANCZOS)
+    shade = Image.linear_gradient("L").resize((size[0], max(1, size[1] // 3))).point(lambda value: int((255 - value) * .5))
+    mask = Image.new("L", size, 0)
+    mask.paste(shade, (0, 0))
+    return Image.composite(Image.new("RGB", size, "#000000"), photo, mask).convert("RGBA")
 
 
 def frange(start: float, stop: float, step: float):
@@ -300,7 +335,8 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
 
 
 def render_page(cards: list[dict], columns: int, rows: int, *, background: str = DEFAULT_BACKGROUND, kind: str = "WTS",
-                title: str = "", subtitle: str = "", page: tuple[int, int] = (1, 1), scale: float = 1.0) -> Image.Image:
+                title: str = "", subtitle: str = "", page: tuple[int, int] = (1, 1), scale: float = 1.0,
+                background_image=None, accent: str | None = None) -> Image.Image:
     """One page of a sheet. `cards` are dicts with image_path, name, set_code, number, quantity,
     label and holo -- already sorted and cut to this page."""
     card_w = max(60, round(CARD_WIDTH * scale))
@@ -313,9 +349,10 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
     # A lone card or a single column would give a canvas too narrow for the heading.
     width = max(margin * 2 + columns * card_w + (columns - 1) * gap, round(card_w * 3.2))
     height = margin + header + rows * row_h + (rows - 1) * gap + margin
-    canvas = mat_background((width, height), background)
+    # An uploaded picture (background_image, with its accent) takes the place of the drawn mat.
+    canvas = photo_background((width, height), background_image) if background_image else mat_background((width, height), background)
     draw = ImageDraw.Draw(canvas)
-    accent = BACKGROUNDS.get(background, BACKGROUNDS[DEFAULT_BACKGROUND])[3]
+    accent = accent or BACKGROUNDS.get(background, BACKGROUNDS[DEFAULT_BACKGROUND])[3]
 
     # Heading: the kind as a badge, the sheet's name, and a note (user name, date) on the right.
     badge_font = font(card_w * .13)
@@ -324,17 +361,19 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
     badge_box = (margin, margin * .78, margin + badge_w, margin * .78 + card_w * .24)
     draw.rounded_rectangle(badge_box, card_w * .05, fill=accent)
     draw.text(((badge_box[0] + badge_box[2]) / 2, (badge_box[1] + badge_box[3]) / 2), badge_text, font=badge_font, fill="#101216", anchor="mm")
+    # On a picture of unknown brightness the heading gets a dark outline; the drawn mats are dark anyway.
+    outline = {"stroke_width": max(1, round(card_w * .012)), "stroke_fill": "#101216"} if background_image else {}
     page_note = f"{page[0]}/{page[1]}" if page[1] > 1 else ""
     right_text = " · ".join(part for part in (subtitle.strip(), page_note) if part)
     right_width = 0
     if right_text:
         right_text, right_font = fit_text(draw, right_text, card_w * .1, width * .4)
         right_width = draw.textlength(right_text, font=right_font)
-        draw.text((width - margin, (badge_box[1] + badge_box[3]) / 2), right_text, font=right_font, fill=accent, anchor="rm")
+        draw.text((width - margin, (badge_box[1] + badge_box[3]) / 2), right_text, font=right_font, fill=accent, anchor="rm", **outline)
     if title.strip():
         available = width - margin - badge_box[2] - card_w * .12 - right_width - card_w * .15
         text, title_font = fit_text(draw, title.strip(), card_w * .16, max(card_w, available))
-        draw.text((badge_box[2] + card_w * .12, (badge_box[1] + badge_box[3]) / 2), text, font=title_font, fill="#f4f6fa", anchor="lm")
+        draw.text((badge_box[2] + card_w * .12, (badge_box[1] + badge_box[3]) / 2), text, font=title_font, fill="#f4f6fa", anchor="lm", **outline)
 
     # One soft shadow, reused under every card.
     blur = max(2, card_w // 30)

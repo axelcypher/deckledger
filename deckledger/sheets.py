@@ -2,12 +2,13 @@
 
 import io
 import re
+from pathlib import Path
 
 from flask import Response, jsonify, request
 
 import sheet_render
 
-from .config import now_iso
+from .config import SHEET_BACKGROUND_DIR, now_iso
 from .games import RARITY_FALLBACK_RANK, rarity_rank
 from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
@@ -75,7 +76,10 @@ def sheet_payload(sheet):
 def trade_sheet_options():
     return jsonify({
         "kinds": SHEET_KINDS,
-        "backgrounds": [{"id": key, "label": value[0], "top": value[1], "bottom": value[2], "accent": value[3], "glow": value[4]} for key, value in sheet_render.BACKGROUNDS.items()],
+        "backgrounds": [{"id": key, "label": value[0], "top": value[1], "bottom": value[2], "accent": value[3], "glow": value[4]} for key, value in sheet_render.BACKGROUNDS.items()] + [
+            {"id": f'custom-{row["id"]}', "label": row["name"], "accent": row["accent"], "custom": True}
+            for row in db().execute("SELECT id,name,accent FROM sheet_backgrounds WHERE user_id=? ORDER BY id", (user_id(),))
+        ],
         "layouts": ["auto"] + [f"{columns}x{rows}" for columns, rows in sheet_render.LAYOUTS if columns * rows > 1],
     })
 
@@ -123,7 +127,7 @@ def trade_sheet(sheet_id):
             "name": str(p.get("name", sheet["name"]) or "").strip()[:80] or sheet["name"],
             "subtitle": str(p.get("subtitle", sheet["subtitle"]) or "").strip()[:80],
             "kind": p.get("kind") if p.get("kind") in SHEET_KINDS else sheet["kind"],
-            "background": p.get("background") if p.get("background") in sheet_render.BACKGROUNDS else sheet["background"],
+            "background": p.get("background") if p.get("background") in sheet_render.BACKGROUNDS or own_background(p.get("background")) else sheet["background"],
             "sort": p.get("sort") if p.get("sort") in SHEET_SORTS else sheet["sort"],
             "layout": p["layout"] if p.get("layout") == "auto" or sheet_render.parse_layout(p.get("layout")) else sheet["layout"],
         }
@@ -204,7 +208,7 @@ def trade_sheet_image(sheet_id, page, fmt):
                       "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"],
                       "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
     image = sheet_render.render_page(
-        tiles, columns, rows, background=sheet["background"], kind=sheet["kind"], title=sheet["name"],
+        tiles, columns, rows, **background_for(sheet), kind=sheet["kind"], title=sheet["name"],
         subtitle=sheet["subtitle"], page=(page, len(pages)), scale=scale * sheet_render.scale_for(columns),
     )
     buffer = io.BytesIO()
@@ -221,16 +225,97 @@ def trade_sheet_image(sheet_id, page, fmt):
     return response
 
 
+# ---- Backgrounds ------------------------------------------------------------------------------
+# The drawn mats ship with the app (sheet_render.BACKGROUNDS). A user can add pictures of their
+# own; a sheet names one of those as "custom-<id>".
+BACKGROUND_UPLOAD_LIMIT = 25 * 1024 * 1024
+BACKGROUNDS_PER_USER = 24
 _sheet_swatches = {}
+
+
+def own_background(name, uid=None):
+    """The row of an uploaded background this account may use, or None."""
+    match = re.fullmatch(r"custom-(\d+)", str(name or ""))
+    if not match:
+        return None
+    return db().execute("SELECT * FROM sheet_backgrounds WHERE id=? AND user_id=?", (int(match.group(1)), uid or user_id())).fetchone()
+
+
+def background_file(row):
+    return SHEET_BACKGROUND_DIR / f'{row["id"]}.jpg'
+
+
+def background_for(sheet):
+    """What render_page needs for a sheet's background. A custom one that is gone (deleted, or
+    its file lost) falls back to the default mat."""
+    row = own_background(sheet["background"], sheet["user_id"])
+    if row and background_file(row).is_file():
+        return {"background_image": background_file(row), "accent": row["accent"]}
+    return {"background": sheet["background"] if sheet["background"] in sheet_render.BACKGROUNDS else sheet_render.DEFAULT_BACKGROUND}
+
+
+def remove_user_backgrounds(uid):
+    """Rows and files of an account that is being deleted."""
+    for row in db().execute("SELECT id FROM sheet_backgrounds WHERE user_id=?", (uid,)).fetchall():
+        background_file(row).unlink(missing_ok=True)
+    db().execute("DELETE FROM sheet_backgrounds WHERE user_id=?", (uid,))
+
+
+@app.post("/api/trade-sheets/backgrounds")
+@login_required
+def upload_trade_sheet_background():
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "Keine Datei übermittelt."}), 400
+    if db().execute("SELECT COUNT(*) FROM sheet_backgrounds WHERE user_id=?", (user_id(),)).fetchone()[0] >= BACKGROUNDS_PER_USER:
+        return jsonify({"error": f"Es sind höchstens {BACKGROUNDS_PER_USER} eigene Hintergründe möglich. Lösche erst einen."}), 400
+    payload = file.stream.read(BACKGROUND_UPLOAD_LIMIT + 1)
+    if len(payload) > BACKGROUND_UPLOAD_LIMIT:
+        return jsonify({"error": "Das Bild ist größer als 25 MB."}), 400
+    name = str(request.form.get("name") or Path(file.filename).stem).strip()[:40] or "Eigener Hintergrund"
+    SHEET_BACKGROUND_DIR.mkdir(parents=True, exist_ok=True)
+    background_id = db().execute(
+        "INSERT INTO sheet_backgrounds(user_id,name,accent,created_at) VALUES(?,?,'',?)", (user_id(), name, now_iso()),
+    ).lastrowid
+    target = SHEET_BACKGROUND_DIR / f"{background_id}.jpg"
+    try:
+        accent = sheet_render.prepare_photo(io.BytesIO(payload), target)
+    except Exception:  # not an image, truncated, a format Pillow cannot read, a decompression bomb
+        db().rollback()
+        target.unlink(missing_ok=True)
+        return jsonify({"error": "Die Datei ist kein Bild, das sich lesen lässt (JPEG, PNG oder WebP)."}), 400
+    db().execute("UPDATE sheet_backgrounds SET accent=? WHERE id=?", (accent, background_id))
+    db().commit()
+    return jsonify({"id": f"custom-{background_id}", "label": name, "custom": True}), 201
+
+
+@app.delete("/api/trade-sheets/backgrounds/<name>")
+@login_required
+def delete_trade_sheet_background(name):
+    row = own_background(name)
+    if not row:
+        return jsonify({"error": "Hintergrund nicht gefunden."}), 404
+    # Sheets that used it go back to the default mat.
+    db().execute("UPDATE trade_sheets SET background=?,updated_at=? WHERE user_id=? AND background=?",
+                 (sheet_render.DEFAULT_BACKGROUND, now_iso(), user_id(), name))
+    db().execute("DELETE FROM sheet_backgrounds WHERE id=?", (row["id"],))
+    db().commit()
+    background_file(row).unlink(missing_ok=True)
+    _sheet_swatches.pop(name, None)
+    return jsonify({"deleted": True})
 
 
 @app.get("/api/trade-sheets/backgrounds/<name>.jpg")
 @login_required
 def trade_sheet_background(name):
-    if name not in sheet_render.BACKGROUNDS:
+    row = own_background(name)
+    if not row and name not in sheet_render.BACKGROUNDS:
         return Response(status=404)
     if name not in _sheet_swatches:
+        if row and not background_file(row).is_file():
+            return Response(status=404)
+        swatch = sheet_render.photo_background((240, 150), background_file(row)).convert("RGB") if row else sheet_render.swatch(name)
         buffer = io.BytesIO()
-        sheet_render.swatch(name).save(buffer, format="JPEG", quality=85)
+        swatch.save(buffer, format="JPEG", quality=85)
         _sheet_swatches[name] = buffer.getvalue()
     return Response(_sheet_swatches[name], mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
