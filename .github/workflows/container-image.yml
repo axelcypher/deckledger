@@ -52,6 +52,17 @@ jobs:
       - name: Run test suite
         run: python -m pytest
 
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # The frontend in a headless Chrome (preinstalled on the runner) against the test catalogue.
+      - name: Run frontend tests
+        run: node --test "tests/frontend/*.test.mjs"
+        env:
+          DECKLEDGER_PYTHON: python
+
   build:
     name: Build container image
     # No image is published from a commit whose tests fail.

@@ -159,6 +159,14 @@ python -m pytest
 
 The suite runs against a throwaway database with a small built-in catalogue and never touches the network. It covers the backup round trip, import undo, what a catalogue sync may and may not delete, provider seeding, the collection endpoint, the VCard provider and deck rules, price lookup, and the cross-site/session checks. The container workflow runs it before building an image.
 
+The frontend is tested in a headless Chrome against the same catalogue (Node 22 or newer, no packages to install):
+
+```bash
+node --test "tests/frontend/*.test.mjs"
+```
+
+It opens every view for every game, adds cards with quick clicks, opens a card and enters a price, builds a deck and a sheet, queues a change while offline, and fails on any error in the browser console. `CHROME_BIN` overrides where Chrome is looked for, `DECKLEDGER_PYTHON` which interpreter starts the app. The workflow runs these as well.
+
 ## Operations
 
 ```bash

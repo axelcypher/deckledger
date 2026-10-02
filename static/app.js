@@ -270,7 +270,14 @@ function setActiveGame(gameId, persist=true) {
   if(persist) post('/api/settings',{activeGameId:gameId});
 }
 
+// A view that finishes loading after the user has moved on must not draw over what is on screen
+// by then -- neither over another view nor over a newer request for the same one. Every async
+// render takes a guard first and asks it after each wait; routeTo() invalidates all of them.
+let renderGeneration=0;
+function renderGuard(){const mine=++renderGeneration;return ()=>mine!==renderGeneration}
+
 function routeTo(route, data) {
+  renderGeneration++;deckRenderToken++;
   hideDeckImagePreview();closeDeckAddPopup();setDeckCatalogOpen(false);clearTimeout(state.homeBannerTimer);
   state.mobileFiltersOpen={};
   if(route!=='watchlist'){state.watchSelection.clear();state.watchSelectionMode=false}
@@ -686,8 +693,10 @@ function openAdminPriceSources(games){
 }
 
 async function renderAdmin(){
+  const stale=renderGuard();
   content.innerHTML='<div class="page-loader"><span></span><p>Admin-Bereich wird geladen …</p></div>';
   const [games,providers,oauth,users]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers'),api('/api/admin/oauth'),api('/api/admin/users')]);
+  if(stale())return;
   const oauthLocked=oauth.source==='file',ro=oauthLocked?'disabled':'';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">VERWALTUNG</span><h1>Admin</h1><p>Benutzer, TCGs, Katalog-Provider und Zuordnungen verwalten.</p></div></div>
     <details class="settings-section oauth-admin-card ${oauthLocked?'is-locked':''}">
@@ -1000,9 +1009,11 @@ async function renderManualCards(gameId){
 }
 
 async function renderGame(gameId){
+  const stale=renderGuard();
   content.innerHTML='<div class="page-loader"><span></span><p>Sets werden geladen …</p></div>';
   setActiveGame(gameId,false); const game=state.boot.games.find(g=>g.id===gameId); state.game=game;
-  const sets=await api(`/api/games/${gameId}/sets`); state.game.sets=sets;
+  const sets=await api(`/api/games/${gameId}/sets`); game.sets=sets;
+  if(stale())return;
   const completion=sets.length?Math.round(sets.reduce((a,s)=>a+s.base_completion,0)/sets.length):0;
   const groups=groupedSets(sets), flatSets=sortedSets(sets), availableGroups=[...new Set(sets.map(setGroup))].sort((a,b)=>{const ai=SET_GROUP_ORDER.indexOf(a),bi=SET_GROUP_ORDER.indexOf(b);return (ai<0?99:ai)-(bi<0?99:bi)||a.localeCompare(b,'de')});
   content.innerHTML=`
@@ -1042,12 +1053,16 @@ function setTile(s){
 }
 
 async function renderSet(setId, preserve=false){
+  const stale=renderGuard();
   if(!preserve) content.innerHTML='<div class="page-loader"><span></span><p>Kartenkatalog wird geladen …</p></div>';
   const f=state.cardFilters;
   const params=new URLSearchParams({language:state.language,mode:state.filter,sort:state.sort,q:state.query,rarity:f.rarity,foil:f.foilMode,finish:f.finish,rarities:f.rarities.join(','),costs:f.costs.join(','),colors:f.colors.join(','),inkwell:f.inkwell});
-  const data=await api(`/api/sets/${setId}/cards?${params}`); state.set=data.set; state.cards=data.cards;
+  const data=await api(`/api/sets/${setId}/cards?${params}`);
+  if(stale())return;
+  state.set=data.set; state.cards=data.cards;
   const s=data.set, st=data.stats; const game=state.boot.games.find(g=>g.id===s.game_id); state.game=game;
   const availableSets=game.sets||await api(`/api/games/${game.id}/sets`);game.sets=availableSets;
+  if(stale())return;
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
   const isLorcana=game.id==='lorcana',isOnePiece=game.id==='one-piece',isHololive=game.id==='hololive';
   const foilDisplayActive=isLorcana&&f.finish==='foil';
@@ -1100,11 +1115,14 @@ async function renderSet(setId, preserve=false){
 }
 
 async function renderAllCards(gameId,preserve=false){
+  const stale=renderGuard();
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Alle Karten werden zusammengestellt …</p></div>';
   setActiveGame(gameId,false);
   const f=state.cardFilters;
   const game=state.boot.games.find(item=>item.id===gameId),params=new URLSearchParams({language:state.language,mode:state.filter,sort:state.sort,set_order:state.setDirection,q:state.query,rarity:f.rarity,foil:f.foilMode,finish:f.finish,rarities:f.rarities.join(','),costs:f.costs.join(','),colors:f.colors.join(','),inkwell:f.inkwell});
-  const [data,availableSets]=await Promise.all([api(`/api/games/${gameId}/cards?${params}`),game.sets?Promise.resolve(game.sets):api(`/api/games/${gameId}/sets`)]);game.sets=availableSets;state.game=game;state.cards=data.groups.flatMap(group=>group.cards);
+  const [data,availableSets]=await Promise.all([api(`/api/games/${gameId}/cards?${params}`),game.sets?Promise.resolve(game.sets):api(`/api/games/${gameId}/sets`)]);game.sets=availableSets;
+  if(stale())return;
+  state.game=game;state.cards=data.groups.flatMap(group=>group.cards);
   const setOptions=[...availableSets].sort((a,b)=>compareSetRelease(a,b,'desc'));
   const stats=data.stats;
   const isLorcana=game.id==='lorcana',isOnePiece=game.id==='one-piece',isHololive=game.id==='hololive';
@@ -1762,11 +1780,15 @@ function priceHistorySvg(points){
 }
 
 async function renderWatchlist(preserve=false){
+  const stale=renderGuard();
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Watchlists werden geladen …</p></div>';
-  const game=state.boot.games.find(g=>g.id===state.activeGameId), lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);state.activeWatchlists=lists;
+  const game=state.boot.games.find(g=>g.id===state.activeGameId), lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);
+  if(stale())return;
+  state.activeWatchlists=lists;
   if(!state.watchlistId||!lists.some(l=>l.id===state.watchlistId))state.watchlistId=lists[0]?.id;
   if(!state.watchlistId){content.innerHTML='<div class="empty-state"><b>Noch keine Watchlist</b></div>';return}
   const f=state.watchFilters, params=new URLSearchParams(f), data=await api(`/api/watchlists/${state.watchlistId}/cards?${params}`), sets=await api(`/api/games/${state.activeGameId}/sets`);
+  if(stale())return;
   const currentSet=sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   state.cards=data.cards.map(r=>({...r,variants:[r],variant_count:1,owned_variants:r.quantity?1:0,watchlisted:true,value:r.quantity*r.price}));
   // Selections don't survive a list switch (they're indices into a variant set that only makes
@@ -1921,8 +1943,11 @@ function collectionRarityOptions(gameId,language){
 }
 
 async function renderCollection(preserve=false){
+  const stale=renderGuard();
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Sammlung wird zusammengestellt …</p></div>';
-  const game=state.boot.games.find(g=>g.id===state.activeGameId),f=state.collectionFilters,params=new URLSearchParams({game_id:state.activeGameId,...f}),data=await api(`/api/collection?${params}`);state.cards=data.cards;
+  const game=state.boot.games.find(g=>g.id===state.activeGameId),f=state.collectionFilters,params=new URLSearchParams({game_id:state.activeGameId,...f}),data=await api(`/api/collection?${params}`);
+  if(stale())return;
+  state.cards=data.cards;
   const currentSet=data.sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   const collectionStats=statPill([
     {label:'Varianten',value:data.stats.variants},
@@ -2403,7 +2428,11 @@ async function saveDeckMeta(name,format_id,notes){await api(`/api/decks/${state.
 async function openCard(identityId,variantId,refresh=false){
   if(!refresh){openOverlay('card-modal');advancedPanelExpanded=false}
   $('#card-dialog').innerHTML='<div class="page-loader"><span></span><p>Kartendetails werden geladen …</p></div>';
-  const card=await api(`/api/cards/${identityId}`); state.modalCard=card; state.modalVariant=card.variants.find(v=>v.id===variantId)||card.variants[0];state.activeWatchlists=await api(`/api/watchlists?game_id=${state.modalVariant.game_id}`); renderCardModal();
+  const card=await api(`/api/cards/${identityId}`),variant=card.variants.find(v=>v.id===variantId)||card.variants[0],watchlists=await api(`/api/watchlists?game_id=${variant.game_id}`);
+  // Closed while it was loading (a background refresh can still be on its way): there is nothing
+  // to draw into, and keeping the card as "open" would mislead everything that checks for it.
+  if($('#card-modal').classList.contains('hidden'))return;
+  state.modalCard=card; state.modalVariant=variant; state.activeWatchlists=watchlists; renderCardModal();
 }
 
 let modalVariantSwitching=false;
@@ -2545,7 +2574,8 @@ function renderCardModal(){
   if(advancedToggles.length&&advancedPanelExpanded)loadAdvancedPanel();
   const manualPrice=$('#manual-price-form',$('#card-dialog'));
   if(manualPrice){
-    const saved=async message=>{toast(message);state.boot=await api('/api/bootstrap');await openCard(card.id,v.id,true);scheduleRefresh(0)};
+    // scheduleRefresh() redraws the view behind the dialog and then the dialog itself.
+    const saved=async message=>{toast(message);state.boot=await api('/api/bootstrap');scheduleRefresh(0)};
     manualPrice.onsubmit=async event=>{
       event.preventDefault();
       try{await api(`/api/variants/${encodeURIComponent(v.id)}/manual-price`,{method:'PUT',body:JSON.stringify({amount:$('#manual-price-input').value})});await saved('Eigener Preis gespeichert')}
@@ -2838,6 +2868,8 @@ const SHEET_PICKER_LIMIT=80;
 async function renderSheets(){
   const game=state.boot.games.find(g=>g.id===state.activeGameId);
   sheetView.options=sheetView.options||await api('/api/trade-sheets/options');
+  // The options are fetched once; a first visit that is left before they arrive draws nothing.
+  if(state.route!=='sheets')return;
   if(!state.sheetId){
     content.innerHTML='<div class="page-loader"><span></span><p>Sheets werden geladen …</p></div>';
     const sheets=await api(`/api/trade-sheets?game_id=${encodeURIComponent(game.id)}`);
