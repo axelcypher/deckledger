@@ -97,9 +97,15 @@ def test_pages_and_text(client, sheet):
     assert payload["pages"] == [{"columns": 2, "rows": 1, "count": 2}]
     assert payload["text"].splitlines() == [
         "**[WTS] Abgabe**", "",
-        "* 1x **Ember (PL8)** (1 001, EN, Holo) – 3 €",
-        "* 1x **Tide (PL8)** (1 003, EN)",
+        "* 1x **Ember (PL8)** (1 001, Holo) – 3 €",      # VCard exists in English only: no language
+        "* 1x **Tide (PL8)** (1 003)",
     ]
+
+
+def test_text_names_the_language_where_a_game_has_several(client):
+    sheet_id = client.post("/api/trade-sheets", json={"game_id": "lorcana", "name": "L"}).get_json()["id"]
+    text = client.post(f"/api/trade-sheets/{sheet_id}/cards", json={"variant_id": ELSA, "delta": 1}).get_json()["text"]
+    assert "* 1x **Elsa - Snow Queen** (TFC 1, EN)" in text
 
 
 def test_image_is_rendered_for_each_page(client, sheet):

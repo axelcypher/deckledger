@@ -9,7 +9,7 @@ from flask import Response, jsonify, request
 import sheet_render
 
 from .config import SHEET_BACKGROUND_DIR, now_iso
-from .games import RARITY_FALLBACK_RANK, rarity_rank
+from .games import RARITY_FALLBACK_RANK, game as game_rules, rarity_rank
 from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
 from .images import card_image
@@ -57,10 +57,16 @@ def sheet_cards(sheet):
 def sheet_text(sheet, cards):
     """The list that goes into the post next to the images, as Reddit-flavoured Markdown."""
     lines = [f'**[{sheet["kind"]}] {sheet["name"]}**', ""]
+    # The language is only worth a mention where a game is printed in more than one.
+    name_language = len(game_rules(sheet["game_id"]).languages) != 1
     for card in cards:
-        finish = "" if card["finish"] in ("Normal", "standard") else f', {card["finish"]}'
+        details = [f'{card["set_code"]} {card["collector_number"]}']
+        if name_language:
+            details.append(card["language"])
+        if card["finish"] not in ("Normal", "standard"):
+            details.append(card["finish"])
         price = card["label"] or (f'{card["price"]:.2f} €'.replace(".", ",") if card["price"] is not None and "WTS" in sheet["kind"] else "")
-        lines.append(f'* {card["quantity"]}x **{card["canonical_name"]}** ({card["set_code"]} {card["collector_number"]}, {card["language"]}{finish})' + (f" – {price}" if price else ""))
+        lines.append(f'* {card["quantity"]}x **{card["canonical_name"]}** ({", ".join(details)})' + (f" – {price}" if price else ""))
     return "\n".join(lines) + "\n"
 
 
