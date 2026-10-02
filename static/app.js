@@ -392,7 +392,7 @@ function renderDashboard(){
         <button type="button" data-dashboard-route="game"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg><span>Sets</span><strong>${activeGame?.set_count||0}</strong></button>
         <button type="button" data-dashboard-route="decks"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13"/></svg><span>Decks</span><strong>${activeGame?.deck_count||0}</strong></button>
         <button type="button" data-dashboard-route="watchlist"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg><span>Watchlist</span><strong>${activeGame?.watch_count||0}</strong></button>
-        <button type="button" data-dashboard-route="sheets"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h3v6H7zM12 9h3v6h-3zM17 9h1.5v6H17z"/></svg><span>Sheets</span><strong>${activeGame?.sheet_count||0}</strong></button>
+        <button type="button" data-dashboard-route="sheets"><svg viewBox="0 0 24 24"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg><span>Sheets</span><strong>${activeGame?.sheet_count||0}</strong></button>
       </nav>
       <section id="home-banner" class="home-banner hidden">
         <div class="home-banner-head"><span class="eyebrow" id="home-banner-label">NEU &amp; ANGESAGT</span></div>
