@@ -6,7 +6,10 @@ const CACHE_VERSION = 'v2';
 const SHELL_CACHE = `deckledger-shell-${CACHE_VERSION}`;
 const API_CACHE = `deckledger-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `deckledger-images-${CACHE_VERSION}`;
-const KNOWN_CACHES = [SHELL_CACHE, API_CACHE, IMAGE_CACHE];
+// What the user saved for offline use on purpose (static/js/offline.js). Written by the page,
+// only read here, never trimmed, and kept across changes of CACHE_VERSION.
+const SAVED_CACHE = 'deckledger-offline-v1';
+const KNOWN_CACHES = [SHELL_CACHE, API_CACHE, IMAGE_CACHE, SAVED_CACHE];
 
 // Deliberately NOT precaching "/" here -- if install ever runs while logged
 // out, fetching "/" resolves to the login page, not the app shell, and we'd
@@ -65,17 +68,36 @@ function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
 }
 
+async function saved(request) {
+  const cache = await caches.open(SAVED_CACHE);
+  return cache.match(request, { ignoreVary: true });
+}
+
+// The full-size image of a card that was saved without the large images: its thumbnail is
+// better than a broken picture in the detail view.
+async function savedThumbnail(request) {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith('/art/') || url.searchParams.has('size')) return undefined;
+  url.searchParams.set('size', 'thumb');
+  return (await caches.open(IMAGE_CACHE)).match(url.href) || saved(url.href);
+}
+
 // Card images are addressed by stable URLs and never change once fetched --
 // safe to serve from cache first and only hit the network on a miss.
 async function cacheFirst(event, cacheName) {
   const { request } = event;
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request) || await saved(request);
   if (cached) return cached;
   // While the server is known not to answer, an image that is not saved yet stays missing
   // rather than tying up a connection the next page or API attempt needs.
-  if (Date.now() < unreachableUntil) return Response.error();
-  const response = await fetch(request);
+  if (Date.now() < unreachableUntil) return await savedThumbnail(request) || Response.error();
+  let response;
+  try {
+    response = await fetch(request);
+  } catch (error) {
+    return await savedThumbnail(request) || Response.error();
+  }
   // The server answers a card image it could not fetch with a generated stand-in (marked
   // X-Image-Source: placeholder). Keeping that would pin the stand-in for good.
   if (response.ok && response.headers.get('X-Image-Source') !== 'placeholder') {
@@ -131,7 +153,7 @@ function staleCopy(cached) {
 async function networkFirst(event, cacheName, timeoutMs) {
   const { request } = event;
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request) || await saved(request);
   const controller = new AbortController();
   const network = fetch(request, { signal: controller.signal }).then(response => {
     if (response.ok) {

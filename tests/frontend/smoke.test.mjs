@@ -174,6 +174,39 @@ describe('app in the browser', { skip }, () => {
     page.problems.splice(0);
   });
 
+  test('saving for offline use makes the collection available without the server', async () => {
+    await page.waitFor(`navigator.serviceWorker.controller`, { message: 'the service worker to control the page' });
+    await page.route('settings');
+    await page.evaluate(`document.querySelector('#offline-save-start').click()`);
+    const info = await page.waitFor(`offlineSaveInfo()`, { message: 'the save to finish' });
+    assert.equal(info.cards, 1);
+    assert.ok(info.files >= 20, `only ${info.files} files saved`);
+    await page.waitFor(`document.querySelector('#offline-save-body')?.innerText.includes('1 Karte gespeichert')`);
+    // Without the service worker's own caches, only what was saved on purpose is left.
+    await page.evaluate(`caches.keys().then(keys=>Promise.all(keys.filter(key=>!key.startsWith('deckledger-offline')).map(key=>caches.delete(key))))`);
+    await page.offline(true);
+    try {
+      await page.route('collection');
+      await page.waitFor(`document.querySelectorAll('.card-tile').length===1`, { message: 'the saved collection to render offline' });
+      await page.route('watchlist');
+      await page.waitFor(`document.querySelectorAll('.card-tile').length===1`, { message: 'the saved watchlist to render offline' });
+      await page.evaluate(`openCard('vcard-card-ember8',${JSON.stringify(EMBER8)})`);
+      await page.waitFor(`document.querySelector('#card-dialog [data-tab]')`, { message: 'the saved card details to open offline' });
+      await page.evaluate(`(closeOverlay('card-modal'),1)`);
+    } finally { await page.offline(false); }
+    await page.evaluate(`api('/api/bootstrap')`);   // back online: lets the app notice the server again
+    page.problems.splice(0);
+  });
+
+  test('saved data of another account is dropped', async () => {
+    await page.evaluate(`caches.open(OFFLINE_SAVE_CACHE).then(cache=>cache.put(OFFLINE_SAVE_MARKER,new Response(JSON.stringify({userId:-1,cards:5,savedAt:new Date().toISOString()}))))`);
+    assert.equal((await page.evaluate(`offlineSaveInfo()`)).userId, -1);
+    await page.evaluate(`dropForeignOfflineSave()`);
+    assert.equal(await page.evaluate(`offlineSaveInfo()`), null);
+    assert.equal(await page.evaluate(`caches.open(OFFLINE_SAVE_CACHE).then(cache=>cache.keys()).then(keys=>keys.length)`), 0);
+    noProblems();
+  });
+
   test('the phone layout renders its tab bar and views', async () => {
     const phone = await startBrowser({ width: 400, height: 860, mobile: true });
     try {

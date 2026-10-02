@@ -95,3 +95,72 @@ async function syncOfflineQueue(){
 }
 window.addEventListener('online',()=>{updateOfflineIndicator();syncOfflineQueue()});
 window.addEventListener('offline',updateOfflineIndicator);
+
+// ---- Saved for offline use ------------------------------------------------------------------
+// The service worker keeps what was looked at, within limits, and drops the oldest entries. That
+// is no promise that a whole collection is there when the connection is not. Saving for offline
+// use fetches it deliberately -- the views' data, every owned and watched card's details and
+// image -- into a cache of its own that is never trimmed. The service worker falls back to it.
+const OFFLINE_SAVE_CACHE='deckledger-offline-v1', OFFLINE_SAVE_MARKER='/offline-save/info', OFFLINE_SAVE_PARALLEL=6;
+let offlineSave=null;   // {done,total,controller} while a save is running
+
+async function offlineSaveInfo(){
+  if(!('caches' in window))return null;
+  try{const marker=await (await caches.open(OFFLINE_SAVE_CACHE)).match(OFFLINE_SAVE_MARKER);return marker?await marker.json():null}catch{return null}
+}
+async function clearOfflineSave(){if('caches' in window)await caches.delete(OFFLINE_SAVE_CACHE)}
+// The cache belongs to whoever saved it. Another account signing in on this browser must not be
+// shown the previous one's collection when the server cannot be reached.
+async function dropForeignOfflineSave(){
+  const info=await offlineSaveInfo();
+  if(info&&info.userId!==state.boot.user.id)await clearOfflineSave();
+}
+
+// Everything the offline views ask for, as lists of URLs: the data first (it names the cards),
+// then one details request and the images per card.
+async function saveForOffline({fullImages=false,onProgress=()=>{}}={}){
+  if(offlineSave)return null;
+  const controller=new AbortController(),cache=await caches.open(OFFLINE_SAVE_CACHE),saved=new Set();
+  const progress=offlineSave={done:0,total:0,controller};
+  const report=()=>onProgress(progress.done,progress.total);
+  const keep=async(url,image=false)=>{
+    const response=await fetch(url,{signal:controller.signal,headers:image?{}:{'Content-Type':'application/json'}});
+    // An answer the service worker took from its own cache because the server did not respond
+    // is not a fresh copy, and the stand-in for an image that could not be fetched is no image.
+    if(!response.ok||response.headers.get('X-DeckLedger-Stale')==='1')throw new Error(`${url} (${response.status})`);
+    if(image&&response.headers.get('X-Image-Source')==='placeholder')throw new Error(`${url} (no image)`);
+    await cache.put(url,response.clone());
+    saved.add(new URL(url,location.origin).href);
+    return image?null:response.json();
+  };
+  const data=async url=>{progress.total++;report();const result=await keep(url);progress.done++;report();return result};
+  let skipped=0;
+  try{
+    const boot=await data('/api/bootstrap');
+    await data('/api/home-banner');
+    const identities=new Set(),variants=new Set();
+    const collect=cards=>cards.forEach(card=>{identities.add(card.identity_id);variants.add(card.variant_id)});
+    for(const game of boot.games){
+      const id=encodeURIComponent(game.id);
+      await Promise.all([`/api/games/${id}/sets`,`/api/games/${id}/formats`,`/api/decks?game_id=${id}`,`/api/trade-sheets?game_id=${id}`,`/api/home-recent?game_id=${id}`].map(data));
+      collect((await data(collectionUrl(game.id,defaultCollectionFilters(game.id)))).cards);
+      for(const list of await data(`/api/watchlists?game_id=${game.id}`))collect((await data(watchlistCardsUrl(list.id,defaultWatchFilters(game.id)))).cards);
+    }
+    const queue=[...[...identities].map(identity=>[`/api/cards/${identity}`,false]),...[...variants].flatMap(variant=>[[artUrl(variant),true],...(fullImages?[[artUrl(variant,'full'),true]]:[])])];
+    progress.total+=queue.length;report();
+    // A card whose image or details cannot be fetched right now is skipped, not a reason to stop.
+    const worker=async()=>{
+      for(let item;(item=queue.shift());){
+        try{await keep(item[0],item[1])}catch(error){if(controller.signal.aborted)throw error;skipped++}
+        progress.done++;report();
+      }
+    };
+    await Promise.all(Array.from({length:OFFLINE_SAVE_PARALLEL},worker));
+    // What an earlier save stored and this one no longer needs (cards that left the collection).
+    for(const request of await cache.keys())if(!saved.has(request.url))await cache.delete(request);
+    const info={userId:boot.user.id,savedAt:new Date().toISOString(),cards:variants.size,files:saved.size,skipped,fullImages};
+    await cache.put(OFFLINE_SAVE_MARKER,new Response(JSON.stringify(info),{headers:{'Content-Type':'application/json'}}));
+    return info;
+  }finally{offlineSave=null}
+}
+function cancelOfflineSave(){offlineSave?.controller.abort()}

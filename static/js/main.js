@@ -272,7 +272,11 @@ async function init(){
 
 // The outbox is replayed once the signed-in user is known (see queueOfflineMutation), in case
 // the app was reopened after being offline and is already back online.
-init().then(()=>{updateOfflineIndicator();if(navigator.onLine)syncOfflineQueue()});
+init().then(()=>{
+  updateOfflineIndicator();if(navigator.onLine)syncOfflineQueue();
+  // Only an answer that really came from the server says who is signed in.
+  if(state.boot&&!serverUnreachable)dropForeignOfflineSave();
+});
 
 // Registered independent of init() -- offline shell caching shouldn't block
 // or be blocked by the initial data load. Service workers require a secure

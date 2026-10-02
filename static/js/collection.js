@@ -336,7 +336,7 @@ function collectionRarityOptions(gameId,language){
 async function renderCollection(preserve=false){
   const stale=renderGuard();
   if(!preserve)content.innerHTML='<div class="page-loader"><span></span><p>Sammlung wird zusammengestellt …</p></div>';
-  const game=state.boot.games.find(g=>g.id===state.activeGameId),f=state.collectionFilters,params=new URLSearchParams({game_id:state.activeGameId,...f}),data=await api(`/api/collection?${params}`);
+  const game=state.boot.games.find(g=>g.id===state.activeGameId),f=state.collectionFilters,data=await api(collectionUrl(state.activeGameId,f));
   if(stale())return;
   state.cards=data.cards;
   const currentSet=data.sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
@@ -363,7 +363,7 @@ async function renderCollection(preserve=false){
     </div></div>
     <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
   mountTileFeed($('.card-grid',content),[{cards:data.cards}],{key:`collection:${state.activeGameId}`,preserve,render:card=>cardTile(card)});
-  state.statsUrl=`/api/collection?${params}`;
+  state.statsUrl=collectionUrl(state.activeGameId,f);
   state.statsItems=stats=>[['Varianten',stats.variants],['Exemplare',stats.copies],['Marktwert',money(stats.value)]];
   mountFilterPanel('collection',['.collection-filter-shell'],'Sammlung filtern & sortieren');
   $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};

@@ -78,6 +78,12 @@ quantities; a backup that still contains one restores it as a sheet as well. Wha
 that list collected automatically is now the "Über Playset" source when adding cards
 to a sheet.
 
+## Offline use
+
+The app is installable and keeps working when the server cannot be reached: the page and what was looked at recently come from the service worker's cache (marked as a saved copy), and quantity changes are queued on the device and sent once the server answers again.
+
+What was "looked at recently" is limited and gets trimmed. **Settings → Offline verfügbar machen** fetches a whole account on purpose: the collection and watchlists of every game, the deck and sheet overviews, and for every owned or watched card its details and thumbnail, optionally the full-size images. That copy lives in a cache of its own that is never trimmed, belongs to the account that saved it (another account signing in on the same browser removes it), and is refreshed with the same button.
+
 ## Account settings
 
 Every signed-in user can update their own display name, username, email
@@ -183,7 +189,7 @@ The frontend is tested in a headless Chrome against the same catalogue (Node 22 
 node --test "tests/frontend/*.test.mjs"
 ```
 
-It opens every view for every game, adds cards with quick clicks, opens a card and enters a price, builds a deck and a sheet, queues a change while offline, and fails on any error in the browser console. `CHROME_BIN` overrides where Chrome is looked for, `DECKLEDGER_PYTHON` which interpreter starts the app. The workflow runs these as well.
+It opens every view for every game, adds cards with quick clicks, opens a card and enters a price, builds a deck and a sheet, queues a change while offline, saves the collection for offline use and reads it back without the server, and fails on any error in the browser console. `CHROME_BIN` overrides where Chrome is looked for, `DECKLEDGER_PYTHON` which interpreter starts the app. The workflow runs these as well.
 
 ## Operations
 

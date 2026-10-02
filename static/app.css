@@ -669,6 +669,15 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .manual-price-row input:focus { border-color:color-mix(in srgb,var(--brand) 55%,var(--line)); }
 .manual-price-row>span { color:var(--muted);font-weight:700; }
 .manual-price small { color:var(--muted);font-size:10px; }
+.offline-save-status { display:flex;align-items:center;gap:12px;margin:4px 0 12px; }
+.offline-save-status>i { flex:none;width:10px;height:10px;border-radius:50%;background:var(--muted);opacity:.5; }
+.offline-save-status>i.is-saved { background:var(--brand);opacity:1; }
+.offline-save-status b,.offline-save-status small { display:block; }
+.offline-save-status small { margin-top:2px;color:var(--muted);font-size:11px; }
+.offline-save-option { margin-bottom:12px; }
+.offline-save-progress { display:grid;gap:8px;margin:6px 0 12px;color:var(--muted);font-size:11px; }
+.offline-save-bar { height:8px;border-radius:999px;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden; }
+.offline-save-bar>i { display:block;width:0;height:100%;border-radius:inherit;background:var(--brand);transition:width .2s ease; }
 .dark .price-source-link span:first-child,.dark .relationship span { background:#202a35;color:#cbd8e8; }
 .dark .relationship { border-color:var(--line); }
 

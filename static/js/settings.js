@@ -82,7 +82,12 @@ function renderSettings(){
       </div>
       <p class="muted settings-hint">Aktive Listen werden zu einer gemeinsamen, duplikatfreien Spur zusammengeführt.</p>
     </section>
+    <section class="settings-section user-settings-card settings-card-offline settings-card-wide" id="offline-save-card">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg></span><div><span class="eyebrow">UNTERWEGS</span><h2>Offline verfügbar machen</h2><p>Speichert Sammlung, Watchlists, Kartendetails und Kartenbilder auf diesem Gerät, damit sie auch ohne Verbindung zum Server da sind.</p></div></div>
+      <div id="offline-save-body"></div>
+    </section>
     </div>`;
+  renderOfflineSave();
   $('#account-save',content).onclick=async()=>{
     const payload={display_name:$('#account-display-name').value.trim(),username:$('#account-username').value.trim(),email:$('#account-email').value.trim()};
     try{
@@ -134,4 +139,49 @@ function renderSettings(){
     state.boot.settings.homeBanner=updated;
     toast('Banner-Einstellung gespeichert');
   });
+}
+
+// The "Offline verfügbar machen" card: what is saved on this device, saving it and removing it.
+let offlineSaveFullImages=false;
+const offlineCardCount=count=>`${count} Karte${count===1?'':'n'}`;
+async function renderOfflineSave(message=''){
+  const body=$('#offline-save-body');if(!body)return;
+  if(!('caches' in window)||!('serviceWorker' in navigator)){body.innerHTML='<p class="muted settings-hint">Dieser Browser kann keine Daten für die Offline-Nutzung speichern.</p>';return}
+  if(offlineSave){
+    body.innerHTML=`<div class="offline-save-progress"><div class="offline-save-bar"><i id="offline-save-fill"></i></div><span id="offline-save-count"></span></div><div class="user-settings-actions"><button class="secondary-button" id="offline-save-cancel">Abbrechen</button></div>`;
+    $('#offline-save-cancel').onclick=cancelOfflineSave;
+    paintOfflineSaveProgress(offlineSave.done,offlineSave.total);
+    return;
+  }
+  const info=await offlineSaveInfo(),mine=info&&info.userId===state.boot.user.id;
+  let usage='';
+  try{const estimate=await navigator.storage?.estimate?.();if(estimate?.usage)usage=` · DeckLedger belegt hier insgesamt ${Math.max(1,Math.round(estimate.usage/1048576))} MB`}catch{}
+  if(!$('#offline-save-body'))return;
+  const status=mine
+    ?`<b>${offlineCardCount(info.cards)} gespeichert</b><small>Stand ${new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(info.savedAt))}${info.fullImages?' · mit großen Bildern':''}${info.skipped?` · ${info.skipped} Dateien nicht erreichbar`:''}${usage}</small>`
+    :`<b>Noch nichts gespeichert</b><small>Ohne Speichern ist offline nur da, was du zuletzt angesehen hast.</small>`;
+  body.innerHTML=`<div class="offline-save-status"><i class="${mine?'is-saved':''}"></i><span>${status}</span></div>
+    ${message?`<p class="muted settings-hint">${escapeHtml(message)}</p>`:''}
+    <div class="settings-checklist highlight-settings-list offline-save-option"><label class="checkbox-row highlight-setting"><span><b>Auch große Kartenbilder</b><small>Volle Auflösung für die Detailansicht; braucht ein Vielfaches an Speicher. Ohne sie zeigt die Detailansicht offline das Vorschaubild.</small></span><input type="checkbox" id="offline-save-full" ${offlineSaveFullImages?'checked':''}><i aria-hidden="true"></i></label></div>
+    <div class="user-settings-actions">${mine?'<button class="secondary-button" id="offline-save-clear">Gespeicherte Daten löschen</button>':''}<button class="primary-button" id="offline-save-start">${mine?'Aktualisieren':'Jetzt speichern'}</button></div>`;
+  $('#offline-save-full').onchange=event=>{offlineSaveFullImages=event.target.checked};
+  $('#offline-save-start').onclick=startOfflineSave;
+  if($('#offline-save-clear'))$('#offline-save-clear').onclick=async()=>{await clearOfflineSave();toast('Offline-Daten gelöscht');renderOfflineSave()};
+}
+function paintOfflineSaveProgress(done,total){
+  const fill=$('#offline-save-fill'),count=$('#offline-save-count');if(!fill||!count)return;
+  fill.style.width=`${total?Math.round(done/total*100):0}%`;
+  count.textContent=`${done} von ${total} Dateien`;
+}
+async function startOfflineSave(){
+  if(!navigator.onLine||serverUnreachable){toast('Zum Speichern muss der Server erreichbar sein.');return}
+  const saving=saveForOffline({fullImages:offlineSaveFullImages,onProgress:paintOfflineSaveProgress});
+  renderOfflineSave();
+  try{
+    const info=await saving;
+    toast(`${offlineCardCount(info.cards)} ${info.cards===1?'ist':'sind'} jetzt offline verfügbar.`);
+    renderOfflineSave();
+  }catch(error){
+    renderOfflineSave(error.name==='AbortError'?'Abgebrochen. Was schon gespeichert war, bleibt erhalten.':`Speichern fehlgeschlagen: ${error.message}`);
+  }
 }

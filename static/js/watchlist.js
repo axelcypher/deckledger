@@ -8,7 +8,7 @@ async function renderWatchlist(preserve=false){
   state.activeWatchlists=lists;
   if(!state.watchlistId||!lists.some(l=>l.id===state.watchlistId))state.watchlistId=lists[0]?.id;
   if(!state.watchlistId){content.innerHTML='<div class="empty-state"><b>Noch keine Watchlist</b></div>';return}
-  const f=state.watchFilters, params=new URLSearchParams(f), data=await api(`/api/watchlists/${state.watchlistId}/cards?${params}`), sets=await api(`/api/games/${state.activeGameId}/sets`);
+  const f=state.watchFilters, data=await api(watchlistCardsUrl(state.watchlistId,f)), sets=await api(`/api/games/${state.activeGameId}/sets`);
   if(stale())return;
   const currentSet=sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   state.cards=data.cards.map(r=>({...r,variants:[r],variant_count:1,owned_variants:r.quantity?1:0,watchlisted:true,value:r.quantity*r.price}));

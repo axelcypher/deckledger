@@ -129,6 +129,14 @@ function setEditMode(enabled,announce=false){
 
 function toggleEditMode(){setEditMode(!state.edit,true)}
 
+// The filters a view starts with and the URL it asks the server with. Saving for offline use
+// (js/offline.js) fetches exactly these, so what it stores is what the views look for later.
+const gameDefaultLanguage=gameId=>state.boot.settings?.defaultLanguages?.[gameId]||state.boot.games.find(game=>game.id===gameId)?.languages[0];
+const defaultCollectionFilters=gameId=>({q:'',set_id:'',language:gameDefaultLanguage(gameId),rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'});
+const defaultWatchFilters=gameId=>({q:'',set_id:'',language:gameDefaultLanguage(gameId),rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',sort:'added'});
+const collectionUrl=(gameId,filters)=>`/api/collection?${new URLSearchParams({game_id:gameId,...filters})}`;
+const watchlistCardsUrl=(listId,filters)=>`/api/watchlists/${listId}/cards?${new URLSearchParams(filters)}`;
+
 function setActiveGame(gameId, persist=true) {
   const previousGameId=state.activeGameId;
   const changed=previousGameId && previousGameId!==gameId;
@@ -147,8 +155,8 @@ function setActiveGame(gameId, persist=true) {
     // already the default, not just what got explicitly saved.
     const defaultLang=state.boot.settings?.defaultLanguages?.[gameId]||state.game.languages[0];
     state.language=defaultLang;state.setType='all';state.setSort='type';state.setDirection='desc';state.cardFilters={rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'normal',foilMode:''};
-    state.collectionFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'};
-    state.watchFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',sort:'added'};
+    state.collectionFilters=defaultCollectionFilters(gameId);
+    state.watchFilters=defaultWatchFilters(gameId);
     state.deckFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};
     state.deckZone='main';
   }
