@@ -196,7 +196,6 @@ function wireGlobalEvents(){
     stopWebglHover(zone);
   });
   $$('[data-route]').forEach(el=>el.onclick=()=>{if(el.dataset.route==='decks')state.deckId=null;if(el.dataset.route==='sheets')state.sheetId=null;routeTo(el.dataset.route)});
-  $('#mobile-menu').onclick=()=>$('.sidebar').classList.toggle('open');
   $('#sidebar-collapse').onclick=()=>{document.body.classList.toggle('sidebar-collapsed');post('/api/settings',{sidebarCollapsed:document.body.classList.contains('sidebar-collapsed')})};
   $('#user-avatar').onclick=()=>{const hidden=$('#user-popup').classList.toggle('hidden');$('#user-avatar').setAttribute('aria-expanded',String(!hidden))};
   document.addEventListener('click',e=>{const popup=$('#user-popup');if(!popup.classList.contains('hidden')&&!e.target.closest('#user-popup')&&e.target.id!=='user-avatar'){popup.classList.add('hidden');$('#user-avatar').setAttribute('aria-expanded','false')}});

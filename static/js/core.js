@@ -187,7 +187,6 @@ function routeTo(route, data) {
   if(route==='sheets') renderSheets();
   if(route==='settings') renderSettings();
   if(route==='admin') renderAdmin();
-  $('.sidebar').classList.remove('open');
 }
 
 function initials(name){return name.split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase()}

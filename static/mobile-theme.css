@@ -82,7 +82,6 @@
   body.dark.mobile-modern .app-shell { padding-left: 0; }
   body.dark.mobile-modern .sidebar { display: none; }
   body.dark.mobile-modern .topbar { height: 58px; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
-  body.dark.mobile-modern .mobile-only { display: none; } /* the old hamburger -- tab bar replaces it */
   body.dark.mobile-modern .content { padding: 16px 16px 100px; background: var(--bg); color: var(--ink); }
   body.dark.mobile-modern .topbar .global-search {
     background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--mt-radius-full); color: var(--muted);
