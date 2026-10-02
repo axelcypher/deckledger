@@ -27,12 +27,12 @@
 
 @media (max-width:760px) {
   body.dark.mobile-modern {
-    --mp-card:rgba(28,35,23,.92);
-    --mp-soft:rgba(35,43,28,.7);
-    --mp-line:rgba(235,239,222,.055);
+    --mp-card:rgba(27,27,24,.92);
+    --mp-soft:rgba(36,36,32,.7);
+    --mp-line:rgba(240,234,220,.06);
     --mp-shadow:0 12px 34px rgba(0,0,0,.22);
     --mp-shadow-soft:0 7px 20px rgba(0,0,0,.14);
-    --mp-gold-soft:rgba(212,176,106,.12);
+    --mp-gold-soft:rgba(216,180,108,.12);
     --mp-danger-soft:rgba(207,106,98,.12);
     --mp-control:42px;
   }
@@ -48,7 +48,7 @@
 
   body.dark.mobile-modern::before {
     content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-    background:radial-gradient(circle at 82% 2%,rgba(212,176,106,.055),transparent 28%),radial-gradient(circle at 8% 44%,rgba(111,163,132,.07),transparent 34%);
+    background:radial-gradient(circle at 82% 2%,rgba(216,180,108,.06),transparent 28%),radial-gradient(circle at 8% 44%,rgba(216,180,108,.03),transparent 34%);
   }
   body.dark.mobile-modern.mobile-light::before {
     background:radial-gradient(circle at 82% 2%,rgba(201,169,97,.11),transparent 29%),radial-gradient(circle at 7% 48%,rgba(75,105,82,.055),transparent 35%);

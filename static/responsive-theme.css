@@ -2,38 +2,38 @@
    remains owned by mobile-theme.css/mobile-pages.css below 761px. */
 @media (min-width: 761px) {
   body.dark.mobile-modern {
-    --bg:#151812;
-    --surface:#20251b;
-    --surface-2:#282e21;
-    --surface-3:#30372a;
-    --ink:#f3f0e6;
-    --muted:#a39d8d;
-    --line:#343a2d;
-    --brand:#7eaa8d;
-    --brand-2:#a4c1ac;
-    --mt-accent-soft:rgba(126,170,141,.14);
-    --mt-gold:#d2b16b;
-    --mt-gold-soft:rgba(210,177,107,.13);
+    --bg:#121210;
+    --surface:#1a1a17;
+    --surface-2:#22221e;
+    --surface-3:#2b2a25;
+    --ink:#f0eadc;
+    --muted:#9c9585;
+    --line:#2e2d27;
+    --brand:#d8b46c;
+    --brand-2:#ecd49b;
+    --mt-accent-soft:rgba(216,180,108,.12);
+    --mt-gold:#d8b46c;
+    --mt-gold-soft:rgba(216,180,108,.13);
     --mt-radius-lg:24px;
     --mt-radius-md:16px;
     --mt-radius-full:999px;
-    --mt-shadow:0 24px 60px rgba(0,0,0,.27);
+    --mt-shadow:0 24px 60px rgba(0,0,0,.42);
     --mp-soft:rgba(255,255,255,.025);
     --mp-card:color-mix(in srgb,var(--surface-2) 78%,var(--bg));
     --mp-line:var(--line);
-    --mp-shadow-soft:0 8px 24px rgba(0,0,0,.14);
+    --mp-shadow-soft:0 8px 24px rgba(0,0,0,.24);
     --mp-gold-soft:var(--mt-gold-soft);
     --mp-danger-soft:rgba(173,73,63,.1);
     --font-display:"Cormorant Garamond",Georgia,serif;
     --font-ui:"Inter",sans-serif;
-    --mt-stage-plate:#070907;
-    --mt-stage-top:#171c14;
+    --mt-stage-plate:#070707;
+    --mt-stage-top:#181816;
     --mt-stage-outer:var(--bg);
-    --mt-podium:radial-gradient(ellipse 28% 31% at 13% 82%,rgba(255,255,255,.18),transparent 70%),radial-gradient(ellipse 28% 31% at 87% 82%,rgba(255,255,255,.18),transparent 70%),radial-gradient(ellipse 62% 46% at 50% 54%,rgba(126,170,141,.42),transparent 68%),radial-gradient(ellipse 66% 22% at 50% 88%,rgba(210,177,107,.27),transparent 70%);
+    --mt-podium:radial-gradient(ellipse 28% 31% at 13% 82%,rgba(255,255,255,.18),transparent 70%),radial-gradient(ellipse 28% 31% at 87% 82%,rgba(255,255,255,.18),transparent 70%),radial-gradient(ellipse 62% 46% at 50% 54%,rgba(216,180,108,.3),transparent 68%),radial-gradient(ellipse 66% 22% at 50% 88%,rgba(210,177,107,.27),transparent 70%);
     color-scheme:dark;
     font-family:var(--font-ui);
     color:var(--ink);
-    background:radial-gradient(circle at 78% -15%,rgba(116,132,104,.12),transparent 34%),radial-gradient(circle at 4% 72%,rgba(84,104,81,.08),transparent 32%),var(--bg);
+    background:radial-gradient(circle at 78% -15%,rgba(216,180,108,.07),transparent 34%),radial-gradient(circle at 4% 72%,rgba(216,180,108,.03),transparent 32%),var(--bg);
   }
 
   body.dark.mobile-modern.mobile-light {

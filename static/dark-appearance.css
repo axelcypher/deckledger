@@ -1,0 +1,59 @@
+/* The dark appearance of the theme: what its palette alone does not say.
+
+   The palette lives with the layout (mobile-theme.css, mobile-pages.css, responsive-theme.css):
+   charcoal surfaces, warm ink, gold as the accent. In the light appearance the accent is also
+   what fills a button; here it is not -- a filled button is deep green with a gold hairline,
+   and gold only marks what is active. Nothing in this file changes a size or a position, and
+   nothing applies to the light appearance or to the card stage, which stays light. */
+
+body.dark.mobile-modern:not(.mobile-light) {
+  --night-button:linear-gradient(160deg,#2f5644 0%,#1d3a2c 55%,#152a20 100%);
+  --night-button-ink:#f5efdf;
+  --night-hairline:rgba(216,180,108,.4);
+  --night-green:#86c9a0;
+}
+
+/* Filled buttons */
+body.dark.mobile-modern:not(.mobile-light) :is(.primary-button,.price-refresh,.back-to-top),
+body.dark.mobile-modern:not(.mobile-light) .content .primary-button {
+  background:var(--night-button);color:var(--night-button-ink);
+  box-shadow:inset 0 0 0 1px var(--night-hairline),inset 0 1px 0 rgba(255,255,255,.08),0 8px 20px rgba(0,0,0,.32);
+}
+body.dark.mobile-modern:not(.mobile-light) :is(.primary-button,.price-refresh,.back-to-top):hover {
+  background:var(--night-button);filter:brightness(1.14);
+  box-shadow:inset 0 0 0 1px rgba(236,212,155,.62),inset 0 1px 0 rgba(255,255,255,.1),0 10px 26px rgba(0,0,0,.4),0 0 18px rgba(216,180,108,.1);
+}
+body.dark.mobile-modern:not(.mobile-light) :is(.primary-button,.price-refresh):disabled { filter:saturate(.5) brightness(.8); }
+body.dark.mobile-modern:not(.mobile-light) .mt-tab-add { border-color:var(--night-hairline); }
+
+/* What is active is gold: lit from within, not filled */
+body.dark.mobile-modern:not(.mobile-light) .nav-item.active {
+  background:linear-gradient(90deg,rgba(216,180,108,.13),rgba(216,180,108,.04));
+  box-shadow:inset 0 0 0 1px rgba(216,180,108,.16);
+}
+body.dark.mobile-modern:not(.mobile-light) .nav-item.active .nav-icon {
+  background:rgba(216,180,108,.16);color:var(--brand);box-shadow:inset 0 0 0 1px rgba(216,180,108,.22),0 0 14px rgba(216,180,108,.12);
+}
+body.dark.mobile-modern:not(.mobile-light) .mt-tab.active:not(.mt-tab-add) {
+  background:rgba(216,180,108,.16);color:var(--brand);
+  box-shadow:inset 0 0 0 1px rgba(216,180,108,.26),0 0 16px rgba(216,180,108,.1);
+}
+body.dark.mobile-modern:not(.mobile-light) .set-switch-option.active { color:#17150f; }
+
+/* Edit mode keeps its green: it is a state of the app, not a place in it */
+body.dark.mobile-modern:not(.mobile-light) .edit-indicator {
+  background:color-mix(in srgb,var(--night-green) 15%,transparent);color:var(--night-green);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--night-green) 42%,transparent),0 0 14px color-mix(in srgb,var(--night-green) 14%,transparent);
+}
+body.dark.mobile-modern:not(.mobile-light) .edit-indicator:hover { background:color-mix(in srgb,var(--night-green) 27%,transparent); }
+body.dark.mobile-modern:not(.mobile-light) .edit-panel.on {
+  background:color-mix(in srgb,var(--surface-2) 78%,var(--night-green) 22%);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--night-green) 26%,transparent);
+}
+body.dark.mobile-modern:not(.mobile-light) .edit-panel.on .edit-panel-icon {
+  background:var(--night-green);color:#10201a;box-shadow:0 5px 14px color-mix(in srgb,var(--night-green) 22%,transparent);
+}
+body.dark.mobile-modern:not(.mobile-light) .edit-panel .switch[aria-checked="true"] { background:var(--night-green); }
+
+/* The global search field sits on the dialog, without the browser's own grey field */
+body.dark.mobile-modern:not(.mobile-light) .search-input-wrap input { background:transparent; }

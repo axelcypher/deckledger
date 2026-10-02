@@ -22,10 +22,10 @@
 
 @media (max-width: 760px) {
   body.dark.mobile-modern {
-    --bg: #12160f; --surface: #1c2317; --surface-2: #232b1c; --ink: #f2efe4; --muted: #9b9686;
-    --line: #2c3324; --brand: #6fa384; --brand-2: #4a7c62;
-    --mt-accent-soft: rgba(111,163,132,.16);
-    --mt-gold: #d4b06a;
+    --bg: #121210; --surface: #1a1a17; --surface-2: #22221e; --ink: #f0eadc; --muted: #9c9585;
+    --line: #2e2d27; --brand: #d8b46c; --brand-2: #ecd49b;
+    --mt-accent-soft: rgba(216,180,108,.14);
+    --mt-gold: #d8b46c;
     --mt-shadow: 0 14px 32px rgba(0,0,0,.45);
     --mt-radius-lg: 24px; --mt-radius-md: 16px; --mt-radius-full: 999px;
     /* Per explicit spec: UI/body text is sans-serif, headings are serif -- two distinct
@@ -35,9 +35,9 @@
     font-family: var(--font-ui);
     --mt-podium: radial-gradient(ellipse 26% 30% at 14% 82%, rgba(255,255,255,.16), transparent 70%),
                  radial-gradient(ellipse 26% 30% at 86% 82%, rgba(255,255,255,.16), transparent 70%),
-                 radial-gradient(ellipse 60% 44% at 50% 54%, rgba(111,163,132,.5), transparent 68%),
+                 radial-gradient(ellipse 60% 44% at 50% 54%, rgba(216,180,108,.32), transparent 68%),
                  radial-gradient(ellipse 66% 24% at 50% 88%, rgba(212,176,106,.35), transparent 68%);
-    --mt-tab-track: #0c0f09;
+    --mt-tab-track: #0b0b0a;
     /* Stage background is two zones (see the long comment on .stage-backdrop below):
        --mt-stage-plate/--mt-stage-top are the vertical gradient's dark(at the platform)-to-
        light(going up) stops; --mt-stage-outer is the flat single color of the region the
@@ -48,7 +48,7 @@
        the title+price sit), so the stage's floor blends seamlessly into the info panel
        instead of reading as a separate tinted box. That's just --bg -- no separate color to
        invent or keep in sync. */
-    --mt-stage-plate: #05070a; --mt-stage-top: #0e120d; --mt-stage-outer: var(--bg);
+    --mt-stage-plate: #060606; --mt-stage-top: #10100e; --mt-stage-outer: var(--bg);
     background: var(--bg);
   }
   /* Light sub-variant: same shapes/type/structure, cream+white palette instead
