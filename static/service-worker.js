@@ -79,7 +79,7 @@ async function savedThumbnail(request) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/art/') || url.searchParams.has('size')) return undefined;
   url.searchParams.set('size', 'thumb');
-  return (await caches.open(IMAGE_CACHE)).match(url.href) || saved(url.href);
+  return await (await caches.open(IMAGE_CACHE)).match(url.href) || await saved(url.href);
 }
 
 // Card images are addressed by stable URLs and never change once fetched --

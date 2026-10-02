@@ -183,13 +183,17 @@ python -m pytest
 
 The suite runs against a throwaway database with a small built-in catalogue and never touches the network. It covers the backup round trip, import undo, what a catalogue sync may and may not delete, provider seeding, the collection endpoint, the VCard provider and deck rules, price lookup, and the cross-site/session checks. The container workflow runs it before building an image.
 
-The frontend is tested in a headless Chrome against the same catalogue (Node 22 or newer, no packages to install):
+The frontend has three kinds of tests, all run by Node's own test runner (Node 22 or newer, no packages to install):
 
 ```bash
 node --test "tests/frontend/*.test.mjs"
 ```
 
-It opens every view for every game, adds cards with quick clicks, opens a card and enters a price, builds a deck and a sheet, queues a change while offline, saves the collection for offline use and reads it back without the server, and fails on any error in the browser console. `CHROME_BIN` overrides where Chrome is looked for, `DECKLEDGER_PYTHON` which interpreter starts the app. The workflow runs these as well.
+- `unit.test.mjs` loads the scripts from `static/js` into a bare JavaScript context and checks the logic that needs no page: foil classification (against the same cases as the sheet renderer), set grouping and sorting, copy limits, the URLs the views request, the ordering of quantity changes.
+- `service-worker.test.mjs` runs the service worker against fake caches, a scripted network and hand-fired timers: network first with a marked fallback, giving up on a server that does not answer, the offline save as a fallback, what is kept and what is trimmed.
+- `smoke.test.mjs` drives the real app in a headless Chrome against the test catalogue: every view for every game, adding cards with quick clicks, a card and a manual price, a deck, a sheet, the offline queue, saving the collection for offline use and reading it back without the server, the phone layout, the admin view. Any error in the browser console fails a test. `CHROME_BIN` overrides where Chrome is looked for, `DECKLEDGER_PYTHON` which interpreter starts the app; without Chrome these tests are skipped locally.
+
+The workflow runs all of them after the Python suite.
 
 ## Operations
 

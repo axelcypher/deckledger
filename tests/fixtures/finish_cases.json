@@ -1,0 +1,18 @@
+[
+  {"finish": "Normal", "variant_code": "normal", "rarity": "Uncommon", "game_id": "vcard", "is_parallel": 0, "holo": false},
+  {"finish": "1st Edition", "variant_code": "1st-edition-regular", "rarity": "Secret Rare", "game_id": "vcard", "is_parallel": 0, "holo": false},
+  {"finish": "Holo", "variant_code": "unlimited-holo", "rarity": "Uncommon", "game_id": "vcard", "is_parallel": 0, "holo": true},
+  {"finish": "1st Edition Holo", "variant_code": "1st-edition-holo", "rarity": "Common", "game_id": "vcard", "is_parallel": 0, "holo": true},
+  {"finish": "Normal", "variant_code": "normal", "rarity": "Rare", "game_id": "lorcana", "is_parallel": 0, "holo": false},
+  {"finish": "Silver", "variant_code": "silver", "rarity": "Rare", "game_id": "lorcana", "is_parallel": 1, "holo": true},
+  {"finish": "Magma", "variant_code": "magma", "rarity": "Rare", "game_id": "lorcana", "is_parallel": 1, "holo": true},
+  {"finish": "Normal", "variant_code": "normal", "rarity": "Enchanted", "game_id": "lorcana", "is_parallel": 0, "holo": true},
+  {"finish": "Normal", "variant_code": "normal", "rarity": "Verzaubert", "game_id": "lorcana", "is_parallel": 0, "holo": true},
+  {"finish": "standard", "variant_code": "normal", "rarity": "R", "game_id": "one-piece", "is_parallel": 0, "holo": false},
+  {"finish": "parallel", "variant_code": "parallel", "rarity": "R", "game_id": "one-piece", "is_parallel": 1, "holo": true},
+  {"finish": "standard", "variant_code": "normal", "rarity": "SEC", "game_id": "one-piece", "is_parallel": 0, "holo": true},
+  {"finish": "manga", "variant_code": "manga", "rarity": "SR", "game_id": "one-piece", "is_parallel": 1, "holo": true},
+  {"finish": "SR", "variant_code": "normal", "rarity": "SR", "game_id": "hololive", "is_parallel": 0, "holo": true},
+  {"finish": "S", "variant_code": "normal", "rarity": "S", "game_id": "hololive", "is_parallel": 0, "holo": true},
+  {"finish": "C", "variant_code": "normal", "rarity": "C", "game_id": "hololive", "is_parallel": 0, "holo": false}
+]

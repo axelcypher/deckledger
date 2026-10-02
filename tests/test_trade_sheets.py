@@ -130,6 +130,17 @@ def test_which_cards_count_as_holo(finish, variant_code, rarity, game, parallel,
     assert sheet_render.is_holo(finish, variant_code, rarity, game, parallel) is holo
 
 
+def test_holo_detection_agrees_with_the_frontend():
+    """tests/frontend/unit.test.mjs checks finishPresentation() in static/js/finish.js against
+    the same cases, so a sheet marks exactly the cards the app shows a foil effect on."""
+    import json
+    from pathlib import Path
+
+    cases = json.loads((Path(__file__).parent / "fixtures" / "finish_cases.json").read_text(encoding="utf-8"))
+    for case in cases:
+        assert sheet_render.is_holo(case["finish"], case["variant_code"], case["rarity"], case["game_id"], case["is_parallel"]) is case["holo"], case
+
+
 def test_holo_cards_are_marked_in_the_image(tmp_path):
     """A holo gets a rainbow rim outside the card and a sheen on it; a regular card neither."""
     scan = tmp_path / "card.png"
