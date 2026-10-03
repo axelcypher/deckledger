@@ -187,7 +187,7 @@ def test_rate_limit_headers_decide_the_pause():
 def test_an_unreadable_answer_is_an_error_not_a_crash():
     with pytest.raises(watcher.FeedError):
         watcher.parse_feed(b"<html>Too many requests")
-    assert watcher.parse_feed(feed()) == ("[WTS] Ember and friends", "vcardtrades", [])
+    assert watcher.parse_feed(feed()) == ("[WTS] Ember and friends", "seller", "vcardtrades", [])
 
 
 # ---- the background job --------------------------------------------------------------------------
@@ -269,3 +269,83 @@ def test_deleting_an_account_removes_its_posts_and_inbox(client, admin, post, re
     demo_id = query("SELECT id FROM users WHERE username='demo'")[0]["id"]
     assert admin.delete(f"/api/admin/users/{demo_id}").get_json() == {"deleted": True}
     assert query("SELECT COUNT(*) n FROM sheet_posts")[0]["n"] == 0 and query("SELECT COUNT(*) n FROM inbox_items")[0]["n"] == 0
+
+
+# ---- one post, several sheets --------------------------------------------------------------------
+
+@pytest.fixture
+def four_sheets(client, sheet):
+    """The same post linked to four sheets, as when one thread offers several of them."""
+    others = []
+    for name, variant in (("Zwei", EMBER9), ("Drei", TIDE8), ("Vier", EMBER8)):
+        other = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": name}).get_json()["id"]
+        client.post(f"/api/trade-sheets/{other}/cards", json={"variant_id": variant, "delta": 1})
+        others.append(other)
+    sheets = [sheet, *others]
+    links = [client.post(f"/api/trade-sheets/{each}/posts", json={"url": POST_URL}).get_json()["id"] for each in sheets]
+    return sheets, links
+
+
+def open_gate():
+    query("DELETE FROM app_settings WHERE key='reddit_next_request_at'")
+
+
+def test_a_post_linked_to_several_sheets_is_read_once_and_files_each_comment_once(client, four_sheets, reddit):
+    sheets, links = four_sheets
+    reddit.payload = feed(entry("t1_a", "buyer", "Tide PL8 please", 5), entry("t1_b", "other", "still there?", 6))
+    assert client.post(f"/api/sheet-posts/{links[2]}/check").get_json()["new"] == 2
+    items = inbox(client)["items"]
+    assert [(item["author"], item["sheet_id"], item["post_id"]) for item in items] == [("other", sheets[0], links[0]), ("buyer", sheets[0], links[0])]
+    assert [match["variant_id"] for match in items[1]["matches"]] == [TIDE8], "the cards of every linked sheet count"
+    assert [client.get(f"/api/trade-sheets/{each}/posts").get_json()[0]["new"] for each in sheets] == [2, 2, 2, 2]
+    assert len(set(row["last_checked_at"] for row in query("SELECT last_checked_at FROM sheet_posts"))) == 1
+
+    open_gate()
+    assert run_job()["new"] == 0
+    open_gate()
+    assert run_job()["new"] == 0
+    assert len(inbox(client)["items"]) == 2 and len(reddit.asked) == 3
+
+
+def test_own_replies_are_left_out_without_a_name_in_the_settings(client, four_sheets, reddit):
+    links = four_sheets[1]
+    reddit.payload = feed(entry("t1_a", "buyer", "interested", 5), entry("t1_b", "Seller", "sent you a chat", 6))
+    client.post(f"/api/sheet-posts/{links[0]}/check")
+    assert [item["author"] for item in inbox(client)["items"]] == ["buyer"]
+
+    query("INSERT INTO inbox_items(user_id,sheet_id,post_id,kind,external_id,author,created_at) SELECT user_id,sheet_id,id,'comment','t1_old','seller','t' FROM sheet_posts WHERE id=?", (links[0],))
+    open_gate()
+    client.post(f"/api/sheet-posts/{links[0]}/check")
+    assert [item["author"] for item in inbox(client, state="all")["items"]] == ["buyer"], "what was filed before is tidied away"
+
+
+def test_unlinking_one_sheet_keeps_the_comments_of_the_others(client, four_sheets, reddit):
+    sheets, links = four_sheets
+    reddit.payload = feed(entry("t1_a", "buyer", "hello", 5))
+    client.post(f"/api/sheet-posts/{links[0]}/check")
+    client.delete(f"/api/sheet-posts/{links[0]}")
+    assert [(item["sheet_id"], item["post_id"]) for item in inbox(client)["items"]] == [(sheets[1], links[1])]
+    client.delete(f"/api/trade-sheets/{sheets[1]}")
+    assert [(item["sheet_id"], item["post_id"]) for item in inbox(client)["items"]] == [(sheets[2], links[2])]
+    for link in links[2:]:
+        client.delete(f"/api/sheet-posts/{link}")
+    assert inbox(client, state="all")["items"] == []
+
+
+def test_comments_filed_once_per_sheet_are_merged(tmp_path):
+    migrations = deckledger.migrations
+    connection = sqlite3.connect(tmp_path / "before.db")
+    connection.row_factory = sqlite3.Row
+    migrations.migrate(connection, migrations=migrations.MIGRATIONS[:7], log=lambda message: None)
+    for sheet_id in (4, 5, 6):
+        connection.execute("INSERT INTO trade_sheets(id,user_id,game_id,name,created_at,updated_at) VALUES(?,1,'vcard','S','t','t')", (sheet_id,))
+        connection.execute("INSERT INTO sheet_posts(id,user_id,sheet_id,source,external_id,url,created_at) VALUES(?,1,?,'reddit','1abc23','u','t')", (sheet_id + 10, sheet_id))
+    rows = [(1, 15, "t1_a", "new"), (2, 14, "t1_a", "done"), (3, 16, "t1_a", "new"), (4, 16, "t1_b", "new"), (5, 15, "t1_b", "new")]
+    for item_id, link, external_id, state in rows:
+        connection.execute("INSERT INTO inbox_items(id,user_id,sheet_id,post_id,kind,external_id,state,created_at) VALUES(?,1,?,?,'comment',?,?,'t')",
+                           (item_id, link - 10, link, external_id, state))
+    connection.commit()
+    assert migrations.migrate(connection, log=lambda message: None) == [8]
+    assert [tuple(row) for row in connection.execute("SELECT id,sheet_id,post_id,external_id,state FROM inbox_items ORDER BY id")] == [
+        (1, 4, 14, "t1_a", "done"), (4, 4, 14, "t1_b", "new")]
+    connection.close()

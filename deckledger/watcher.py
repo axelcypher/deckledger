@@ -152,11 +152,11 @@ def feed_entries(payload):
 
 
 def parse_feed(payload):
-    """(title of the post, community, [comment, ...]) from a post's comment feed; the post itself
-    is not one of the comments."""
+    """(title of the post, its author, community, [comment, ...]) from a post's comment feed; the
+    post itself is not one of the comments."""
     community, entries = feed_entries(payload)
-    title = next((entry["title"] for entry in entries if entry["external_id"].startswith("t3_")), "")
-    return title, community, [entry for entry in entries if entry["external_id"].startswith("t1_")]
+    post = next((entry for entry in entries if entry["external_id"].startswith("t3_")), {"title": "", "author": ""})
+    return post["title"], post["author"], community, [entry for entry in entries if entry["external_id"].startswith("t1_")]
 
 
 # What the feed appends to every post's text.
@@ -245,6 +245,11 @@ def setting(connection, uid, key, default=""):
     return jload(row[0], default) if row else default
 
 
+def own_name(connection, uid):
+    """The user's Reddit name in lower case, however it was typed ("Name", "u/Name", "/u/Name")."""
+    return str(setting(connection, uid, "redditUsername") or "").strip().lower().lstrip("/").removeprefix("u/")
+
+
 def wait_seconds(connection, now=None):
     """How long until the source may be asked again; 0 when it may be asked now."""
     row = connection.execute("SELECT value FROM app_settings WHERE key=?", (GATE_KEY,)).fetchone()
@@ -262,36 +267,72 @@ def close_gate(connection, seconds):
     connection.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (GATE_KEY, until))
 
 
-def check_post(connection, post, cards):
-    """Reads one post's comments and stores the new ones. Returns how many were new. The caller
-    commits. Raises FeedError; the post row then carries the reason."""
+def check_post(connection, post):
+    """Reads one post's comments and stores the new ones. Returns how many were new for the owner
+    of `post`. The caller commits. Raises FeedError; the post rows then carry the reason.
+
+    A post can be linked to several sheets. It is read once for all of them, and a comment lands
+    in a user's inbox once: under the sheet linked first, matched against the cards of all their
+    sheets linked to the post. Without a Reddit name in the settings the post's author counts as
+    the user -- a linked post is their own."""
     stamp = now_iso()
+    links = connection.execute("SELECT * FROM sheet_posts WHERE source=? AND external_id=? ORDER BY id", (post["source"], post["external_id"])).fetchall()
+    readers = sorted({link["user_id"] for link in links if link["status"] == "watching" or link["id"] == post["id"]})
+    ids = [link["id"] for link in links if link["user_id"] in readers]
     try:
         payload, pause = fetch_feed(feed_url(post["source"], post["external_id"]))
-        title, community, comments = parse_feed(payload)
+        title, author, community, comments = parse_feed(payload)
     except FeedError as error:
         close_gate(connection, error.retry_after or FALLBACK_PAUSE_SECONDS)
-        connection.execute("UPDATE sheet_posts SET last_checked_at=?,last_error=? WHERE id=?", (stamp, str(error), post["id"]))
+        connection.execute(f"UPDATE sheet_posts SET last_checked_at=?,last_error=? WHERE id IN ({marks(ids)})", (stamp, str(error), *ids))
         raise
     close_gate(connection, pause)
-    own_name = str(setting(connection, post["user_id"], "redditUsername") or "").strip().lower().removeprefix("u/")
-    new = 0
-    for comment in comments:
-        author = comment["author"].lower()
-        if author in IGNORED_AUTHORS or (own_name and author == own_name):
-            continue
-        inserted = connection.execute(
-            """INSERT OR IGNORE INTO inbox_items(user_id,sheet_id,post_id,kind,external_id,author,body,url,community,posted_at,matches,created_at)
-               VALUES(?,?,?,'comment',?,?,?,?,?,?,?,?)""",
-            (post["user_id"], post["sheet_id"], post["id"], comment["external_id"], comment["author"], comment["body"], comment["url"],
-             community or post["community"], comment["posted_at"], json.dumps(cards_mentioned(comment["body"], cards)), stamp),
-        ).rowcount
-        new += inserted
-    connection.execute(
-        "UPDATE sheet_posts SET last_checked_at=?,last_error='',title=CASE WHEN ?!='' THEN ? ELSE title END,community=CASE WHEN ?!='' THEN ? ELSE community END,last_activity_at=CASE WHEN ?>0 THEN ? ELSE last_activity_at END WHERE id=?",
-        (stamp, title, title[:300], community, community, new, stamp, post["id"]),
-    )
-    return new
+    result = 0
+    for uid in readers:
+        own = [link for link in links if link["user_id"] == uid]
+        own_ids, home = [link["id"] for link in own], own[0]
+        skipped = sorted((IGNORED_AUTHORS | {own_name(connection, uid) or author.lower()}) - {""})
+        # One's own replies filed before the post's author was known to be one's own.
+        connection.execute(f"DELETE FROM inbox_items WHERE kind='comment' AND post_id IN ({marks(own_ids)}) AND LOWER(author) IN ({marks(skipped)})", (*own_ids, *skipped))
+        cards = list({card["variant_id"]: card for link in own for card in cards_of_sheet(connection, link["sheet_id"])}.values())
+        new = 0
+        for comment in comments:
+            if comment["author"].lower() in skipped:
+                continue
+            new += connection.execute(
+                """INSERT INTO inbox_items(user_id,sheet_id,post_id,kind,external_id,author,body,url,community,posted_at,matches,created_at)
+                   SELECT ?,?,?,'comment',?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM inbox_items WHERE user_id=? AND kind='comment' AND external_id=?)""",
+                (uid, home["sheet_id"], home["id"], comment["external_id"], comment["author"], comment["body"], comment["url"],
+                 community or home["community"], comment["posted_at"], json.dumps(cards_mentioned(comment["body"], cards)), stamp,
+                 uid, comment["external_id"]),
+            ).rowcount
+        connection.execute(
+            f"UPDATE sheet_posts SET last_checked_at=?,last_error='',title=CASE WHEN ?!='' THEN ? ELSE title END,community=CASE WHEN ?!='' THEN ? ELSE community END,last_activity_at=CASE WHEN ?>0 THEN ? ELSE last_activity_at END WHERE id IN ({marks(own_ids)})",
+            (stamp, title, title[:300], community, community, new, stamp, *own_ids),
+        )
+        if uid == post["user_id"]:
+            result = new
+    return result
+
+
+def marks(values):
+    return ",".join("?" * len(values))
+
+
+# The links of the same user to the same post as link ?, that one included.
+SAME_POST = """SELECT o.id FROM sheet_posts p JOIN sheet_posts o ON o.user_id=p.user_id AND o.source=p.source AND o.external_id=p.external_id
+               WHERE p.id=?"""
+
+
+def hand_over_comments(connection, link_ids):
+    """Before links go (on their own or with their sheet): the comments filed under them move to
+    another sheet of the same user that is linked to the same post, if there is one."""
+    for link_id in link_ids:
+        heir = connection.execute(
+            f"SELECT id,sheet_id FROM sheet_posts WHERE id IN ({SAME_POST}) AND id NOT IN ({marks(link_ids)}) ORDER BY id LIMIT 1", (link_id, *link_ids),
+        ).fetchone()
+        if heir:
+            connection.execute("UPDATE inbox_items SET post_id=?,sheet_id=? WHERE post_id=?", (heir[0], heir[1], link_id))
 
 
 def cards_of_sheet(connection, sheet_id):
@@ -317,7 +358,7 @@ def file_finds(connection, source, name, posts, stamp=None):
     posts = [post for post in posts if post["author"].lower() not in IGNORED_AUTHORS and is_recent(post["posted_at"])]
     for reader in connection.execute("SELECT user_id,game_id FROM watch_communities WHERE source=? AND name=?", (source, name)).fetchall():
         uid = reader["user_id"]
-        own_name = str(setting(connection, uid, "redditUsername") or "").strip().lower().removeprefix("u/")
+        own = own_name(connection, uid)
         # A post of one's own that is linked to a sheet is watched for its comments already.
         linked = {f't3_{row[0]}' for row in connection.execute("SELECT external_id FROM sheet_posts WHERE user_id=? AND source=?", (uid, source))}
         sheets = connection.execute("SELECT * FROM trade_sheets WHERE user_id=? AND game_id=? AND scout=1", (uid, reader["game_id"])).fetchall()
@@ -325,7 +366,7 @@ def file_finds(connection, source, name, posts, stamp=None):
             chosen = {entry for entry in sheet["scout_communities"].split(",") if entry}
             cards = cards_of_sheet(connection, sheet["id"]) if not chosen or name in chosen else []
             for post in posts if cards else []:
-                if post["external_id"] in linked or (own_name and post["author"].lower() == own_name):
+                if post["external_id"] in linked or (own and post["author"].lower() == own):
                     continue
                 matches = cards_found(post, cards, sheet["kind"] in WANTED_SHEET_KINDS)
                 if not matches:
@@ -389,7 +430,7 @@ def run_due(connection):
     if not post:
         return {"retired": retired, "watching": 0}
     try:
-        new = check_post(connection, post, cards_of_sheet(connection, post["sheet_id"]))
+        new = check_post(connection, post)
         return {"retired": retired, "checked": post["id"], "new": new}
     except FeedError as error:
         return {"retired": retired, "checked": post["id"], "error": str(error)}
@@ -401,7 +442,7 @@ def run_due(connection):
 
 def post_payload(row):
     post = {key: row[key] for key in ("id", "sheet_id", "source", "url", "community", "title", "status", "created_at", "last_checked_at", "last_activity_at", "last_error")}
-    post["new"] = db().execute("SELECT COUNT(*) FROM inbox_items WHERE post_id=? AND state='new'", (row["id"],)).fetchone()[0]
+    post["new"] = db().execute(f"SELECT COUNT(*) FROM inbox_items WHERE state='new' AND post_id IN ({SAME_POST})", (row["id"],)).fetchone()[0]
     return post
 
 
@@ -443,6 +484,7 @@ def sheet_post(post_id):
     if not post:
         return jsonify({"error": "post not found"}), 404
     if request.method == "DELETE":
+        hand_over_comments(db(), [post_id])
         db().execute("DELETE FROM inbox_items WHERE post_id=?", (post_id,))
         db().execute("DELETE FROM sheet_posts WHERE id=?", (post_id,))
         db().commit()
@@ -467,7 +509,7 @@ def check_sheet_post(post_id):
     if waiting:
         return jsonify({"error": f"Reddit erlaubt die nächste Abfrage in {waiting} Sekunden.", "wait": waiting}), 429
     try:
-        new = check_post(db(), post, cards_of_sheet(db(), post["sheet_id"]))
+        new = check_post(db(), post)
     except FeedError as error:
         db().commit()
         return jsonify({"error": str(error), "post": post_payload(own_post(post_id))}), 502
@@ -597,7 +639,7 @@ def finish_inbox():
     """Marks everything new as dealt with -- of one post when `post_id` is given."""
     post_id = (request.get_json(silent=True) or {}).get("post_id")
     if post_id:
-        db().execute("UPDATE inbox_items SET state='done' WHERE user_id=? AND post_id=? AND state='new'", (user_id(), post_id))
+        db().execute(f"UPDATE inbox_items SET state='done' WHERE user_id=? AND state='new' AND post_id IN ({SAME_POST})", (user_id(), post_id))
     else:
         db().execute("UPDATE inbox_items SET state='done' WHERE user_id=? AND state='new'", (user_id(),))
     db().commit()

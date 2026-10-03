@@ -66,10 +66,8 @@ async function renderSheetPosts(){
   let posts;
   try{posts=await api(`/api/trade-sheets/${sheetId}/posts`)}catch(error){box.innerHTML=`<div class="deck-zone-empty">${escapeHtml(error.message)}</div>`;return}
   if(!$('#sheet-posts')||state.sheetId!==sheetId)return;
-  const named=Boolean(state.boot.settings?.redditUsername);
-  box.innerHTML=`<div class="sheet-section-head"><b>Posts zu diesem Sheet</b><span>Neue Kommentare landen im Eingang.</span></div>
+  box.innerHTML=`<div class="sheet-section-head"><b>Posts zu diesem Sheet</b><span>Neue Kommentare landen im Eingang – einmal, auch wenn der Post mit mehreren Sheets verknüpft ist.</span></div>
     <form class="sheet-post-form" id="sheet-post-form"><input id="sheet-post-url" type="url" inputmode="url" autocomplete="off" placeholder="Link zum Reddit-Post einfügen"><button class="secondary-button" type="submit">Verknüpfen</button></form>
-    ${posts.length&&!named?`<p class="muted sheet-post-hint">Trage in den Einstellungen deinen Reddit-Namen ein, sonst zählen deine eigenen Antworten als neue Kommentare.</p>`:''}
     <div class="sheet-post-list">${posts.map(item=>{
       const link=safeLink(item.url),watching=item.status==='watching';
       return `<div class="sheet-post ${watching?'':'is-done'}" data-post="${item.id}">

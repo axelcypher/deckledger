@@ -140,6 +140,8 @@ def trade_sheet(sheet_id):
     if not sheet:
         return jsonify({"error": "sheet not found"}), 404
     if request.method == "DELETE":
+        from .watcher import hand_over_comments   # watcher imports this module
+        hand_over_comments(db(), [row[0] for row in db().execute("SELECT id FROM sheet_posts WHERE sheet_id=?", (sheet_id,))])
         db().execute("DELETE FROM trade_sheets WHERE id=?", (sheet_id,))
         db().commit()
         return jsonify({"deleted": True})
