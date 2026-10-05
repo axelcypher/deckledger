@@ -96,5 +96,8 @@ GAME = Game(
     provider=(4, 1200, 300),
     # The publisher puts its print files online: a 63 x 88 mm card with 3 mm bleed on every side.
     image_bleed=sheet_render.PRINT_BLEED,
+    # The "?" card the CDN answers with (200 OK) where a print's scan is not uploaded yet, as for
+    # Fractured Paradox's Unlimited Paradoxes; the 1st Edition scan stands in for it.
+    image_placeholders=((64863, "2b1a429d14a88756e7bc7608c5e4627461e92b81089ff9064675f598e7408214"),),
     remote_set_visual=remote_set_visual, market_links=market_links,
 )

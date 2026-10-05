@@ -37,8 +37,8 @@ describe('finish', () => {
   });
 
   test('image URLs', () => {
-    assert.equal(run(`artUrl('a b/c')`), '/art/a%20b%2Fc.svg?v=5&size=thumb');
-    assert.equal(run(`artUrl('x','full')`), '/art/x.svg?v=5');
+    assert.equal(run(`artUrl('a b/c')`), '/art/a%20b%2Fc.svg?v=6&size=thumb');
+    assert.equal(run(`artUrl('x','full')`), '/art/x.svg?v=6');
   });
 });
 

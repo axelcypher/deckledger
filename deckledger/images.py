@@ -36,6 +36,10 @@ def sniff_image_type(payload):
     return None
 
 
+def is_placeholder(payload, placeholders):
+    return any(len(payload) == size and hashlib.sha256(payload).hexdigest() == digest for size, digest in placeholders)
+
+
 def cached_real_image(row, variant_id):
     """Return a local image path, deduplicated by provider URL when possible."""
     for directory in (IMAGE_CACHE, IMAGE_SOURCE_CACHE, IMAGE_LOCK_CACHE):
@@ -56,23 +60,29 @@ def cached_real_image(row, variant_id):
     # uploads a new set's First Edition scans before the Unlimited ones). Anything already cached
     # wins before the network is touched, so a missing primary is requested once, not per view.
     candidates = [url, *(attributes.get("imageFallbackUrls") or [])]
+    placeholders = game_rules(row["game_id"]).image_placeholders
     for candidate in candidates:
         source_key = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
         data_path, mime_path = IMAGE_SOURCE_CACHE / f"{source_key}.img", IMAGE_SOURCE_CACHE / f"{source_key}.mime"
         if data_path.exists() and mime_path.exists():
+            # A publisher's stand-in cached before it was known as one is dropped, not served.
+            if placeholders and data_path.stat().st_size in {size for size, _ in placeholders} and is_placeholder(data_path.read_bytes(), placeholders):
+                data_path.unlink(missing_ok=True)
+                mime_path.unlink(missing_ok=True)
+                continue
             return data_path, mime_path.read_text().strip(), source_key
     for candidate in candidates[:-1]:
         try:
-            downloaded = download_real_image(candidate, legacy_data, legacy_mime)
+            downloaded = download_real_image(candidate, legacy_data, legacy_mime, placeholders)
         except OSError:
             # urllib's HTTPError/URLError are OSErrors: the next stand-in gets its turn.
             downloaded = None
         if downloaded:
             return downloaded
-    return download_real_image(candidates[-1], legacy_data, legacy_mime)
+    return download_real_image(candidates[-1], legacy_data, legacy_mime, placeholders)
 
 
-def download_real_image(url, legacy_data, legacy_mime):
+def download_real_image(url, legacy_data, legacy_mime, placeholders=()):
     source_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
     data_path = IMAGE_SOURCE_CACHE / f"{source_key}.img"
     mime_path = IMAGE_SOURCE_CACHE / f"{source_key}.mime"
@@ -109,7 +119,7 @@ def download_real_image(url, legacy_data, legacy_mime):
             # A handful of CDNs (again, Cardmarket) serve a bogus/missing Content-Type
             # instead of the real one -- fall back to sniffing the file's magic bytes.
             content_type = sniff_image_type(payload) or content_type
-        if not content_type.startswith("image/") or len(payload) < 1000:
+        if not content_type.startswith("image/") or len(payload) < 1000 or is_placeholder(payload, placeholders):
             return None
         data_path.write_bytes(payload)
         mime_path.write_text(content_type)

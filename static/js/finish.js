@@ -1,6 +1,6 @@
 // How a card's finish looks: image URLs, foil classes, the official Lorcana foil layers.
 
-const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=5${size==='thumb'?'&size=thumb':''}`;
+const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=6${size==='thumb'?'&size=thumb':''}`;
 // Luminance mask derived server-side from THIS card's own art (app.py: /foil-mask/<id>.webp,
 // cached_foil_mask) -- used to confine the mobile card-modal's foil/prismatic/aurora shimmer
 // to the card's own non-black regions instead of washing over the whole rectangle.

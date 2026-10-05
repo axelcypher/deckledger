@@ -1,6 +1,7 @@
 """Card images as the views get them: VCard's print files are cut to the card, once, for the
 card view, the thumbnails, the foil mask and the sheets alike."""
 import io
+import json
 
 import pytest
 from PIL import Image
@@ -85,3 +86,37 @@ def test_sheets_use_the_trimmed_image(client, scans, monkeypatch):
     client.post(f"/api/trade-sheets/{sheet}/cards", json={"variant_id": EMBER8, "delta": 1})
     client.get(f"/api/trade-sheets/{sheet}/image/1.jpg")
     assert Image.open(seen[0]["image_path"]).size == (630, 880)
+
+
+def test_a_publishers_placeholder_counts_as_a_missing_scan(tmp_path, monkeypatch):
+    """VCard's CDN answers a scan it has not uploaded yet with a "?" card (200 OK); the next
+    image source is used instead, and a placeholder cached before it was known is dropped."""
+    import dataclasses
+    import hashlib
+
+    placeholder, scan = b"?" * 2000, b"S" * 3000
+    vcard = dataclasses.replace(deckledger.games.vcard.GAME, image_placeholders=((len(placeholder), hashlib.sha256(placeholder).hexdigest()),))
+    monkeypatch.setattr(deckledger.images, "game_rules", lambda game_id: vcard)
+    for name in ("IMAGE_CACHE", "IMAGE_SOURCE_CACHE", "IMAGE_LOCK_CACHE"):
+        monkeypatch.setattr(deckledger.images, name, tmp_path / name.lower())
+    served = {"https://cdn.example/unlimited.png": placeholder, "https://cdn.example/first.png": scan}
+
+    class Answer:
+        def __init__(self, payload):
+            self.payload = payload
+            self.headers = type("Headers", (), {"get_content_type": lambda self: "image/png"})()
+
+        def read(self, limit):
+            return self.payload
+
+    monkeypatch.setattr(deckledger.images, "urlopen", lambda request, timeout: Answer(served[request.full_url]))
+    row = {"game_id": "vcard", "variant_attributes": json.dumps({
+        "imageUrl": "https://cdn.example/unlimited.png", "imageFallbackUrls": ["https://cdn.example/first.png"]})}
+
+    assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == scan
+    # A placeholder already in the cache from before is removed and the scan served instead.
+    stale = deckledger.images.IMAGE_SOURCE_CACHE / f"{hashlib.sha256(b'https://cdn.example/unlimited.png').hexdigest()}.img"
+    stale.write_bytes(placeholder)
+    stale.with_suffix(".mime").write_text("image/png")
+    assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == scan
+    assert not stale.exists()

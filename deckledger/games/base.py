@@ -96,6 +96,9 @@ class Game:
     cardmarket_game_id: int | None = None
     # Fractions of width/height to cut off each side where the publisher shows its print files.
     image_bleed: tuple[float, float] | None = None
+    # (size in bytes, SHA-256) of stand-in images the publisher serves for a scan it has not
+    # published yet; such a download counts as missing, so the next image source gets its turn.
+    image_placeholders: tuple[tuple[int, str], ...] = ()
     # The publisher offers separate foil layers for its cards (ravensburger_foil.py).
     official_foil_layers: bool = False
     # row -> URL of the card image, for variants the provider gave no imageUrl.
