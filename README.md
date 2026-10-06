@@ -41,7 +41,7 @@ the demo hint on the login page disappears once the `demo` password has been cha
 - JSON backups carry collection, decks, watchlists, sheets and deals, and restore all five
 - Holding (or right-clicking) any heart opens the card's watchlists: put it on any of them or on a new one
 - Multi-select in the collection: one manual price for many cards (or remove theirs), put them on a watchlist or a sheet, make eBay drafts, or take them out of the collection (with undo)
-- eBay: connect a seller account (Settings), follow any eBay listing in a card's price tab as its price source, make listing drafts from a sheet or the collection with a per-user listing preset, check and publish them, and see the account's own listings and sales (tab "eBay" next to Sheets)
+- eBay: connect a seller account, follow any eBay listing in a card's price tab as its price source, make listing drafts from a sheet or the collection with one listing template per game (item specifics such as manufacturer, foil, 1st Edition and year filled in; HTML descriptions), check and publish them, and see the account's own listings and sales (tab "eBay" next to Sheets; its settings open from the gear there)
 
 There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
 

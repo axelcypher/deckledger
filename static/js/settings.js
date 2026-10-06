@@ -44,36 +44,63 @@ function openAccountPasswordDialog(user){
   requestAnimationFrame(()=>$(user.password_set?'#account-current-password':'#account-new-password',modal)?.focus());
 }
 
+// A settings dialog over the page it belongs to (eBay on its tab, sales & trade on the sheets
+// page). Returns the dialog element; the caller fills it.
+function openSettingsModal({id,eyebrow,title,intro='',body=''}){
+  closeSettingsModal();
+  const modal=document.createElement('div');
+  modal.id=id;modal.className='overlay dl-modal-overlay';
+  modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby',`${id}-title`);
+  modal.innerHTML=`<div class="dl-modal"><div class="dl-modal-head"><div><span class="eyebrow">${eyebrow}</span><h2 id="${id}-title">${title}</h2>${intro?`<p>${intro}</p>`:''}</div><button class="close-button" type="button" data-settings-modal-close aria-label="Schließen">×</button></div><div class="dl-modal-body">${body}</div></div>`;
+  document.body.append(modal);
+  document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden';
+  $$('[data-settings-modal-close]',modal).forEach(button=>button.onclick=closeSettingsModal);
+  modal.onmousedown=event=>{if(event.target===modal)closeSettingsModal()};
+  return modal;
+}
+function closeSettingsModal(){
+  const open=$('.dl-modal-overlay');if(!open)return;
+  open.remove();
+  document.documentElement.style.overflow='';document.body.style.overflow='';
+}
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('.dl-modal-overlay')&&!$('.watch-menu'))closeSettingsModal()});
+
+// Sales & trade: the Reddit name and the communities searched for the active game's sheets.
+function openTradeSettings(){
+  const settings=state.boot.settings||{};
+  const modal=openSettingsModal({id:'trade-settings-modal',eyebrow:'VERKAUF &amp; TAUSCH',title:'Reddit',
+    intro:'DeckLedger liest die Kommentare der Posts, die du mit einem Sheet verknüpfst, und sucht in Subreddits nach Posts zu deinen Karten. Mit deinem Reddit-Namen zählen deine eigenen Posts und Antworten nicht als neu.',
+    body:`<section class="dl-modal-section"><div class="dl-grid"><label class="dl-field"><span>Reddit-Name</span><input class="dl-control" id="reddit-username" autocomplete="off" spellcheck="false" placeholder="ohne u/" value="${escapeHtml(settings.redditUsername||'')}"></label></div>
+      <div class="dl-modal-actions"><span class="spacer"></span><button class="primary-button" id="reddit-username-save">Speichern</button></div></section>
+      <section class="dl-modal-section"><div id="reddit-communities" class="reddit-communities"></div></section>`});
+  renderCommunities();
+  $('#reddit-username-save',modal).onclick=async()=>{
+    const name=$('#reddit-username',modal).value.trim().replace(/^\/?u\//i,'');
+    if(name&&!/^[A-Za-z0-9_-]{3,20}$/.test(name)){toast('Ein Reddit-Name hat 3 bis 20 Zeichen: Buchstaben, Ziffern, _ und -.');return}
+    try{await post('/api/settings',{redditUsername:name});state.boot.settings.redditUsername=name;$('#reddit-username',modal).value=name;toast('Reddit-Name gespeichert')}
+    catch(error){toast(error.message)}
+  };
+}
+
 function renderSettings(){
-  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],mobileAppearance=settings.mobileThemeAppearance==='light'?'light':'dark';
+  const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],appearance=appearancePreference();
   const user=state.boot.user,oauth=state.boot.oauth||{enabled:false};
   content.innerHTML=`<div class="page-head compact-page-head user-settings-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
     <div class="user-settings-layout">
     <section class="settings-section user-settings-card settings-card-profile settings-card-wide">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20c1.3-3.6 4.2-5.5 7.2-5.5s5.9 1.9 7.2 5.5"/></svg></span><div><span class="eyebrow">PROFIL</span><h2>Kontodaten</h2><p>Anzeigename, Benutzername und E-Mail-Adresse dieses Kontos.</p></div></div>
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20c1.3-3.6 4.2-5.5 7.2-5.5s5.9 1.9 7.2 5.5"/></svg></span><div><span class="eyebrow">KONTO</span><h2>Konto</h2><p>Profil und Anmeldung dieses Kontos.</p></div></div>
       <div class="settings-grid settings-grid-account">
         <label class="settings-field"><span>Anzeigename</span><input id="account-display-name" value="${escapeHtml(user.display_name)}"></label>
         <label class="settings-field"><span>Benutzername</span><input id="account-username" value="${escapeHtml(user.username)}"></label>
         <label class="settings-field"><span>E-Mail</span><input id="account-email" type="email" placeholder="name@example.com" value="${escapeHtml(user.email||'')}"></label>
       </div>
-      <div class="user-settings-actions account-settings-actions"><span class="password-settings-status"><i></i><b>${user.password_set?'Lokales Passwort aktiv':'Kein lokales Passwort'}</b></span><button class="primary-button" type="button" id="account-password-open">${user.password_set?'Passwort ändern':'Passwort festlegen'}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><button class="primary-button" id="account-save"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Kontodaten speichern</button></div>
-    </section>
-    ${oauth.enabled?`<section class="settings-section user-settings-card settings-card-sso settings-card-wide">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.2c0 4.8-3.2 8.3-8 10-4.8-1.7-8-5.2-8-10V6l8-3.2Z"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2v4"/></svg></span><div><span class="eyebrow">ANMELDUNG</span><h2>Single Sign-On</h2><p>${user.oauth_linked?`Dieses Konto ist mit ${escapeHtml(oauth.provider_name)} verbunden.`:`Verknüpfe dein Konto mit ${escapeHtml(oauth.provider_name)}.`}</p></div><span class="user-settings-status ${user.oauth_linked?'is-connected':''}"><i></i>${user.oauth_linked?'Verbunden':'Nicht verbunden'}</span></div>
-      <div class="user-settings-actions">${user.oauth_linked?`<button class="secondary-button" id="account-oauth-unlink">Verbindung trennen</button>`
-        :`<a class="primary-button" href="/oauth/login">Mit ${escapeHtml(oauth.provider_name)} verbinden</a>`}</div>
-    </section>`:''}
-    <section class="settings-section user-settings-card settings-card-appearance">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-1-.8-1.5-1.7-1.2a4 4 0 0 1-5.1-5.1C14.5 4.8 14 4 13 4l-1-.1Z"/><circle cx="7.5" cy="12" r=".7"/><circle cx="10" cy="17" r=".7"/></svg></span><div><span class="eyebrow">OBERFLÄCHE</span><h2>Darstellung</h2><p>Wähle die Farbgebung der Oberfläche.</p></div></div>
-      <div class="appearance-settings-grid">
-        <div class="segmented mobile-appearance-toggle"><button type="button" data-mobile-appearance="dark" class="${mobileAppearance==='dark'?'active':''}">Dunkel</button><button type="button" data-mobile-appearance="light" class="${mobileAppearance==='light'?'active':''}">Hell</button></div>
+      <div class="account-sign-in">
+        <div class="account-sign-in-row"><div><b>Passwort</b><small>${user.password_set?'Die Anmeldung mit Benutzername und Passwort ist aktiv.':'Noch kein lokales Passwort festgelegt.'}</small></div><span class="user-settings-status ${user.password_set?'is-connected':''}"><i></i>${user.password_set?'Aktiv':'Keins'}</span><button class="secondary-button" type="button" id="account-password-open">${user.password_set?'Passwort ändern':'Passwort festlegen'}</button></div>
+        ${oauth.enabled?`<div class="account-sign-in-row"><div><b>Single Sign-On</b><small>${user.oauth_linked?`Dieses Konto ist mit ${escapeHtml(oauth.provider_name)} verbunden.`:`Verknüpfe dein Konto mit ${escapeHtml(oauth.provider_name)}.`}</small></div><span class="user-settings-status ${user.oauth_linked?'is-connected':''}"><i></i>${user.oauth_linked?'Verbunden':'Nicht verbunden'}</span>${user.oauth_linked?`<button class="secondary-button" id="account-oauth-unlink">Verbindung trennen</button>`:`<a class="secondary-button" href="/oauth/login">Mit ${escapeHtml(oauth.provider_name)} verbinden</a>`}</div>`:''}
       </div>
+      <div class="user-settings-actions account-settings-actions"><span class="spacer"></span><button class="primary-button" id="account-save"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Kontodaten speichern</button></div>
     </section>
-    <section class="settings-section user-settings-card settings-card-language">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17M12 3c2.2 2.4 3.4 5.4 3.4 9S14.2 18.6 12 21c-2.2-2.4-3.4-5.4-3.4-9S9.8 5.4 12 3Z"/></svg></span><div><span class="eyebrow">KARTENDATEN</span><h2>Standardsprache je Spiel</h2><p>Vorauswahl für Sammlung, Deckbuilder und Import.</p></div></div>
-      <div class="settings-grid settings-language-grid">${games.map(g=>`<label class="settings-field settings-language-field"><span class="settings-language-game"><i><img src="/game-logo/${g.id}" alt=""></i><b>${escapeHtml(g.name)}</b></span><select data-lang-game="${g.id}" class="select-control">${g.languages.map(l=>`<option value="${l}" ${(defaultLanguages[g.id]||g.languages[0])===l?'selected':''}>${l}</option>`).join('')}</select></label>`).join('')}</div>
-    </section>
-    <section class="settings-section user-settings-card settings-card-highlights settings-card-wide">
+    <section class="settings-section user-settings-card settings-card-highlights">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.1 5.4L20 9l-4.5 3.8L17 19l-5-3.2L7 19l1.5-6.2L4 9l5.9-.6L12 3Z"/></svg></span><div><span class="eyebrow">STARTSEITE</span><h2>Highlights</h2><p>Bestimme die Karten im endlosen Reel des aktiven TCGs.</p></div></div>
       <div class="settings-checklist highlight-settings-list">
         <label class="checkbox-row highlight-setting"><span><b>Neueste Karten</b><small>Die 20 zuletzt hinzugefügten Karten</small></span><input type="checkbox" data-banner-mode="newest" ${modes.includes('newest')?'checked':''}><i aria-hidden="true"></i></label>
@@ -84,22 +111,22 @@ function renderSettings(){
         <label class="checkbox-row highlight-setting"><span><b>Immer bewegen</b><small>${matchMedia('(prefers-reduced-motion: reduce)').matches?'Auf diesem Gerät sind Animationen in den Systemeinstellungen reduziert: Das Reel steht still und lässt sich von Hand scrollen. Hiermit läuft es trotzdem.':'Das Reel läuft auch dann, wenn ein Gerät Animationen reduziert (Systemeinstellung, Energiesparmodus, Remote-Sitzung).'}</small></span><input type="checkbox" id="banner-always-moving" ${banner.alwaysMoving?'checked':''}><i aria-hidden="true"></i></label>
       </div>
     </section>
-    <section class="settings-section user-settings-card settings-card-reddit settings-card-wide">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4.5 3.5V17H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"/><path d="M8.500 10.500h7M8.500 13.500h4"/></svg></span><div><span class="eyebrow">VERKAUF &amp; TAUSCH</span><h2>Reddit</h2><p>DeckLedger liest die Kommentare der Posts, die du mit einem Sheet verknüpfst, und sucht in Subreddits nach Posts zu deinen Karten. Mit deinem Reddit-Namen zählen deine eigenen Posts und Antworten nicht als neu.</p></div></div>
-      <div class="settings-grid settings-grid-account">
-        <label class="settings-field"><span>Reddit-Name</span><input id="reddit-username" autocomplete="off" spellcheck="false" placeholder="ohne u/" value="${escapeHtml(settings.redditUsername||'')}"></label>
-      </div>
-      <div class="user-settings-actions"><button class="primary-button" id="reddit-username-save">Speichern</button></div>
-      <div id="reddit-communities" class="reddit-communities"></div>
+    <section class="settings-section user-settings-card settings-card-language">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17M12 3c2.2 2.4 3.4 5.4 3.4 9S14.2 18.6 12 21c-2.2-2.4-3.4-5.4-3.4-9S9.8 5.4 12 3Z"/></svg></span><div><span class="eyebrow">KARTENDATEN</span><h2>Standardsprache je Spiel</h2><p>Vorauswahl für Sammlung, Deckbuilder und Import.</p></div></div>
+      <div class="settings-grid settings-language-grid">${games.map(g=>`<label class="settings-field settings-language-field"><span class="settings-language-game"><i><img src="/game-logo/${g.id}" alt=""></i><b>${escapeHtml(g.name)}</b></span><select data-lang-game="${g.id}" class="select-control">${g.languages.map(l=>`<option value="${l}" ${(defaultLanguages[g.id]||g.languages[0])===l?'selected':''}>${l}</option>`).join('')}</select></label>`).join('')}</div>
     </section>
-    ${ebaySettingsHtml()}
+    <section class="settings-section user-settings-card settings-card-appearance settings-card-wide">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-1-.8-1.5-1.7-1.2a4 4 0 0 1-5.1-5.1C14.5 4.8 14 4 13 4l-1-.1Z"/><circle cx="7.5" cy="12" r=".7"/><circle cx="10" cy="17" r=".7"/></svg></span><div><span class="eyebrow">OBERFLÄCHE</span><h2>Darstellung</h2><p>Wähle die Farbgebung der Oberfläche. „Auto“ folgt der Einstellung deines Systems.</p></div></div>
+      <div class="appearance-settings-grid">
+        <div class="segmented mobile-appearance-toggle">${[['light','Hell'],['dark','Dunkel'],['auto','Auto']].map(([value,label])=>`<button type="button" data-mobile-appearance="${value}" class="${appearance===value?'active':''}">${label}</button>`).join('')}</div>
+      </div>
+    </section>
     <section class="settings-section user-settings-card settings-card-offline settings-card-wide" id="offline-save-card">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg></span><div><span class="eyebrow">UNTERWEGS</span><h2>Offline verfügbar machen</h2><p>Speichert Sammlung, Watchlists, Kartendetails und Kartenbilder auf diesem Gerät, damit sie auch ohne Verbindung zum Server da sind.</p></div></div>
       <div id="offline-save-body"></div>
     </section>
     </div>`;
   renderOfflineSave();
-  bindEbaySettings();
   $('#account-save',content).onclick=async()=>{
     const payload={display_name:$('#account-display-name').value.trim(),username:$('#account-username').value.trim(),email:$('#account-email').value.trim()};
     try{
@@ -122,7 +149,7 @@ function renderSettings(){
     const value=b.dataset.mobileAppearance;
     await post('/api/settings',{mobileThemeAppearance:value});
     state.boot.settings.mobileThemeAppearance=value;
-    document.body.classList.toggle('mobile-light',value==='light');
+    applyAppearance();
     renderSettings();
     toast('Darstellung gespeichert');
   });
@@ -143,13 +170,6 @@ function renderSettings(){
     state.boot.settings.homeBanner=updated;
     toast('Banner-Einstellung gespeichert');
   });
-  renderCommunities();
-  $('#reddit-username-save',content).onclick=async()=>{
-    const name=$('#reddit-username').value.trim().replace(/^\/?u\//i,'');
-    if(name&&!/^[A-Za-z0-9_-]{3,20}$/.test(name)){toast('Ein Reddit-Name hat 3 bis 20 Zeichen: Buchstaben, Ziffern, _ und -.');return}
-    try{await post('/api/settings',{redditUsername:name});state.boot.settings.redditUsername=name;$('#reddit-username').value=name;toast('Reddit-Name gespeichert')}
-    catch(error){toast(error.message)}
-  };
   $('#banner-always-moving',content).onchange=async event=>{
     const updated={...(state.boot.settings.homeBanner||{}),alwaysMoving:event.target.checked};
     await post('/api/settings',{homeBanner:updated});

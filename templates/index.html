@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="{{ asset_url('dark-appearance.css') }}">
 </head>
 <body class="dark mobile-modern">
+  <script>if(/(?:^|; )deckledger_theme=light(?:;|$)/.test(document.cookie))document.body.classList.add('mobile-light');</script>
   <!-- Card-reflection plate mask: a solid white visibility field with the plate's front edge
        (id="glass_side") cut out in black. The soft fade is a separate mask on the moving
        reflection image; keeping this SVG mask on its stationary parent prevents parallax from

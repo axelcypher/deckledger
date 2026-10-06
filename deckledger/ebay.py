@@ -22,6 +22,7 @@ EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_RU_NAME.
 """
 
 import base64
+import html
 import io
 import json
 import os
@@ -35,6 +36,8 @@ from xml.sax.saxutils import escape as xml_escape
 
 import requests
 from flask import jsonify, redirect, request, session, url_for
+
+import sheet_render
 
 from .config import jload, now_iso
 from .web import admin_required, app, db, login_required, user_id
@@ -85,17 +88,30 @@ LANGUAGE_NAMES = {
     "EN": "Englisch", "DE": "Deutsch", "JP": "Japanisch", "JA": "Japanisch", "FR": "Französisch", "IT": "Italienisch",
     "ES": "Spanisch", "PT": "Portugiesisch", "KO": "Koreanisch", "ZH": "Chinesisch", "CN": "Chinesisch",
 }
+# The preset: what a draft is made of. Shipping, payment and where the cards are sent from are the
+# seller's and hold for every game; everything else -- above all the item specifics, which name a
+# game's manufacturer and its foil -- is kept per game.
 PRESET_DEFAULTS = {
     "category_id": "183454",
     "condition": "collection",
     "title_template": "{name} {set_code} {number} {finish} {language} {game}",
-    "description_template": "{name}\nSet: {set_name} ({set_code}) · Nr. {number}\nSeltenheit: {rarity} · Ausführung: {finish} · Sprache: {language_name}\nZustand: {condition}\n\nVersand gut geschützt in Sleeve und Toploader.",
-    "aspects": "Spiel: {game}\nSprache: {language_name}\nKartenname: {name}\nSet: {set_name}\nKartennummer: {number}\nSeltenheit: {rarity}",
+    "description_template": "<h2>{name}</h2>\n<p>{set_name} ({set_code}) · Nr. {number}<br>\nSeltenheit: {rarity} · Sprache: {language_name}</p>\n<p>Zustand: {condition}</p>\n<p>Versand gut geschützt in Sleeve und Toploader.</p>",
+    "aspects": "Spiel: {game}\nEdition: {set_name}\nKartenname: {name}\nCharacter: {character}\nSeltenheit: {rarity}\nHersteller: {manufacturer}\n"
+               "Besonderheiten: {features}\nOberflächeneffekt: {surface}\nSprache: {language_name}\nHerstellungsjahr: {year}\nKartenzustand: {condition}\nBewertet: {graded}",
+    "game_label": "", "manufacturer": "", "surface_foil": "Foil", "surface_normal": "Normal",
     "price_factor": 100, "price_min": 1.0, "price_rounding": "none", "price_fallback": None,
     "quantity": "one", "best_offer": False,
     "fulfillment_policy_id": "", "payment_policy_id": "", "return_policy_id": "",
     "postal_code": "", "location": "",
 }
+SHARED_PRESET_KEYS = ("fulfillment_policy_id", "payment_policy_id", "return_policy_id", "postal_code", "location", "best_offer")
+GAME_PRESET_DEFAULTS = {
+    "lorcana": {"game_label": "Disney Lorcana", "manufacturer": "Ravensburger"},
+    "one-piece": {"game_label": "One Piece Card Game", "manufacturer": "Bandai"},
+    "hololive": {"game_label": "hololive OFFICIAL CARD GAME", "manufacturer": "Bushiroad"},
+    "vcard": {"game_label": "VCard", "manufacturer": "Gamer Supps", "surface_foil": "Holo"},
+}
+HTML_TAG = re.compile(r"</?[a-zA-Z][a-zA-Z0-9]*(?:\s[^<>]*)?/?>")
 PRICE_ROUNDINGS = ("none", "up99", "up49")
 TITLE_LIMIT = 80
 DESCRIPTION_LIMIT = 4000
@@ -440,11 +456,15 @@ def admin_save_ebay():
 
 # ---- The listing preset -------------------------------------------------------------------------
 
-def clean_preset(raw):
+def preset_defaults(game_id, game_name=""):
+    return {**PRESET_DEFAULTS, "game_label": game_name, **GAME_PRESET_DEFAULTS.get(game_id, {})}
+
+
+def clean_preset(raw, defaults):
     raw = raw if isinstance(raw, dict) else {}
-    preset = dict(PRESET_DEFAULTS)
+    preset = dict(defaults)
     for key in ("title_template", "description_template", "aspects", "fulfillment_policy_id", "payment_policy_id",
-                "return_policy_id", "postal_code", "location"):
+                "return_policy_id", "postal_code", "location", "game_label", "manufacturer", "surface_foil", "surface_normal"):
         if key in raw:
             preset[key] = str(raw[key] or "").strip()[:DESCRIPTION_LIMIT]
     if re.fullmatch(r"\d{1,10}", str(raw.get("category_id", "")).strip()):
@@ -462,30 +482,58 @@ def clean_preset(raw):
         except ValueError:
             pass
     try:
-        fallback = raw.get("price_fallback")
+        fallback = raw.get("price_fallback", preset["price_fallback"])
         preset["price_fallback"] = round(float(str(fallback).replace(",", ".")), 2) if fallback not in (None, "") else None
     except ValueError:
         preset["price_fallback"] = None
-    if not preset["title_template"]:
-        preset["title_template"] = PRESET_DEFAULTS["title_template"]
+    for key in ("title_template", "game_label"):
+        if not preset[key]:
+            preset[key] = defaults[key]
     return preset
 
 
-def load_preset(connection, uid):
+def stored_presets(connection, uid):
+    """{"shared": {...}, "games": {game_id: {...}}}. The first version kept one flat preset for all
+    games; it stands for the shared part and for every game until a game gets its own."""
     row = connection.execute("SELECT value FROM user_settings WHERE user_id=? AND key=?", (uid, PRESET_SETTING)).fetchone()
-    return clean_preset(jload(row[0], {}) if row else {})
+    stored = jload(row[0], {}) if row else {}
+    stored = stored if isinstance(stored, dict) else {}
+    if stored and "games" not in stored and "shared" not in stored:
+        return {"shared": stored, "games": {}, "legacy": stored}
+    return {"shared": stored.get("shared") or {}, "games": stored.get("games") or {}}
+
+
+def game_name(connection, game_id):
+    row = connection.execute("SELECT name FROM games WHERE id=?", (game_id,)).fetchone()
+    return row[0] if row else None
+
+
+def load_preset(connection, uid, game_id):
+    stored = stored_presets(connection, uid)
+    own = stored["games"].get(game_id) or stored.get("legacy") or {}
+    shared = {key: stored["shared"][key] for key in SHARED_PRESET_KEYS if key in stored["shared"]}
+    return clean_preset({**own, **shared}, preset_defaults(game_id, game_name(connection, game_id) or ""))
 
 
 @app.route("/api/ebay/preset", methods=["GET", "PUT"])
 @login_required
 def ebay_preset():
+    payload = request.get_json(force=True) if request.method == "PUT" else request.args
+    game_id = (payload or {}).get("game_id")
+    name = game_name(db(), game_id)
+    if name is None:
+        return jsonify({"error": "Spiel nicht gefunden."}), 404
+    defaults = preset_defaults(game_id, name)
     if request.method == "PUT":
-        preset = clean_preset(request.get_json(force=True))
+        preset = clean_preset(payload, defaults)
+        stored = stored_presets(db(), user_id())
+        stored.pop("legacy", None)
+        stored["shared"] = {key: preset[key] for key in SHARED_PRESET_KEYS}
+        stored["games"][game_id] = {key: value for key, value in preset.items() if key not in SHARED_PRESET_KEYS}
         db().execute("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value",
-                     (user_id(), PRESET_SETTING, json.dumps(preset)))
+                     (user_id(), PRESET_SETTING, json.dumps(stored)))
         db().commit()
-        return jsonify(preset)
-    return jsonify({**load_preset(db(), user_id()), "defaults": PRESET_DEFAULTS})
+    return jsonify({**load_preset(db(), user_id(), game_id), "game_id": game_id, "defaults": defaults, "shared_keys": SHARED_PRESET_KEYS})
 
 
 @app.get("/api/ebay/policies")
@@ -509,7 +557,7 @@ def ebay_policies():
 
 CARD_SQL = f"""SELECT v.id variant_id,v.game_id,v.finish,v.variant_code,v.is_parallel,v.attributes variant_attributes,
       i.id identity_id,i.canonical_name,p.id printing_id,p.collector_number,p.language,p.rarity,
-      s.code set_code,s.name set_name,s.accent set_accent,g.name game_name,g.short_name game_short_name,g.accent,
+      s.code set_code,s.name set_name,s.accent set_accent,s.release_date,g.name game_name,g.short_name game_short_name,g.accent,
       {latest_price_sql('v')} price
     FROM variants v JOIN printings p ON p.id=v.printing_id JOIN card_identities i ON i.id=p.identity_id
       JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id"""
@@ -553,20 +601,46 @@ def card_condition(connection, uid, variant_id, preset):
     return COLLECTION_CONDITIONS.get(row["condition"] if row else "Near Mint", "400010")
 
 
-def card_values(card, condition, quantity):
+def character_name(name):
+    """The character a card shows: "Elsa - Snow Queen" -> "Elsa", "Ember (PL8)" -> "Ember"."""
+    return re.sub(r"\s*\([^)]*\)\s*$", "", str(name).split(" - ")[0]).strip()
+
+
+def card_values(card, condition, quantity, preset):
     finish = "" if card["finish"] in ("Normal", "standard", "normal") else card["finish"]
+    edition = str(jload(card["variant_attributes"], {}).get("editionLabel") or "")
+    foil = sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])
+    # What sets a print apart beyond its finish: so far the first print run (VCard's 1st Edition).
+    features = "1st Edition" if "1st edition" in f'{card["finish"]} {edition}'.lower() else ""
     return {
         "name": card["canonical_name"], "set_name": card["set_name"], "set_code": card["set_code"], "number": card["collector_number"],
         "rarity": card["rarity"], "finish": finish, "language": card["language"], "language_name": LANGUAGE_NAMES.get(card["language"], card["language"]),
-        "game": card["game_name"], "game_short": card["game_short_name"], "condition": CARD_CONDITIONS.get(condition, ""), "quantity": quantity,
+        "game": preset["game_label"] or card["game_name"], "game_short": card["game_short_name"], "condition": CARD_CONDITIONS.get(condition, ""),
+        "quantity": quantity, "character": character_name(card["canonical_name"]), "manufacturer": preset["manufacturer"],
+        "edition": edition, "features": features, "surface": preset["surface_foil"] if foil else preset["surface_normal"],
+        "year": str(card["release_date"] or "")[:4], "graded": "Nein",
     }
+
+
+def is_html(text):
+    return bool(HTML_TAG.search(str(text or "")))
+
+
+def description_html(text, title=""):
+    """What goes to eBay: a description written in HTML as it is, plain text with its line breaks."""
+    if is_html(text):
+        return text
+    return "<br>".join(xml_escape(line) for line in str(text or "").splitlines()) or xml_escape(title)
 
 
 def build_draft(connection, uid, card, preset, quantity, label=None, sheet_id=None, currency="EUR"):
     condition = card_condition(connection, uid, card["variant_id"], preset)
-    values = card_values(card, condition, quantity)
+    values = card_values(card, condition, quantity, preset)
     title = re.sub(r"\s+", " ", fill(preset["title_template"], values)).strip()[:TITLE_LIMIT].strip()
-    description = fill(preset["description_template"], values).strip()[:DESCRIPTION_LIMIT]
+    # In an HTML description the card's own text must not turn into markup.
+    template = preset["description_template"]
+    escaped = {key: html.escape(str(value), quote=False) for key, value in values.items()} if is_html(template) else values
+    description = fill(template, escaped).strip()[:DESCRIPTION_LIMIT]
     aspects = []
     for line in preset["aspects"].splitlines():
         name, separator, value = line.partition(":")
@@ -608,7 +682,7 @@ def ebay_drafts():
         game_id = request.args.get("game_id")
         return jsonify({"drafts": draft_rows(db(), uid, "AND d.game_id=?" if game_id else "", (game_id,) if game_id else ())})
     payload = request.get_json(force=True) or {}
-    preset = load_preset(db(), uid)
+    presets = {}
     currency = marketplace(ebay_config(db()))["currency"]
     # What to make drafts of: every card of a sheet (with its count and price label), or a list of
     # cards (from the collection, with the preset's count).
@@ -636,8 +710,11 @@ def ebay_drafts():
         if not card or db().execute("SELECT 1 FROM ebay_drafts WHERE user_id=? AND variant_id=? AND status!='published'", (uid, variant_id)).fetchone():
             skipped += 1
             continue
+        owned = 0
         if quantity is None:
             owned = db().execute("SELECT COALESCE(SUM(quantity),0) FROM collection_entries WHERE user_id=? AND variant_id=?", (uid, variant_id)).fetchone()[0]
+        preset = presets.get(card["game_id"]) or presets.setdefault(card["game_id"], load_preset(db(), uid, card["game_id"]))
+        if quantity is None:
             quantity = owned if preset["quantity"] == "owned" and owned else 1
         draft = build_draft(db(), uid, card, preset, quantity, label, sheet_id, currency)
         cursor = db().execute(f"INSERT INTO ebay_drafts({','.join(draft)}) VALUES({','.join('?' * len(draft))})", tuple(draft.values()))
@@ -706,7 +783,7 @@ def item_xml(connection, uid, draft, preset, picture_url=None):
         problems.append("Postleitzahl in der Angebotsvorlage eintragen")
     if problems:
         raise EbayError("Noch nicht bereit: " + "; ".join(problems) + ".")
-    description = "<br>".join(xml_escape(line) for line in draft["description"].splitlines()) or xml_escape(draft["title"])
+    description = description_html(draft["description"], draft["title"])
     aspects = "".join(f"<NameValueList><Name>{xml_escape(name)}</Name><Value>{xml_escape(value)}</Value></NameValueList>"
                       for name, value in jload(draft["aspects"], []))
     sku = f'DL-{draft["variant_id"]}'
@@ -774,7 +851,7 @@ def verify_ebay_draft(draft_id):
     draft = own_draft(draft_id)
     if not draft:
         return jsonify({"error": "Entwurf nicht gefunden."}), 404
-    preset = load_preset(db(), user_id())
+    preset = load_preset(db(), user_id(), draft["game_id"])
     try:
         root, warnings = trading_call(db(), user_id(), "VerifyAddFixedPriceItem", item_xml(db(), user_id(), draft, preset))
     except EbayError as error:
@@ -796,7 +873,7 @@ def publish_ebay_draft(draft_id):
         return jsonify({"error": "Entwurf nicht gefunden."}), 404
     if draft["status"] == "published":
         return jsonify({"error": "Dieser Entwurf ist schon eingestellt."}), 400
-    preset = load_preset(db(), uid)
+    preset = load_preset(db(), uid, draft["game_id"])
     try:
         item_xml(db(), uid, draft, preset)   # cheap checks first: no picture upload for a draft that cannot go out
         picture = upload_card_picture(db(), uid, draft["variant_id"])

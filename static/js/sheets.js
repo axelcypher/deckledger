@@ -53,7 +53,7 @@ async function renderSheets(){
   content.innerHTML=`<div class="sheet-shell">
     <section class="sheet-editor">
       <header class="sheet-head"><button class="compact-back-button" id="sheet-back" title="Alle Sheets" aria-label="Alle Sheets">←</button>
-        <div class="sheet-kinds" role="group" aria-label="Art des Sheets"><span class="sheet-kinds-label">Biete</span>${SHEET_KIND_GROUPS.offer.map(kindChip).join('')}<span class="sheet-kinds-label">Suche</span>${SHEET_KIND_GROUPS.wanted.map(kindChip).join('')}</div>
+        <div class="sheet-kinds" role="group" aria-label="Art des Sheets"><div class="segmented sheet-side-switch" role="radiogroup" aria-label="Biete oder Suche">${[['offer','Biete'],['wanted','Suche']].map(([side,label])=>`<button type="button" role="radio" data-sheet-side="${side}" aria-checked="${wanted===(side==='wanted')}" class="${wanted===(side==='wanted')?'active':''}">${label}</button>`).join('')}</div>${SHEET_KIND_GROUPS[wanted?'wanted':'offer'].map(kindChip).join('')}</div>
         <input id="sheet-name" class="sheet-name-input" value="${escapeHtml(sheet.name)}" maxlength="80" aria-label="Titel des Sheets">
         ${wanted?'':'<button class="secondary-button" id="sheet-ebay" title="Aus den Karten dieses Sheets eBay-Angebotsentwürfe machen (Menge und Preis vom Sheet)">eBay-Entwürfe</button>'}
         <button class="icon-button" id="sheet-delete" title="Sheet löschen" aria-label="Sheet löschen">🗑</button></header>
@@ -93,6 +93,15 @@ async function renderSheets(){
   // Two pairs of switches: what is offered (sell, trade) and what is looked for (buy, trade for).
   // Within a pair one or both can be on, never neither; a sheet is on one side only, so a switch
   // of the other pair moves the sheet over -- and with it where the picker gets its cards from.
+  // Offering and looking for are separate sheets: switching the side carries the choice over
+  // (sell <-> buy, trade <-> trade for).
+  $$('[data-sheet-side]',content).forEach(button=>button.onclick=async()=>{
+    const current=sheetView.payload.sheet.kind,to=button.dataset.sheetSide;
+    if(sheetIsWanted(current)===(to==='wanted'))return;
+    const from=SHEET_KIND_GROUPS[to==='wanted'?'offer':'wanted'],target=SHEET_KIND_GROUPS[to];
+    await patchSheet({kind:current.split('/').map(kind=>target[from.indexOf(kind)]).join('/')});
+    renderSheets();
+  });
   $$('[data-sheet-kind]',content).forEach(button=>button.onclick=async()=>{
     const current=sheetView.payload.sheet.kind,kind=button.dataset.sheetKind,active=current.split('/');
     const group=Object.values(SHEET_KIND_GROUPS).find(kinds=>kinds.includes(kind));

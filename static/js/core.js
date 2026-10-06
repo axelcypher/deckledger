@@ -252,3 +252,15 @@ async function doSearch(q){
   wrap.innerHTML=Object.entries(groups).map(([game,items])=>`<div class="search-group-title">${escapeHtml(game).toUpperCase()}</div>${items.map(r=>`<button class="search-result" data-id="${r.identity_id}" data-variant="${r.variant_id}">${finishThumb(r,artUrl(r.variant_id),r.canonical_name,'search-thumb')}<div><b>${escapeHtml(r.canonical_name)}</b><small>${escapeHtml(r.set_name)} · ${escapeHtml(r.collector_number)} · ${r.language} · ${escapeHtml(r.game_id==='lorcana'?lorcanaFinishLabel(r.finish,r.rarity):r.finish)}</small></div><span class="search-price">${r.price==null?"–":money(r.price)}</span></button>`).join('')}`).join('');
   $$('.search-result',wrap).forEach(el=>el.onclick=()=>{closeOverlay('search-overlay');openCard(el.dataset.id,el.dataset.variant)});
 }
+
+// Light, dark or what the system uses. The resolved choice is also kept in a cookie: the login
+// page and the first paint of the app read it before any settings have loaded.
+const systemDark=globalThis.matchMedia?.('(prefers-color-scheme: dark)');
+const appearancePreference=()=>['light','dark','auto'].includes(state.boot?.settings?.mobileThemeAppearance)?state.boot.settings.mobileThemeAppearance:'dark';
+function applyAppearance(){
+  const preference=appearancePreference();
+  const light=preference==='light'||(preference==='auto'&&!systemDark?.matches);
+  document.body.classList.toggle('mobile-light',light);
+  document.cookie=`deckledger_theme=${light?'light':'dark'};path=/;max-age=31536000;samesite=lax`;
+}
+systemDark?.addEventListener?.('change',()=>{if(state.boot&&appearancePreference()==='auto')applyAppearance()});

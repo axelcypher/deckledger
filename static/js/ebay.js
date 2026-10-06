@@ -10,7 +10,6 @@ const EBAY_RETURN_MESSAGES={
   failed:'eBay hat die Verbindung abgelehnt. Stimmen Schlüssel und RuName der eBay-Anwendung?',
   not_configured:'Die eBay-Anbindung ist auf diesem Server nicht eingerichtet.',
 };
-const EBAY_PLACEHOLDERS='{name} {set_name} {set_code} {number} {rarity} {finish} {language} {language_name} {game} {condition} {quantity}';
 const EBAY_ROUNDINGS=[['none','Nicht runden'],['up49','Auf ,49 / ,99 aufrunden'],['up99','Auf ,99 aufrunden']];
 const ebayDate=value=>value?new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'–';
 const ebayMoney=(value,currency='EUR')=>value==null?'–':currencyMoney(value,currency||'EUR');
@@ -27,8 +26,9 @@ function handleEbayReturn(){
   history.replaceState(null,'',location.pathname);
   toast(EBAY_RETURN_MESSAGES[result]||'eBay-Verbindung fehlgeschlagen.');
   ebayView.status=null;
-  routeTo('settings');
-  setTimeout(()=>$('#ebay-settings-card')?.scrollIntoView({behavior:'smooth',block:'start'}),300);
+  state.sheetId=null;state.dealId=null;sheetView.tab='ebay';
+  routeTo('sheets');
+  openEbaySettings();
 }
 
 // ---- Price tab: listings followed for this card -------------------------------------------
@@ -78,90 +78,119 @@ function renderEbayTracked(panel,variantId,data){
   };
 }
 
-// ---- Settings: connection and listing preset ----------------------------------------------
-function ebaySettingsHtml(){
-  const icon='<svg viewBox="0 0 24 24"><path d="M4 7h16l-1.4 11.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 7Z"/><path d="M8.5 7V6a3.5 3.5 0 0 1 7 0v1"/></svg>';
-  return `<section class="settings-section user-settings-card settings-card-ebay settings-card-wide" id="ebay-settings-card">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true">${icon}</span><div><span class="eyebrow">VERKAUF</span><h2>eBay-Konto</h2><p>Verbinde dein eBay-Konto, damit DeckLedger deine Angebote und Verkäufe abgleicht und Entwürfe für dich einstellt.</p></div><span class="user-settings-status" id="ebay-settings-status"><i></i>…</span></div>
-      <div id="ebay-settings-body"><div class="page-loader compact"><span></span></div></div>
-    </section>
-    <section class="settings-section user-settings-card settings-card-ebay-preset settings-card-wide" id="ebay-preset-card">
-      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><div><span class="eyebrow">VERKAUF</span><h2>eBay-Angebotsvorlage</h2><p>Woraus ein Angebotsentwurf entsteht, wenn du ihn aus einem Sheet oder deiner Sammlung erzeugst. Platzhalter: <code>${escapeHtml(EBAY_PLACEHOLDERS)}</code></p></div></div>
-      <div id="ebay-preset-body"><div class="page-loader compact"><span></span></div></div>
-    </section>`;
-}
+// ---- Settings: one modal, opened from the eBay tab ---------------------------------------
+// Account, shipping (the same for every game) and one listing template per game.
+const EBAY_PLACEHOLDERS=['name','set_name','set_code','number','rarity','finish','language','language_name','game','character','manufacturer','features','surface','year','edition','condition','graded','quantity'];
 
-async function bindEbaySettings(){
-  let status,preset;
-  try{[status,preset]=await Promise.all([ebayStatus(true),api('/api/ebay/preset')])}catch(error){const body=$('#ebay-settings-body');if(body)body.innerHTML=`<p class="muted settings-hint">${escapeHtml(error.message)}</p>`;return}
-  const body=$('#ebay-settings-body'),badge=$('#ebay-settings-status');if(!body)return;
-  badge.classList.toggle('is-connected',status.connected);
-  badge.innerHTML=`<i></i>${status.connected?'Verbunden':status.expired?'Abgelaufen':'Nicht verbunden'}`;
+function openEbaySettings(gameId=state.activeGameId){
+  const modal=openSettingsModal({id:'ebay-settings-modal',eyebrow:'VERKAUF',title:'eBay-Einstellungen',
+    intro:'Konto, Versand und je TCG eine Vorlage, aus der Angebotsentwürfe entstehen.',
+    body:`<section class="dl-modal-section" id="ebay-account-section"><h3>Konto</h3><div id="ebay-account-body"><div class="page-loader compact"><span></span></div></div></section>
+      <div id="ebay-preset-body"><div class="page-loader compact"><span></span></div></div>`});
+  ebaySettingsState.gameId=gameId;ebaySettingsState.dirty=false;
+  renderEbayAccount(modal);
+  renderEbayPreset(modal);
+}
+const ebaySettingsState={gameId:null,dirty:false,policies:null};
+
+async function renderEbayAccount(modal){
+  const body=$('#ebay-account-body',modal);if(!body)return;
+  let status;
+  try{status=await ebayStatus(true)}catch(error){body.innerHTML=`<p class="dl-hint">${escapeHtml(error.message)}</p>`;return}
+  if(!body.isConnected)return;
   body.innerHTML=!status.configured
-    ?`<p class="muted settings-hint">Die eBay-Anbindung ist auf diesem Server nicht eingerichtet. ${state.boot.user.role==='admin'?'Trage die Schlüssel deiner eBay-Anwendung unter Admin → eBay ein.':'Ein Admin trägt die Schlüssel der eBay-Anwendung unter Admin → eBay ein.'}</p>`
+    ?`<p class="dl-hint">Die eBay-Anbindung ist auf diesem Server nicht eingerichtet. ${state.boot.user.role==='admin'?'Trage die Schlüssel deiner eBay-Anwendung unter Admin → eBay ein.':'Ein Admin trägt die Schlüssel der eBay-Anwendung unter Admin → eBay ein.'}</p>`
     :status.connected
-      ?`<div class="ebay-account-line"><b>${escapeHtml(status.username||'eBay-Konto')}</b><span>${escapeHtml(status.marketplace_label)}${status.environment==='sandbox'?' · Sandbox':''} · Angebote zuletzt abgeglichen: ${ebayDate(status.listings_synced_at)}</span>${status.last_error?`<span class="sheet-warning">${escapeHtml(status.last_error)}</span>`:''}</div>
-        <div class="user-settings-actions"><button class="secondary-button" id="ebay-disconnect">Verbindung trennen</button><button class="primary-button" id="ebay-sync-now">Jetzt abgleichen</button></div>`
-      :`<p class="muted settings-hint">${status.expired?'Die Verbindung ist abgelaufen (eBay erneuert sie nach 18 Monaten nicht von selbst). ':''}Du meldest dich bei eBay an und erlaubst DeckLedger den Zugriff auf deine Angebote. Dein eBay-Passwort sieht DeckLedger nie.</p>
-        <div class="user-settings-actions"><a class="primary-button" href="/ebay/connect">Mit ${escapeHtml(status.marketplace_label)} verbinden</a></div>`;
-  $('#ebay-disconnect')?.addEventListener('click',async()=>{
+      ?`<div class="dl-account-row"><span class="user-settings-status is-connected"><i></i>Verbunden</span><div><b>${escapeHtml(status.username||'eBay-Konto')}</b><small>${escapeHtml(status.marketplace_label)}${status.environment==='sandbox'?' · Sandbox':''} · abgeglichen ${ebayDate(status.listings_synced_at)}</small>${status.last_error?`<small class="sheet-warning">${escapeHtml(status.last_error)}</small>`:''}</div>
+          <button class="secondary-button" id="ebay-disconnect">Trennen</button><button class="primary-button" id="ebay-sync-now">Jetzt abgleichen</button></div>`
+      :`<div class="dl-account-row"><span class="user-settings-status"><i></i>${status.expired?'Abgelaufen':'Nicht verbunden'}</span><div><small>${status.expired?'eBay erneuert die Verbindung nach 18 Monaten nicht von selbst. ':''}Du meldest dich bei eBay an und erlaubst DeckLedger den Zugriff auf deine Angebote. Dein eBay-Passwort sieht DeckLedger nie.</small></div>
+          <a class="primary-button" href="/ebay/connect">Mit ${escapeHtml(status.marketplace_label)} verbinden</a></div>`;
+  $('#ebay-disconnect',body)?.addEventListener('click',async()=>{
     if(!confirm('Verbindung zu eBay trennen? Bisher abgeglichene Angebote und Verkäufe bleiben sichtbar.'))return;
-    try{await post('/api/ebay/disconnect',{});toast('eBay-Verbindung getrennt');bindEbaySettings()}catch(error){toast(error.message)}
+    try{await post('/api/ebay/disconnect',{});toast('eBay-Verbindung getrennt');ebaySettingsState.policies=null;renderEbayAccount(modal);renderEbayPreset(modal)}catch(error){toast(error.message)}
   });
-  $('#ebay-sync-now')?.addEventListener('click',async event=>{
+  $('#ebay-sync-now',body)?.addEventListener('click',async event=>{
     const button=event.currentTarget;button.disabled=true;button.textContent='Wird abgeglichen …';
-    try{const r=await post('/api/ebay/listings/sync',{});toast(`${r.active} aktive Angebote abgeglichen`);bindEbaySettings()}
+    try{const r=await post('/api/ebay/listings/sync',{});toast(`${r.active} aktive Angebote abgeglichen`);renderEbayAccount(modal)}
     catch(error){toast(error.message);button.disabled=false;button.textContent='Jetzt abgleichen'}
   });
-  renderEbayPreset(preset,status);
 }
 
-function renderEbayPreset(preset,status){
-  const body=$('#ebay-preset-body');if(!body)return;
-  const conditions=status.conditions||{};
-  const policySelect=(key,label)=>`<label class="settings-field"><span>${label}</span><select class="select-control" data-ebay-policy="${key}"><option value="${escapeHtml(preset[key])}">${preset[key]?`Richtlinie ${escapeHtml(preset[key])}`:status.connected?'Wird geladen …':'Erst eBay-Konto verbinden'}</option></select></label>`;
-  body.innerHTML=`<div class="settings-grid ebay-preset-grid">
-      <label class="settings-field ebay-field-wide"><span>Titel (höchstens 80 Zeichen)</span><input id="ebay-title-template" value="${escapeHtml(preset.title_template)}" maxlength="400"></label>
-      <label class="settings-field ebay-field-wide"><span>Beschreibung</span><textarea id="ebay-description-template" rows="6" class="select-control">${escapeHtml(preset.description_template)}</textarea></label>
-      <label class="settings-field ebay-field-wide"><span>Artikelmerkmale – eine Zeile je Merkmal: <i>Name: Wert</i></span><textarea id="ebay-aspects" rows="6" class="select-control">${escapeHtml(preset.aspects)}</textarea></label>
-      <label class="settings-field"><span>Kategorie-ID</span><input id="ebay-category" value="${escapeHtml(preset.category_id)}" inputmode="numeric"></label>
-      <label class="settings-field"><span>Zustand</span><select id="ebay-condition" class="select-control"><option value="collection">Aus der Sammlung übernehmen</option>${Object.entries(conditions).map(([id,label])=>`<option value="${id}">${escapeHtml(label)}</option>`).join('')}</select></label>
-      <label class="settings-field"><span>Menge je Angebot</span><select id="ebay-quantity" class="select-control"><option value="one">1 Exemplar</option><option value="owned">Alle Exemplare der Sammlung</option></select></label>
-      <label class="settings-field"><span>Preis in % vom Marktpreis</span><input id="ebay-price-factor" value="${preset.price_factor}" inputmode="decimal"></label>
-      <label class="settings-field"><span>Mindestpreis €</span><input id="ebay-price-min" value="${String(preset.price_min).replace('.',',')}" inputmode="decimal"></label>
-      <label class="settings-field"><span>Rundung</span><select id="ebay-price-rounding" class="select-control">${EBAY_ROUNDINGS.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label>
-      <label class="settings-field"><span>Preis ohne Marktpreis €</span><input id="ebay-price-fallback" value="${preset.price_fallback==null?'':String(preset.price_fallback).replace('.',',')}" inputmode="decimal" placeholder="leer: selbst eintragen"></label>
-      ${policySelect('fulfillment_policy_id','Versand-Richtlinie')}${policySelect('payment_policy_id','Zahlungs-Richtlinie')}${policySelect('return_policy_id','Rücknahme-Richtlinie')}
-      <label class="settings-field"><span>Postleitzahl des Artikelstandorts</span><input id="ebay-postal-code" value="${escapeHtml(preset.postal_code)}" autocomplete="postal-code"></label>
-      <label class="settings-field"><span>Ort</span><input id="ebay-location" value="${escapeHtml(preset.location)}"></label>
-    </div>
-    <div class="settings-checklist highlight-settings-list"><label class="checkbox-row highlight-setting"><span><b>Preisvorschläge annehmen</b><small>Käufer können dir einen eigenen Preis vorschlagen.</small></span><input type="checkbox" id="ebay-best-offer" ${preset.best_offer?'checked':''}><i aria-hidden="true"></i></label></div>
-    <p class="muted settings-hint">Ein Preis auf dem Sheet (z. B. „4,50 €“) geht der Preisregel vor. Die Kategorie 183454 ist „Sammelkartenspiele – Einzelkarten“; verkaufst du auf einem anderen Marktplatz, passe Kategorie und Merkmale an dessen Sprache an.</p>
-    <div class="user-settings-actions"><button class="secondary-button" id="ebay-preset-reset">Standard wiederherstellen</button><button class="primary-button" id="ebay-preset-save">Vorlage speichern</button></div>`;
-  $('#ebay-condition').value=preset.condition;$('#ebay-quantity').value=preset.quantity;$('#ebay-price-rounding').value=preset.price_rounding;
+async function renderEbayPreset(modal){
+  const body=$('#ebay-preset-body',modal);if(!body)return;
+  const gameId=ebaySettingsState.gameId;
+  let preset,status;
+  try{[preset,status]=await Promise.all([api(`/api/ebay/preset?game_id=${encodeURIComponent(gameId)}`),ebayStatus()])}
+  catch(error){body.innerHTML=`<p class="dl-hint">${escapeHtml(error.message)}</p>`;return}
+  if(!body.isConnected||ebaySettingsState.gameId!==gameId)return;
+  const conditions=status.conditions||{},games=state.boot.games;
+  const field=(id,label,value,attrs='')=>`<label class="dl-field"><span>${label}</span><input class="dl-control" id="${id}" value="${escapeHtml(value??'')}" ${attrs}></label>`;
+  const select=(id,label,options,value)=>`<label class="dl-field"><span>${label}</span><select class="dl-control" id="${id}">${options.map(([key,text])=>`<option value="${escapeHtml(key)}" ${String(value)===String(key)?'selected':''}>${escapeHtml(text)}</option>`).join('')}</select></label>`;
+  const policy=(key,label)=>`<label class="dl-field"><span>${label}</span><select class="dl-control" data-ebay-policy="${key}"><option value="${escapeHtml(preset[key])}">${preset[key]?`Richtlinie ${escapeHtml(preset[key])}`:status.connected?'Wird geladen …':'Erst eBay-Konto verbinden'}</option></select></label>`;
+  const money2=value=>value==null?'':String(value).replace('.',',');
+  body.innerHTML=`<section class="dl-modal-section"><h3>Versand &amp; Standort <small>gilt für alle TCGs</small></h3>
+      <div class="dl-grid">${policy('fulfillment_policy_id','Versand-Richtlinie')}${policy('payment_policy_id','Zahlungs-Richtlinie')}${policy('return_policy_id','Rücknahme-Richtlinie')}
+        ${field('ebay-postal-code','Postleitzahl',preset.postal_code,'autocomplete="postal-code"')}${field('ebay-location','Ort',preset.location)}
+        <label class="dl-check"><input type="checkbox" id="ebay-best-offer" ${preset.best_offer?'checked':''}><span><b>Preisvorschläge annehmen</b><small>Käufer können einen eigenen Preis vorschlagen.</small></span></label></div>
+    </section>
+    <section class="dl-modal-section"><h3>Vorlage je TCG</h3>
+      <div class="dl-segmented" role="tablist">${games.map(game=>`<button type="button" role="tab" data-ebay-preset-game="${game.id}" aria-selected="${game.id===gameId}" class="${game.id===gameId?'active':''}">${escapeHtml(game.short_name)}</button>`).join('')}</div>
+      <h4>Spiel</h4>
+      <div class="dl-grid">${field('ebay-game-label','Spiel (Merkmal „Spiel“)',preset.game_label)}${field('ebay-manufacturer','Hersteller',preset.manufacturer)}
+        ${field('ebay-surface-foil','Oberflächeneffekt bei Foil/Holo',preset.surface_foil)}${field('ebay-surface-normal','Oberflächeneffekt sonst',preset.surface_normal)}</div>
+      <h4>Angebot</h4>
+      <div class="dl-grid">${field('ebay-category','Kategorie-ID',preset.category_id,'inputmode="numeric"')}
+        ${select('ebay-condition','Zustand',[['collection','Aus der Sammlung übernehmen'],...Object.entries(conditions)],preset.condition)}
+        ${select('ebay-quantity','Menge je Angebot',[['one','1 Exemplar'],['owned','Alle Exemplare der Sammlung']],preset.quantity)}</div>
+      <h4>Preis</h4>
+      <div class="dl-grid">${field('ebay-price-factor','% vom Marktpreis',preset.price_factor,'inputmode="decimal"')}${field('ebay-price-min','Mindestpreis €',money2(preset.price_min),'inputmode="decimal"')}
+        ${select('ebay-price-rounding','Rundung',EBAY_ROUNDINGS,preset.price_rounding)}${field('ebay-price-fallback','Ohne Marktpreis €',money2(preset.price_fallback),'inputmode="decimal" placeholder="leer: selbst eintragen"')}</div>
+      <h4>Texte</h4>
+      <div class="dl-grid dl-grid-wide">
+        ${field('ebay-title-template','Titel (eBay erlaubt 80 Zeichen)',preset.title_template,'maxlength="400"')}
+        <label class="dl-field"><span>Beschreibung – HTML erlaubt (z. B. &lt;p&gt;, &lt;b&gt;, &lt;br&gt;); ohne Tags werden Zeilenumbrüche übernommen</span><textarea class="dl-control" id="ebay-description-template" rows="7">${escapeHtml(preset.description_template)}</textarea></label>
+        <label class="dl-field"><span>Artikelmerkmale – eine Zeile je Merkmal: <i>Name: Wert</i>. Bleibt der Wert leer, entfällt die Zeile.</span><textarea class="dl-control" id="ebay-aspects" rows="12">${escapeHtml(preset.aspects)}</textarea></label>
+      </div>
+      <p class="dl-hint">Platzhalter: ${EBAY_PLACEHOLDERS.map(name=>`<code>{${name}}</code>`).join(' ')}. <code>{features}</code> ist „1st Edition“ bei Erstauflagen, <code>{surface}</code> der Oberflächeneffekt von oben. Ein Preis auf dem Sheet (z. B. „4,50 €“) geht der Preisregel vor.</p>
+    </section>
+    <div class="dl-modal-actions"><button class="secondary-button" id="ebay-preset-reset">Texte zurücksetzen</button><span class="spacer"></span><button class="primary-button" id="ebay-preset-save">Speichern</button></div>`;
+  $$('.dl-control,#ebay-best-offer',body).forEach(control=>control.addEventListener('input',()=>{ebaySettingsState.dirty=true}));
   const read=()=>({
-    title_template:$('#ebay-title-template').value,description_template:$('#ebay-description-template').value,aspects:$('#ebay-aspects').value,
-    category_id:$('#ebay-category').value,condition:$('#ebay-condition').value,quantity:$('#ebay-quantity').value,
-    price_factor:$('#ebay-price-factor').value,price_min:$('#ebay-price-min').value,price_rounding:$('#ebay-price-rounding').value,price_fallback:$('#ebay-price-fallback').value,
-    postal_code:$('#ebay-postal-code').value,location:$('#ebay-location').value,best_offer:$('#ebay-best-offer').checked,
-    ...Object.fromEntries($$('[data-ebay-policy]',body).map(select=>[select.dataset.ebayPolicy,select.value])),
+    game_id:gameId,game_label:$('#ebay-game-label',body).value,manufacturer:$('#ebay-manufacturer',body).value,
+    surface_foil:$('#ebay-surface-foil',body).value,surface_normal:$('#ebay-surface-normal',body).value,
+    title_template:$('#ebay-title-template',body).value,description_template:$('#ebay-description-template',body).value,aspects:$('#ebay-aspects',body).value,
+    category_id:$('#ebay-category',body).value,condition:$('#ebay-condition',body).value,quantity:$('#ebay-quantity',body).value,
+    price_factor:$('#ebay-price-factor',body).value,price_min:$('#ebay-price-min',body).value,price_rounding:$('#ebay-price-rounding',body).value,price_fallback:$('#ebay-price-fallback',body).value,
+    postal_code:$('#ebay-postal-code',body).value,location:$('#ebay-location',body).value,best_offer:$('#ebay-best-offer',body).checked,
+    ...Object.fromEntries($$('[data-ebay-policy]',body).map(control=>[control.dataset.ebayPolicy,control.value])),
   });
-  $('#ebay-preset-save').onclick=async()=>{try{renderEbayPreset(await api('/api/ebay/preset',{method:'PUT',body:JSON.stringify(read())}),status);toast('Angebotsvorlage gespeichert')}catch(error){toast(error.message)}};
-  $('#ebay-preset-reset').onclick=()=>{if(confirm('Titel, Beschreibung und Merkmale auf den Standard zurücksetzen?'))renderEbayPreset({...read(),...Object.fromEntries(['title_template','description_template','aspects','category_id'].map(key=>[key,preset.defaults?.[key]??preset[key]])),defaults:preset.defaults},status)};
+  const save=async()=>{await api('/api/ebay/preset',{method:'PUT',body:JSON.stringify(read())});ebaySettingsState.dirty=false};
+  $('#ebay-preset-save',body).onclick=async()=>{try{await save();toast(`Vorlage für ${games.find(game=>game.id===gameId)?.short_name||gameId} gespeichert`);renderEbayPreset(modal)}catch(error){toast(error.message)}};
+  $('#ebay-preset-reset',body).onclick=()=>{
+    if(!confirm('Titel, Beschreibung und Artikelmerkmale dieses TCGs auf den Standard zurücksetzen?'))return;
+    $('#ebay-title-template',body).value=preset.defaults.title_template;$('#ebay-description-template',body).value=preset.defaults.description_template;$('#ebay-aspects',body).value=preset.defaults.aspects;
+    ebaySettingsState.dirty=true;
+  };
+  $$('[data-ebay-preset-game]',body).forEach(button=>button.onclick=async()=>{
+    if(button.dataset.ebayPresetGame===gameId)return;
+    // Switching keeps what was typed: the open game's template is saved first.
+    if(ebaySettingsState.dirty){try{await save();toast('Vorlage gespeichert')}catch(error){toast(error.message);return}}
+    ebaySettingsState.gameId=button.dataset.ebayPresetGame;renderEbayPreset(modal);
+  });
   if(status.connected)loadEbayPolicies(body,preset);
 }
 
 async function loadEbayPolicies(body,preset){
-  let policies;
-  try{policies=await api('/api/ebay/policies')}catch(error){
-    $$('[data-ebay-policy]',body).forEach(select=>{if(!select.value)select.options[0].textContent='Nicht geladen'});
+  try{ebaySettingsState.policies??=await api('/api/ebay/policies')}catch(error){
+    $$('[data-ebay-policy]',body).forEach(control=>{if(!control.value)control.options[0].textContent='Nicht geladen'});
     toast(error.message);return;
   }
+  if(!body.isConnected)return;
   const kinds={fulfillment_policy_id:'fulfillment',payment_policy_id:'payment',return_policy_id:'return'};
-  $$('[data-ebay-policy]',body).forEach(select=>{
-    const key=select.dataset.ebayPolicy,list=policies[kinds[key]]||[];
-    select.innerHTML=`<option value="">${list.length?'Bitte wählen':'Keine Richtlinie bei eBay angelegt'}</option>${list.map(policy=>`<option value="${escapeHtml(policy.id)}">${escapeHtml(policy.name)}</option>`).join('')}`;
-    select.value=preset[key]||(list.length===1?list[0].id:'');
+  $$('[data-ebay-policy]',body).forEach(control=>{
+    const key=control.dataset.ebayPolicy,list=ebaySettingsState.policies[kinds[key]]||[];
+    control.innerHTML=`<option value="">${list.length?'Bitte wählen':'Keine Richtlinie bei eBay angelegt'}</option>${list.map(policy=>`<option value="${escapeHtml(policy.id)}">${escapeHtml(policy.name)}</option>`).join('')}`;
+    control.value=preset[key]||(list.length===1?list[0].id:'');
   });
 }
 
@@ -195,7 +224,7 @@ async function renderEbay(){
     ${sheetTabsHtml('ebay')}
     <div class="ebay-status-bar">${status.connected
       ?`<span class="user-settings-status is-connected"><i></i>${escapeHtml(status.username||'Verbunden')}</span><span class="muted">${escapeHtml(status.marketplace_label)} · abgeglichen ${ebayDate(status.listings_synced_at)}</span>${status.last_error?`<span class="sheet-warning">${escapeHtml(status.last_error)}</span>`:''}<button class="secondary-button" id="ebay-sync">Jetzt abgleichen</button>`
-      :`<span class="user-settings-status"><i></i>${status.configured?'Kein eBay-Konto verbunden':'eBay nicht eingerichtet'}</span><span class="muted">Entwürfe kannst du trotzdem schon anlegen; zum Einstellen verbinde dein Konto.</span><button class="secondary-button" id="ebay-open-settings">Zu den Einstellungen</button>`}</div>
+      :`<span class="user-settings-status"><i></i>${status.configured?'Kein eBay-Konto verbunden':'eBay nicht eingerichtet'}</span><span class="muted">Entwürfe kannst du trotzdem schon anlegen; zum Einstellen verbinde dein Konto.</span><button class="secondary-button" id="ebay-open-settings">eBay-Einstellungen</button>`}</div>
     <section class="ebay-section">
       <div class="sheet-section-head"><b>Entwürfe</b><span>${open.length?`${open.length} offen`:''}</span>${open.length?`<button class="secondary-button" id="ebay-verify-all" ${status.connected?'':'disabled'}>Alle prüfen</button><button class="primary-button" id="ebay-publish-all" ${status.connected?'':'disabled'}>Alle einstellen</button>`:''}</div>
       ${open.length?`<div class="ebay-drafts">${open.map(draft=>ebayDraftRow(draft,status)).join('')}</div>`
@@ -209,7 +238,7 @@ async function renderEbay(){
     </section>
     ${listings.sales.length?`<section class="ebay-section"><div class="sheet-section-head"><b>Letzte Verkäufe</b></div><div class="ebay-sales">${listings.sales.map(sale=>`<div class="ebay-sale"><span>${ebayDate(sale.sold_at)}</span><b>${sale.quantity}× ${escapeHtml(sale.title)}</b><span>${escapeHtml(sale.buyer)}</span><strong>${ebayMoney(sale.price,sale.currency)}</strong></div>`).join('')}</div></section>`:''}`;
   bindSheetTabs();
-  $('#ebay-open-settings')?.addEventListener('click',()=>{routeTo('settings');setTimeout(()=>$('#ebay-settings-card')?.scrollIntoView({behavior:'smooth'}),300)});
+  $('#ebay-open-settings')?.addEventListener('click',()=>openEbaySettings());
   $('#ebay-sync')?.addEventListener('click',async event=>{
     const button=event.currentTarget;button.disabled=true;button.textContent='Wird abgeglichen …';
     try{const r=await post('/api/ebay/listings/sync',{});toast(`Abgeglichen: ${r.active} aktiv, ${r.sold} neue Verkäufe`);renderEbay()}

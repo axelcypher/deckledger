@@ -225,7 +225,7 @@ def test_the_secret_never_leaves_the_server(admin, configured):
 def test_drafts_follow_the_preset(client):
     observe(EMBER8, "cardmarket", 4.32, "2026-09-01T06:00:00+00:00")
     client.post("/api/collection", json={"variant_id": EMBER8, "delta": 3, "condition": "Excellent"})
-    preset = client.put("/api/ebay/preset", json={"title_template": "{name} {set_code}-{number} {finish} [{language}]", "price_factor": "90",
+    preset = client.put("/api/ebay/preset", json={"game_id": "vcard", "title_template": "{name} {set_code}-{number} {finish} [{language}]", "price_factor": "90",
                                                     "price_rounding": "up99", "quantity": "owned", "aspects": "Spiel: {game}\nLeer: {nichts}"}).get_json()
     assert (preset["price_factor"], preset["category_id"]) == (90.0, "183454")
     created = client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8, EMBER9]})
@@ -234,7 +234,7 @@ def test_drafts_follow_the_preset(client):
     ember = drafts[EMBER8]
     assert ember["title"] == "Ember (PL8) 1-001 [EN]"
     assert (ember["price"], ember["quantity"], ember["condition"]) == (3.99, 3, "400011")
-    assert ember["aspects"] == [["Spiel", "VCard Trading Card Game"]]
+    assert ember["aspects"] == [["Spiel", "VCard"]]
     assert (drafts[EMBER9]["price"], drafts[EMBER9]["quantity"], drafts[EMBER9]["condition"]) == (None, 1, "400010")
     # A card with an open draft gets no second one.
     assert client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json() == {"created": 0, "skipped": 1, "ids": []}
@@ -243,7 +243,7 @@ def test_drafts_follow_the_preset(client):
 def test_drafts_from_a_sheet_take_its_counts_and_prices(client):
     sheet_id = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Verkauf"}).get_json()["id"]
     client.post(f"/api/trade-sheets/{sheet_id}/cards", json={"entries": [{"variant_id": EMBER8, "quantity": 2, "label": "4,50 €"}, {"variant_id": TIDE8, "quantity": 1}]})
-    client.put("/api/ebay/preset", json={"price_fallback": "2"})
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "price_fallback": "2"})
     assert client.post("/api/ebay/drafts", json={"sheet_id": sheet_id}).get_json()["created"] == 2
     drafts = {draft["variant_id"]: draft for draft in client.get("/api/ebay/drafts").get_json()["drafts"]}
     assert (drafts[EMBER8]["price"], drafts[EMBER8]["quantity"], drafts[EMBER8]["sheet_id"]) == (4.5, 2, sheet_id)
@@ -265,7 +265,7 @@ def ready_draft(client, monkeypatch, tmp_path):
     image = tmp_path / "card.png"
     image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
     monkeypatch.setattr(deckledger.ebay, "card_image", lambda row, variant_id: (image, "image/png", "key"))
-    client.put("/api/ebay/preset", json={"fulfillment_policy_id": "fulfillment-1", "payment_policy_id": "payment-1",
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "fulfillment_policy_id": "fulfillment-1", "payment_policy_id": "payment-1",
                                           "return_policy_id": "return-1", "postal_code": "10115", "price_fallback": "2,50"})
     return client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["ids"][0]
 
@@ -310,7 +310,7 @@ def test_ebays_refusal_is_kept_on_the_draft(client, configured, monkeypatch, tmp
 
 
 def test_publishing_needs_a_connected_account(client, configured):
-    client.put("/api/ebay/preset", json={"fulfillment_policy_id": "f", "payment_policy_id": "p", "return_policy_id": "r", "postal_code": "1", "price_fallback": "1"})
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "fulfillment_policy_id": "f", "payment_policy_id": "p", "return_policy_id": "r", "postal_code": "1", "price_fallback": "1"})
     draft_id = client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["ids"][0]
     assert "kein eBay-Konto verbunden" in client.post(f"/api/ebay/drafts/{draft_id}/verify").get_json()["error"]
 
@@ -353,3 +353,40 @@ def test_listings_of_other_users_stay_private(client, configured):
     query("INSERT INTO ebay_listings(user_id,item_id,title,status,synced_at) VALUES(1,'111','Mine','active','t')")
     assert login(ADMIN).get("/api/ebay/listings").get_json()["listings"] == []
     assert login(ADMIN).patch("/api/ebay/listings/111", json={"variant_id": None}).status_code == 404
+
+
+def test_each_game_has_its_own_preset_and_shares_the_shipping(client):
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "title_template": "V {name}", "postal_code": "10115", "payment_policy_id": "p-1"})
+    lorcana = client.get("/api/ebay/preset?game_id=lorcana").get_json()
+    assert (lorcana["title_template"], lorcana["postal_code"], lorcana["payment_policy_id"]) == (
+        "{name} {set_code} {number} {finish} {language} {game}", "10115", "p-1")
+    assert (lorcana["game_label"], lorcana["manufacturer"], lorcana["surface_foil"]) == ("Disney Lorcana", "Ravensburger", "Foil")
+    assert client.get("/api/ebay/preset?game_id=vcard").get_json()["title_template"] == "V {name}"
+    assert client.get("/api/ebay/preset?game_id=nope").status_code == 404
+
+
+def test_the_item_specifics_are_filled_in(client):
+    from conftest import EMBER8_HOLO
+    query("UPDATE sets SET release_date='2024-06-01' WHERE id='vcard-test'")
+    query("""UPDATE variants SET finish='1st Edition Holo' WHERE id=?""", (EMBER8_HOLO,))
+    client.post("/api/collection", json={"variant_id": EMBER8_HOLO, "delta": 1})
+    client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8_HOLO, EMBER8]})
+    drafts = {draft["variant_id"]: dict(draft["aspects"]) for draft in client.get("/api/ebay/drafts").get_json()["drafts"]}
+    holo = drafts[EMBER8_HOLO]
+    assert holo == {
+        "Spiel": "VCard", "Edition": "Test Set", "Kartenname": "Ember (PL8)", "Character": "Ember", "Seltenheit": "Uncommon",
+        "Hersteller": "Gamer Supps", "Besonderheiten": "1st Edition", "Oberflächeneffekt": "Holo", "Sprache": "Englisch",
+        "Herstellungsjahr": "2024", "Kartenzustand": "Near Mint oder besser", "Bewertet": "Nein",
+    }
+    # Without a feature the line is left out rather than sent empty.
+    assert "Besonderheiten" not in drafts[EMBER8] and drafts[EMBER8]["Oberflächeneffekt"] == "Normal"
+
+
+def test_descriptions_may_be_html(client):
+    query("UPDATE card_identities SET canonical_name='Ember <PL8>' WHERE id='vcard-card-ember8'")
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "description_template": "<p><b>{name}</b></p>"})
+    client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]})
+    description = client.get("/api/ebay/drafts").get_json()["drafts"][0]["description"]
+    assert description == "<p><b>Ember &lt;PL8&gt;</b></p>"
+    assert deckledger.ebay.description_html(description) == description
+    assert deckledger.ebay.description_html("Zeile 1\nA & B") == "Zeile 1<br>A &amp; B"

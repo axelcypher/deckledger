@@ -1231,3 +1231,68 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
   .ebay-sale { grid-template-columns:1fr auto; }
   .ebay-preset-grid { grid-template-columns:1fr; }
 }
+
+/* Settings dialogs (openSettingsModal in js/settings.js): eBay on its tab, sales & trade on the
+   sheets page. Their controls are not .select-control on purpose -- the theme rounds those to
+   pills; every field here keeps the same fixed radius. */
+.dl-modal-overlay { z-index:120; }
+.dl-modal { width:min(880px,100%);max-height:none;padding:26px 28px 24px;border:1px solid var(--line);border-radius:24px;background:var(--surface);color:var(--ink);box-shadow:0 30px 90px rgba(0,0,0,.35); }
+.dl-modal-head { display:flex;align-items:flex-start;gap:16px;margin-bottom:18px; }
+.dl-modal-head h2 { margin:0 0 6px;font-size:26px; }
+.dl-modal-head p { max-width:62ch;margin:0;color:var(--muted);font-size:13px;line-height:1.5; }
+.dl-modal-head .eyebrow { color:var(--mt-gold,var(--brand)); }
+.dl-modal-head .close-button { flex:none;margin-left:auto; }
+.dl-modal-body { display:grid;gap:14px; }
+.dl-modal-section { padding:18px 20px;border-radius:18px;background:var(--surface-2);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 70%,transparent); }
+.dl-modal-section h3 { display:flex;align-items:baseline;gap:10px;margin:0 0 14px;font-size:19px; }
+.dl-modal-section h3 small { color:var(--muted);font:600 11px var(--font-ui,inherit);letter-spacing:0; }
+.dl-modal-section h4 { margin:18px 0 10px;color:var(--mt-gold,var(--brand));font:800 10px var(--font-ui,inherit);letter-spacing:.12em;text-transform:uppercase; }
+.dl-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px; }
+.dl-grid-wide { grid-template-columns:1fr; }
+.dl-field { display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--muted);font-size:11px;font-weight:700; }
+.dl-field i { font-style:normal;color:var(--ink); }
+body .dl-modal .dl-control { width:100%;min-width:0;min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);font:600 13px var(--font-ui,inherit);outline:none;box-shadow:none; }
+body .dl-modal select.dl-control { padding-right:30px; }
+body .dl-modal textarea.dl-control { min-height:120px;padding:11px 12px;resize:vertical;font:500 12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+body .dl-modal .dl-control:focus { border-color:color-mix(in srgb,var(--mt-gold,var(--brand)) 55%,var(--line));box-shadow:0 0 0 3px color-mix(in srgb,var(--mt-gold,var(--brand)) 14%,transparent); }
+.dl-check { display:flex;align-items:center;gap:10px;min-height:42px;padding:8px 12px;border-radius:11px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);cursor:pointer; }
+.dl-check input { width:18px;height:18px;accent-color:var(--brand); }
+.dl-check span { display:grid;gap:2px; }
+.dl-check b { font-size:12px; }
+.dl-check small { color:var(--muted);font-size:10px; }
+.dl-hint { margin:14px 0 0;color:var(--muted);font-size:11.5px;line-height:1.7; }
+.dl-hint code { padding:1px 5px;border-radius:5px;background:var(--surface);font-size:10.5px; }
+.dl-segmented { display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:13px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line); }
+.dl-segmented button { min-height:34px;padding:0 16px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-weight:700;cursor:pointer; }
+.dl-segmented button.active { background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mt-gold,var(--brand)) 45%,var(--line)); }
+.dl-modal-actions { display:flex;align-items:center;gap:10px;margin-top:4px; }
+.dl-modal-actions .spacer { flex:1; }
+.dl-modal-section .dl-modal-actions { margin-top:14px; }
+.dl-account-row { display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:14px; }
+.dl-account-row > div { display:grid;gap:3px;min-width:0; }
+.dl-account-row small { color:var(--muted);font-size:11.5px;line-height:1.45; }
+.dl-account-row .user-settings-status { margin-left:0; }
+.dl-modal .reddit-communities .settings-field { margin-bottom:4px; }
+@media (max-width:760px) {
+  .dl-modal-overlay { padding:12px; }
+  .dl-modal { padding:20px 16px;border-radius:20px; }
+  .dl-modal-section { padding:14px; }
+  .dl-account-row { grid-template-columns:1fr; }
+}
+
+/* The gear at the end of the sheets tabs, and the side switch of the sheet editor */
+.sheet-tabs { align-items:center; }
+.sheet-tabs-settings { display:inline-grid;place-items:center;width:38px;min-width:38px;height:38px;min-height:38px;margin-left:auto;padding:0; }
+.sheet-tabs-settings svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round; }
+.sheet-side-switch { flex:none;display:inline-flex;padding:3px;margin-right:4px; }
+.sheet-side-switch button { min-height:34px;padding:0 14px; }
+
+/* Settings: sign-in methods inside the account card */
+.account-sign-in { display:grid;gap:8px;margin-top:16px; }
+.account-sign-in-row { display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px 14px;border-radius:14px;background:color-mix(in srgb,var(--surface) 48%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 60%,transparent); }
+.account-sign-in-row > div { display:grid;gap:3px;min-width:0; }
+.account-sign-in-row b { font-size:13px; }
+.account-sign-in-row small { color:var(--muted);font-size:11px; }
+.account-sign-in-row .user-settings-status { margin-left:0; }
+.account-settings-actions .spacer { flex:1; }
+@media (max-width:760px) { .account-sign-in-row { grid-template-columns:1fr auto; } .account-sign-in-row > :last-child { grid-column:1/-1; } }

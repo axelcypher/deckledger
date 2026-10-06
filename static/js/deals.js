@@ -23,10 +23,13 @@ const dealCardsLine=(deal,side)=>deal.cards.filter(card=>card.side===side).map(c
 
 // The two tabs of "Verkauf & Tausch". Sheets and deals share the page, not the content.
 function sheetTabsHtml(active){
-  return `<div class="sheet-tabs" role="tablist">${[['sheets','Sheets'],['deals','Vorgänge'],['ebay','eBay']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}</div>`;
+  // The gear opens the settings of what is on screen: eBay's on its tab, else sales & trade (Reddit).
+  const settings=active==='ebay'?['ebay','eBay-Einstellungen']:['trade','Einstellungen für Verkauf & Tausch'];
+  return `<div class="sheet-tabs" role="tablist">${[['sheets','Sheets'],['deals','Vorgänge'],['ebay','eBay']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}<button type="button" class="icon-button sheet-tabs-settings" data-sheet-settings="${settings[0]}" title="${settings[1]}" aria-label="${settings[1]}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div>`;
 }
 function bindSheetTabs(){
   $$('[data-sheet-tab]',content).forEach(button=>button.onclick=()=>{sheetView.tab=button.dataset.sheetTab;state.sheetId=null;state.dealId=null;renderSheets()});
+  $('[data-sheet-settings]',content)?.addEventListener('click',event=>event.currentTarget.dataset.sheetSettings==='ebay'?openEbaySettings():openTradeSettings());
 }
 
 async function renderDeals(){

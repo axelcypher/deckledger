@@ -273,7 +273,9 @@ describe('app in the browser', { skip }, () => {
     await sleep(300);
     assert.equal(await kind(), 'WTT', 'the last one cannot be switched off');
     // The other side: a sheet of cards that are looked for, picked from the watchlists or the catalogue.
-    await press('WTTF');
+    // Only one side's kinds are shown; switching it carries trade over to trade for.
+    assert.equal(await page.evaluate(`document.querySelector('[data-sheet-kind="WTTF"]')`), null, 'the other side is hidden');
+    await page.evaluate(`document.querySelector('[data-sheet-side="wanted"]').click()`);
     await page.waitFor(`sheetView.payload.sheet.kind==='WTTF'&&document.querySelector('[data-sheet-source="catalog"]')`, { message: 'the picker to offer the wanted sources' });
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[data-sheet-source]')].map(button=>button.dataset.sheetSource)`), ['watchlist', 'catalog']);
     await press('WTB');
@@ -284,8 +286,8 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`document.querySelector('#sheet-picker-list [data-pick="vcard-print-tide8-en-normal"]').click()`);
     await page.waitFor(`sheetView.payload.cards.some(card=>card.variant_id==='vcard-print-tide8-en-normal')`);
     assert.ok(!(await page.evaluate(`document.querySelector('#sheet-entries').innerText`)).includes('Nur 0×'), 'no stock warning on a wanted sheet');
-    await press('WTS');
-    await page.waitFor(`sheetView.payload.sheet.kind==='WTS'&&document.querySelector('[data-sheet-source="collection"]')`, { message: 'the sheet to go back to the offer side' });
+    await page.evaluate(`document.querySelector('[data-sheet-side="offer"]').click()`);
+    await page.waitFor(`sheetView.payload.sheet.kind==='WTS/WTT'&&document.querySelector('[data-sheet-source="collection"]')`, { message: 'the sheet to go back to the offer side' });
     noProblems();
   });
 
@@ -359,17 +361,23 @@ describe('app in the browser', { skip }, () => {
   });
 
   test('the Reddit name is a setting of the account', async () => {
-    await page.route('settings');
+    await page.evaluate(`(state.sheetId=null,state.dealId=null,sheetView.tab='sheets',1)`);
+    await page.route('sheets');
+    await page.waitFor(`document.querySelector('[data-sheet-settings="trade"]')`, { message: 'the settings button of the sheets page' });
+    await page.evaluate(`document.querySelector('[data-sheet-settings="trade"]').click()`);
     await page.evaluate(`(()=>{document.querySelector('#reddit-username').value='u/Demo_Seller';document.querySelector('#reddit-username-save').click()})()`);
     await page.waitFor(`api('/api/bootstrap').then(boot=>boot.settings.redditUsername==='Demo_Seller')`, { message: 'the name to be saved without its prefix' });
     await page.evaluate(`(()=>{document.querySelector('#reddit-username').value='no spaces allowed';document.querySelector('#reddit-username-save').click()})()`);
     await sleep(300);
     assert.equal(await page.evaluate(`state.boot.settings.redditUsername`), 'Demo_Seller');
+    await page.evaluate(`closeSettingsModal()`);
     noProblems();
   });
 
   test('a post in a listed subreddit that fits a sheet shows up in the inbox', async () => {
-    await page.route('settings');
+    await page.evaluate(`(state.sheetId=null,state.dealId=null,sheetView.tab='sheets',1)`);
+    await page.route('sheets');
+    await page.evaluate(`openTradeSettings()`);
     await page.waitFor(`document.querySelector('#reddit-community-form')`, { message: 'the list of subreddits in the settings' });
     await page.evaluate(`(()=>{document.querySelector('#reddit-community-name').value='https://www.reddit.com/r/VcardTrades/';document.querySelector('#reddit-community-form').requestSubmit()})()`);
     await page.waitFor(`document.querySelector('.community-row')`, { message: 'the subreddit to be listed' });
@@ -379,7 +387,7 @@ describe('app in the browser', { skip }, () => {
     await page.waitFor(`/geprüft/.test(document.querySelector('.community-row small')?.innerText||'')&&!/noch nicht/.test(document.querySelector('.community-row small').innerText)`, { message: 'the subreddit to be read' });
     await page.waitFor(`(()=>{const badge=document.querySelector('.nav-item [data-inbox-count]');return badge.textContent==='1'&&!badge.classList.contains('hidden')})()`, { message: 'the find to be counted in the menu' });
     // The sheet says where it is looked for, and can keep out of it.
-    await page.evaluate(`(state.sheetId=null,1)`);
+    await page.evaluate(`(closeSettingsModal(),state.sheetId=null,1)`);
     await page.route('sheets');
     const find = await page.evaluate(`(()=>{const entry=document.querySelector('.inbox-item.is-find');return entry&&{title:entry.querySelector('h4').innerText,body:entry.querySelector('p').innerHTML,match:entry.querySelector('.inbox-match').innerText,link:entry.querySelector('a').href}})()`);
     assert.match(find.title, /^\[US\] \[H\] (PayPal \[W\] Ember PL8|Ember PL8 \[W\] PayPal)$/);
