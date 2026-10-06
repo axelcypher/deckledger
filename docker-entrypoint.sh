@@ -18,4 +18,9 @@ done) &
   python post_watch.py || echo "Post-Watcher fehlgeschlagen." >&2
 done) &
 
+# eBay: followed listings (card prices) and connected accounts' own listings, when due.
+(while sleep 600; do
+  python ebay_sync.py || echo "eBay-Abgleich fehlgeschlagen." >&2
+done) &
+
 exec gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --access-logfile - app:app

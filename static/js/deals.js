@@ -23,7 +23,7 @@ const dealCardsLine=(deal,side)=>deal.cards.filter(card=>card.side===side).map(c
 
 // The two tabs of "Verkauf & Tausch". Sheets and deals share the page, not the content.
 function sheetTabsHtml(active){
-  return `<div class="sheet-tabs" role="tablist">${[['sheets','Sheets'],['deals','Vorgänge']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}</div>`;
+  return `<div class="sheet-tabs" role="tablist">${[['sheets','Sheets'],['deals','Vorgänge'],['ebay','eBay']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}</div>`;
 }
 function bindSheetTabs(){
   $$('[data-sheet-tab]',content).forEach(button=>button.onclick=()=>{sheetView.tab=button.dataset.sheetTab;state.sheetId=null;state.dealId=null;renderSheets()});

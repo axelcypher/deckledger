@@ -92,12 +92,14 @@ function renderSettings(){
       <div class="user-settings-actions"><button class="primary-button" id="reddit-username-save">Speichern</button></div>
       <div id="reddit-communities" class="reddit-communities"></div>
     </section>
+    ${ebaySettingsHtml()}
     <section class="settings-section user-settings-card settings-card-offline settings-card-wide" id="offline-save-card">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg></span><div><span class="eyebrow">UNTERWEGS</span><h2>Offline verfügbar machen</h2><p>Speichert Sammlung, Watchlists, Kartendetails und Kartenbilder auf diesem Gerät, damit sie auch ohne Verbindung zum Server da sind.</p></div></div>
       <div id="offline-save-body"></div>
     </section>
     </div>`;
   renderOfflineSave();
+  bindEbaySettings();
   $('#account-save',content).onclick=async()=>{
     const payload={display_name:$('#account-display-name').value.trim(),username:$('#account-username').value.trim(),email:$('#account-email').value.trim()};
     try{

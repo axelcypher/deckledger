@@ -438,6 +438,10 @@ def card_detail(identity_id):
         # price_source/price_url keep naming the marketplace, so its link stays useful next to
         # a price entered by hand.
         variant["price_manual"] = variant.get("price_provider") == MANUAL_PRICE_PROVIDER
+        if variant.get("price_provider") == "ebay":
+            # Followed eBay listings (deckledger/ebay.py): the link goes to the cheapest of them.
+            variant["price_source"] = "eBay-Angebote"
+            variant["price_url"] = (market_mapping or {}).get("source_url") or variant.get("price_url")
         variant["edition_label"] = variant_attrs.get("editionLabel")
         # A price that did not change writes no new row; it is still as current as the provider's
         # last successful sync.

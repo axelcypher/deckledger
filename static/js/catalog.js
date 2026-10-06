@@ -384,6 +384,7 @@ function bindCardEvents(watchlistId=null){
     tile.onclick=e=>{
       if(e.target.closest('.watch-button,.quantity-control,.quick-add,.watch-desired'))return;
       if(state.route==='watchlist'&&state.watchSelectionMode){toggleWatchCardSelection(tile);return}
+      if(state.route==='collection'&&state.collectionSelectionMode){toggleCollectionCardSelection(tile);return}
       openCard(tile.dataset.identity,tile.dataset.variant);
     };
     $('.watch-button',tile).onclick=async e=>{e.stopPropagation();const r=await post('/api/watchlist',{variant_id:tile.dataset.variant,...(watchlistId?{list_id:watchlistId}:{})});syncWatchlistIcon(tile.dataset.identity,tile.dataset.variant,r.active);toast(r.active?'Zur Watchlist hinzugefügt':'Von der Watchlist entfernt');refreshWatchCount();if(state.route==='watchlist')renderWatchlist(true)};

@@ -85,6 +85,54 @@ def update_collection():
     return jsonify(result)
 
 
+@app.post("/api/collection/remove")
+@login_required
+def remove_from_collection():
+    """Takes the selected cards out of the collection entirely -- every condition and graded copy
+    (the collection's multi-select). Answers with what was there, which /api/collection/restore
+    puts back."""
+    variant_ids = [value for value in ((request.get_json(force=True) or {}).get("variant_ids") or []) if isinstance(value, str)]
+    if not variant_ids:
+        return jsonify({"error": "Keine Karten ausgewählt."}), 400
+    placeholders = ",".join("?" * len(variant_ids))
+    db().execute("BEGIN IMMEDIATE")
+    removed = [dict(row) for row in db().execute(
+        f"""SELECT variant_id,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at FROM collection_entries
+            WHERE user_id=? AND variant_id IN ({placeholders}) AND quantity>0""", (user_id(), *variant_ids),
+    )]
+    db().execute(f"DELETE FROM collection_entries WHERE user_id=? AND variant_id IN ({placeholders})", (user_id(), *variant_ids))
+    db().commit()
+    return jsonify({"removed": len({row["variant_id"] for row in removed}), "copies": sum(row["quantity"] for row in removed), "entries": removed})
+
+
+@app.post("/api/collection/restore")
+@login_required
+def restore_collection_entries():
+    """Puts back what /api/collection/remove answered with (its "Rückgängig")."""
+    entries = (request.get_json(force=True) or {}).get("entries") or []
+    stamp = now_iso()
+    db().execute("BEGIN IMMEDIATE")
+    restored = 0
+    for entry in entries if isinstance(entries, list) else []:
+        try:
+            quantity = int(entry.get("quantity") or 0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if quantity <= 0 or not db().execute("SELECT 1 FROM variants WHERE id=?", (entry.get("variant_id"),)).fetchone():
+            continue
+        db().execute(
+            """INSERT INTO collection_entries(user_id,variant_id,condition,quantity,notes,is_graded,grade_label,price_override,created_at,last_added_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(user_id,variant_id,condition,is_graded,grade_label) DO UPDATE SET quantity=quantity+excluded.quantity""",
+            (user_id(), entry["variant_id"], str(entry.get("condition") or "Near Mint"), quantity, entry.get("notes"),
+             1 if entry.get("is_graded") else 0, str(entry.get("grade_label") or ""), entry.get("price_override"),
+             str(entry.get("created_at") or stamp), str(entry.get("last_added_at") or stamp)),
+        )
+        restored += 1
+    db().commit()
+    return jsonify({"restored": restored})
+
+
 @app.get("/api/collection/entries/<variant_id>")
 @login_required
 def collection_entries_for_variant(variant_id):

@@ -56,6 +56,43 @@ def refresh_prices():
     })
 
 
+def parse_manual_amount(payload):
+    """The amount of a price entered by hand, or an error message."""
+    try:
+        amount = round(float(str((payload or {}).get("amount", "")).replace(",", ".")), 2)
+    except (TypeError, ValueError, AttributeError):
+        return None, "Der Preis muss eine Zahl sein."
+    if not 0 < amount <= MANUAL_PRICE_LIMIT:
+        return None, "Der Preis muss größer als 0 sein."
+    return amount, None
+
+
+def store_manual_price(variant, amount, stamp):
+    """Writes one card's manual price inside the caller's transaction (see manual_price)."""
+    db().execute(
+        """INSERT OR IGNORE INTO marketplace_products(provider_id,external_product_id,variant_id,game_id,source_url,match_method,matched_at,attributes)
+           VALUES(?,?,?,?,'','manual',?,'{}')""", (MANUAL_PRICE_PROVIDER, variant["id"], variant["id"], variant["game_id"], stamp),
+    )
+    latest = db().execute(
+        "SELECT id,amount,observed_at FROM price_observations WHERE variant_id=? AND provider_id=? AND metric='trend' ORDER BY observed_at DESC,id DESC LIMIT 1",
+        (variant["id"], MANUAL_PRICE_PROVIDER),
+    ).fetchone()
+    if latest and latest["observed_at"] == stamp:
+        # A correction within the same second replaces the entry: two rows with one timestamp
+        # would leave "the latest price" undecided.
+        db().execute("UPDATE price_observations SET amount=? WHERE id=?", (amount, latest["id"]))
+    elif not latest or latest["amount"] != amount:
+        db().execute(
+            "INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,?,'trend',?,'EUR',?)",
+            (variant["id"], MANUAL_PRICE_PROVIDER, amount, stamp),
+        )
+
+
+def remove_manual_price(variant_id):
+    db().execute("DELETE FROM price_observations WHERE variant_id=? AND provider_id=?", (variant_id, MANUAL_PRICE_PROVIDER))
+    db().execute("DELETE FROM marketplace_products WHERE variant_id=? AND provider_id=?", (variant_id, MANUAL_PRICE_PROVIDER))
+
+
 @app.route("/api/variants/<variant_id>/manual-price", methods=["PUT", "DELETE"])
 @login_required
 def manual_price(variant_id):
@@ -67,38 +104,46 @@ def manual_price(variant_id):
     if not variant:
         return jsonify({"error": "variant not found"}), 404
     if request.method == "DELETE":
-        db().execute("DELETE FROM price_observations WHERE variant_id=? AND provider_id=?", (variant_id, MANUAL_PRICE_PROVIDER))
-        db().execute("DELETE FROM marketplace_products WHERE variant_id=? AND provider_id=?", (variant_id, MANUAL_PRICE_PROVIDER))
+        remove_manual_price(variant_id)
         db().commit()
         return jsonify({"removed": True})
-    payload = request.get_json(force=True)
-    try:
-        amount = round(float(str((payload or {}).get("amount", "")).replace(",", ".")), 2)
-    except (TypeError, ValueError, AttributeError):
-        return jsonify({"error": "Der Preis muss eine Zahl sein."}), 400
-    if not 0 < amount <= MANUAL_PRICE_LIMIT:
-        return jsonify({"error": "Der Preis muss größer als 0 sein."}), 400
-    stamp = now_iso()
+    amount, error = parse_manual_amount(request.get_json(force=True))
+    if error:
+        return jsonify({"error": error}), 400
     db().execute("BEGIN IMMEDIATE")
-    db().execute(
-        """INSERT OR IGNORE INTO marketplace_products(provider_id,external_product_id,variant_id,game_id,source_url,match_method,matched_at,attributes)
-           VALUES(?,?,?,?,'','manual',?,'{}')""", (MANUAL_PRICE_PROVIDER, variant_id, variant_id, variant["game_id"], stamp),
-    )
-    latest = db().execute(
-        "SELECT id,amount,observed_at FROM price_observations WHERE variant_id=? AND provider_id=? AND metric='trend' ORDER BY observed_at DESC,id DESC LIMIT 1",
-        (variant_id, MANUAL_PRICE_PROVIDER),
-    ).fetchone()
-    if latest and latest["observed_at"] == stamp:
-        # A correction within the same second replaces the entry: two rows with one timestamp
-        # would leave "the latest price" undecided.
-        db().execute("UPDATE price_observations SET amount=? WHERE id=?", (amount, latest["id"]))
-    elif not latest or latest["amount"] != amount:
-        db().execute(
-            "INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,?,'trend',?,'EUR',?)",
-            (variant_id, MANUAL_PRICE_PROVIDER, amount, stamp),
-        )
+    store_manual_price(variant, amount, now_iso())
     db().commit()
     return jsonify({"saved": True, "amount": amount})
+
+
+MANUAL_PRICE_BULK_LIMIT = 2000
+
+
+@app.post("/api/variants/manual-prices")
+@login_required
+def manual_prices():
+    """One manual price for many cards at once ({variant_ids, amount}), or removing theirs
+    ({variant_ids, remove: true}) -- the collection's multi-select."""
+    payload = request.get_json(force=True) or {}
+    variant_ids = [value for value in (payload.get("variant_ids") or []) if isinstance(value, str)][:MANUAL_PRICE_BULK_LIMIT]
+    if not variant_ids:
+        return jsonify({"error": "Keine Karten ausgewählt."}), 400
+    amount = None
+    if not payload.get("remove"):
+        amount, error = parse_manual_amount(payload)
+        if error:
+            return jsonify({"error": error}), 400
+    placeholders = ",".join("?" * len(variant_ids))
+    db().execute("BEGIN IMMEDIATE")
+    variants = db().execute(f"SELECT id,game_id FROM variants WHERE id IN ({placeholders})", variant_ids).fetchall()
+    stamp = now_iso()
+    for variant in variants:
+        if amount is None:
+            remove_manual_price(variant["id"])
+        else:
+            store_manual_price(variant, amount, stamp)
+    db().commit()
+    return jsonify({"changed": len(variants), "amount": amount})
 
 
 @app.get("/api/variants/<variant_id>/price-history")

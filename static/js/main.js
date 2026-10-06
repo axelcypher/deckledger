@@ -280,6 +280,7 @@ async function init(){
     const params=new URLSearchParams(location.search);
     if(params.has('linked')){toast('SSO-Verbindung hergestellt');state.boot.user.oauth_linked=true;history.replaceState(null,'',location.pathname)}
     else if(params.has('oauth_error')){toast(OAUTH_ERROR_MESSAGES[params.get('oauth_error')]||'SSO-Verknüpfung fehlgeschlagen.');history.replaceState(null,'',location.pathname)}
+    else if(params.has('ebay'))handleEbayReturn();
   }catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 // The outbox is replayed once the signed-in user is known (see queueOfflineMutation), in case

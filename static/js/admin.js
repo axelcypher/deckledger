@@ -124,6 +124,7 @@ async function renderAdmin(){
       </div>
       </div>
     </details>
+    <div id="admin-ebay-slot"></div>
     <section class="settings-section admin-settings-card">
       <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.5-3.6 3-5.6 6.2-5.6s5.700 2 6.200 5.600M16 5.200a3.200 3.200 0 0 1 0 6M18.200 14.800c1.800.700 2.800 2.400 3 5.200"/></svg></span><div><span class="eyebrow">ZUGANG</span><h2>Benutzer</h2><p>Konten anlegen, Rollen vergeben, Passwörter zurücksetzen.</p></div></div>
       <div class="admin-table">${users.map(u=>`<div class="admin-row" data-user-row="${u.id}">
@@ -235,6 +236,7 @@ def fetch_catalog() -&gt; dict:
         </div>
       </details>
     </section>`;
+  renderAdminEbay();
   $('#oauth-save',content)?.addEventListener('click',async()=>{
     const payload={
       enabled:$('#oauth-enabled').checked,

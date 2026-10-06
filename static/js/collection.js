@@ -344,8 +344,9 @@ async function renderCollection(preserve=false){
     {label:'Exemplare',value:data.stats.copies},
     {label:'Marktwert',value:money(data.stats.value)},
   ],{className:'browser-summary',columns:3,mobileColumns:3});
-  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · SAMMLUNG</span><h1>Meine Karten</h1><p>Durchsuchbare Variantenansicht mit denselben Werkzeugen wie im Set-Katalog.</p></div><div class="page-head-actions"><button class="secondary-button" id="collection-export">Exportieren</button></div></div>
+  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · SAMMLUNG</span><h1>Meine Karten</h1><p>Durchsuchbare Variantenansicht mit denselben Werkzeugen wie im Set-Katalog.</p></div><div class="page-head-actions"><button class="secondary-button watch-selection-toggle ${state.collectionSelectionMode?'active':''}" id="collection-selection-toggle" aria-pressed="${state.collectionSelectionMode}"><span aria-hidden="true">${state.collectionSelectionMode?'✓':'⌗'}</span>${state.collectionSelectionMode?'Fertig':'Mehrfachauswahl'}</button><button class="secondary-button" id="collection-export">Exportieren</button></div></div>
     ${collectionStats}
+    ${state.collectionSelectionMode?collectionBulkbarHtml():''}
     <div class="card-toolbar-sticky collection-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile collection-filter-mobile">
       <div class="filter-search"><span>⌕</span><input id="collection-q" value="${escapeHtml(f.q)}" placeholder="Sammlung durchsuchen"></div>
       ${setSwitcherPopup('collection',data.sets,f.set_id||'__all__',currentSet?setFilterLabel(currentSet):'Alle Sets')}
@@ -360,14 +361,125 @@ async function renderCollection(preserve=false){
         </div>
       </div>
     </div></div>
-    <section class="card-grid" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
-  mountTileFeed($('.card-grid',content),[{cards:data.cards}],{key:`collection:${state.activeGameId}`,preserve,render:card=>cardTile(card)});
+    <section class="card-grid ${state.collectionSelectionMode?'watch-selection-mode':''}" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
+  // A selection only keeps cards that are still in view: what a filter hides cannot be edited unseen.
+  const visible=new Set(data.cards.map(card=>card.variant_id));
+  [...state.collectionSelection].forEach(id=>{if(!visible.has(id))state.collectionSelection.delete(id)});
+  mountTileFeed($('.card-grid',content),[{cards:data.cards}],{key:`collection:${state.activeGameId}`,preserve,render:card=>cardTile(card),bind:()=>{bindCardEvents();syncCollectionSelectionTiles()}});
   state.statsUrl=collectionUrl(state.activeGameId,f);
   state.statsItems=stats=>[['Varianten',stats.variants],['Exemplare',stats.copies],['Marktwert',money(stats.value)]];
   mountFilterPanel('collection',['.collection-filter-shell'],'Sammlung filtern & sortieren');
   $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};
+  $('#collection-selection-toggle').onclick=()=>{state.collectionSelectionMode=!state.collectionSelectionMode;if(!state.collectionSelectionMode)state.collectionSelection.clear();renderCollection(true)};
+  if(state.collectionSelectionMode)bindCollectionBulkbar();
   $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderCollection(true)});
   bindCatalogFilterControls(f,()=>renderCollection(true));
   bindCardEvents();bindBrowserFilters('collection',()=>renderCollection(true));
   $('#collection-language').onchange=event=>{f.language=event.target.value;f.rarity='';f.rarities=[];renderCollection(true)};
+}
+
+// ---- Multi-selection in the collection ---------------------------------------------------
+// Same pattern as the watchlist's: an explicit mode in which a tile click selects the card. The
+// bar above the grid applies one change to every selected card.
+const collectionBulk={watchlists:null,sheets:null};
+function collectionBulkbarHtml(){
+  const n=state.collectionSelection.size;
+  return `<div class="watch-bulkbar collection-bulkbar">
+    <label class="watch-bulkbar-all"><input type="checkbox" id="collection-select-all"> Alle auswählen</label>
+    <span class="watch-bulkbar-count" id="collection-bulkbar-count">${n?`${n} ausgewählt`:'Karten zum Auswählen anklicken'}</span>
+    <div class="collection-bulk-group" title="Eigener Preis für jede ausgewählte Karte">
+      <input id="collection-bulk-price" class="select-control" inputmode="decimal" autocomplete="off" placeholder="Preis €" aria-label="Eigener Preis in Euro">
+      <button class="secondary-button" data-collection-bulk="price">Preis setzen</button>
+      <button class="secondary-button" data-collection-bulk="price-remove" title="Eigene Preise entfernen">Preis entfernen</button>
+    </div>
+    <div class="collection-bulk-group">
+      <select id="collection-bulk-watchlist" class="select-control" aria-label="Watchlist"><option value="">Watchlist …</option></select>
+      <button class="secondary-button" data-collection-bulk="watchlist">Merken</button>
+    </div>
+    <div class="collection-bulk-group">
+      <select id="collection-bulk-sheet" class="select-control" aria-label="Sheet"><option value="">Sheet …</option><option value="new">＋ Neues Sheet</option></select>
+      <button class="secondary-button" data-collection-bulk="sheet">Aufs Sheet</button>
+    </div>
+    ${typeof ebayBulkButtonHtml==='function'?ebayBulkButtonHtml():''}
+    <button class="danger-button" data-collection-bulk="remove">Aus Sammlung entfernen</button>
+  </div>`;
+}
+function syncCollectionSelectionTiles(){
+  if(!state.collectionSelectionMode)return;
+  $$('.watch-selection-mode .card-tile',content).forEach(tile=>{
+    const selected=state.collectionSelection.has(tile.dataset.variant);
+    tile.classList.toggle('watch-selected',selected);
+    tile.setAttribute('aria-pressed',String(selected));
+  });
+}
+function toggleCollectionCardSelection(tile){
+  const id=tile.dataset.variant;
+  if(state.collectionSelection.has(id))state.collectionSelection.delete(id);else state.collectionSelection.add(id);
+  syncCollectionSelectionTiles();updateCollectionBulkbar();
+}
+function updateCollectionBulkbar(){
+  const bar=$('.collection-bulkbar',content);if(!bar)return;
+  const n=state.collectionSelection.size,total=state.cards.length;
+  $('#collection-bulkbar-count',bar).textContent=n?`${n} ausgewählt`:'Karten zum Auswählen anklicken';
+  $$('[data-collection-bulk]',bar).forEach(button=>button.disabled=!n);
+  const all=$('#collection-select-all',bar);all.checked=n>0&&n===total;all.indeterminate=n>0&&n<total;
+}
+async function bindCollectionBulkbar(){
+  const bar=$('.collection-bulkbar',content);if(!bar)return;
+  updateCollectionBulkbar();
+  $('#collection-select-all',bar).onchange=event=>{
+    if(event.target.checked)state.cards.forEach(card=>state.collectionSelection.add(card.variant_id));else state.collectionSelection.clear();
+    syncCollectionSelectionTiles();updateCollectionBulkbar();
+  };
+  const selected=()=>[...state.collectionSelection];
+  const count=n=>`${n} Karte${n===1?'':'n'}`;
+  const done=async message=>{toast(message);state.boot=await api('/api/bootstrap');renderCollection(true)};
+  const actions={
+    price:async()=>{
+      const amount=$('#collection-bulk-price',bar).value.trim();
+      if(!amount){toast('Bitte einen Preis eingeben.');$('#collection-bulk-price',bar).focus();return}
+      const r=await post('/api/variants/manual-prices',{variant_ids:selected(),amount});
+      await done(`Eigener Preis ${money(r.amount)} für ${count(r.changed)} gesetzt`);
+    },
+    'price-remove':async()=>{
+      const r=await post('/api/variants/manual-prices',{variant_ids:selected(),remove:true});
+      await done(`Eigene Preise von ${count(r.changed)} entfernt`);
+    },
+    watchlist:async()=>{
+      const listId=Number($('#collection-bulk-watchlist',bar).value);if(!listId){toast('Bitte eine Watchlist wählen.');return}
+      const r=await post(`/api/watchlists/${listId}/entries/add`,{variant_ids:selected()});
+      refreshWatchCount();await done(`${count(r.added)} auf die Watchlist gesetzt`);
+    },
+    sheet:async()=>{
+      let sheetId=$('#collection-bulk-sheet',bar).value;if(!sheetId){toast('Bitte ein Sheet wählen.');return}
+      if(sheetId==='new'){const name=prompt('Name des neuen Sheets:','Verkauf');if(!name)return;sheetId=(await post('/api/trade-sheets',{game_id:state.activeGameId,name,kind:'WTS'})).id;collectionBulk.sheets=null}
+      const r=await post(`/api/trade-sheets/${sheetId}/cards`,{entries:selected().map(variant_id=>({variant_id,at_least:1}))});
+      toast(`${count(selected().length-(r.skipped||0))} aufs Sheet „${r.sheet.name}“ gelegt`,'Öffnen',()=>{sheetView.tab='sheets';state.sheetId=Number(sheetId);routeTo('sheets')});
+    },
+    remove:async()=>{
+      const ids=selected();
+      if(!confirm(`${count(ids.length)} mit allen Exemplaren aus der Sammlung entfernen?`))return;
+      const r=await post('/api/collection/remove',{variant_ids:ids});
+      state.collectionSelection.clear();
+      toast(`${count(r.removed)} · ${r.copies} Exemplare entfernt`,'Rückgängig',async()=>{await post('/api/collection/restore',{entries:r.entries});state.boot=await api('/api/bootstrap');renderCollection(true)});
+      state.boot=await api('/api/bootstrap');renderCollection(true);
+    },
+    ...(typeof ebayBulkActions==='function'?ebayBulkActions(selected,count):{}),
+  };
+  $$('[data-collection-bulk]',bar).forEach(button=>button.onclick=async()=>{
+    if(!state.collectionSelection.size)return;
+    button.disabled=true;
+    try{await actions[button.dataset.collectionBulk]()}catch(error){toast(error.message)}
+    finally{if(button.isConnected)button.disabled=!state.collectionSelection.size}
+  });
+  // The targets are looked up once per game; a list made meanwhile appears after the next visit.
+  const gameId=state.activeGameId;
+  if(collectionBulk.gameId!==gameId){collectionBulk.watchlists=null;collectionBulk.sheets=null;collectionBulk.gameId=gameId}
+  try{
+    collectionBulk.watchlists??=await api(`/api/watchlists?game_id=${encodeURIComponent(gameId)}`);
+    collectionBulk.sheets??=(await api(`/api/trade-sheets?game_id=${encodeURIComponent(gameId)}`)).filter(sheet=>!sheetIsWanted(sheet.kind));
+  }catch{return}
+  if(!bar.isConnected)return;
+  $('#collection-bulk-watchlist',bar).insertAdjacentHTML('beforeend',collectionBulk.watchlists.map(list=>`<option value="${list.id}">${escapeHtml(list.name)}</option>`).join(''));
+  $('#collection-bulk-sheet option[value="new"]',bar).insertAdjacentHTML('beforebegin',collectionBulk.sheets.map(sheet=>`<option value="${sheet.id}">${escapeHtml(sheet.name)} · ${escapeHtml(sheet.kind)}</option>`).join(''));
 }

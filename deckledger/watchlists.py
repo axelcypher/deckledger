@@ -29,12 +29,56 @@ def toggle_watchlist():
     if not listed_variant: return jsonify({"error":"variant not found"}), 404
     if listed_variant["game_id"] != owned_list["game_id"]: return jsonify({"error":"Diese Karte gehört zu einem anderen Spiel als die Watchlist."}), 400
     existing = db().execute("SELECT id FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id)).fetchone()
-    if existing:
-        db().execute("DELETE FROM named_watchlist_entries WHERE id=?", (existing["id"],)); active = False
-    else:
-        db().execute("INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,?,?)", (list_id,variant_id,1,now_iso())); active = True
+    # Without "active" the heart toggles; the list menu says which state it wants, so a second
+    # click that crosses an earlier one in flight cannot undo it.
+    wanted = (not existing) if not isinstance(payload.get("active"), bool) else payload["active"]
+    if existing and not wanted:
+        db().execute("DELETE FROM named_watchlist_entries WHERE id=?", (existing["id"],))
+    elif wanted and not existing:
+        db().execute("INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,?,?)", (list_id,variant_id,1,now_iso()))
     db().commit()
-    return jsonify({"active": active,"list_id":list_id})
+    return jsonify({"active": wanted,"list_id":list_id,"watchlisted":variant_watchlisted(variant_id)})
+
+
+def variant_watchlisted(variant_id):
+    """Whether the card is on any of the user's lists -- what a heart shows."""
+    return bool(db().execute(
+        "SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=? AND nw.user_id=?",
+        (variant_id, user_id()),
+    ).fetchone())
+
+
+@app.get("/api/watchlists/membership")
+@login_required
+def watchlist_membership():
+    """The lists of the card's game and which of them hold it: what the heart's long-press menu shows."""
+    variant = db().execute("SELECT id,game_id FROM variants WHERE id=?", (request.args.get("variant_id"),)).fetchone()
+    if not variant: return jsonify({"error":"variant not found"}), 404
+    rows = db().execute(
+        """SELECT nw.id,nw.name,nw.is_default,COUNT(nwe.id) count,MAX(nwe.variant_id=?) contains
+           FROM named_watchlists nw LEFT JOIN named_watchlist_entries nwe ON nwe.list_id=nw.id
+           WHERE nw.user_id=? AND nw.game_id=? GROUP BY nw.id ORDER BY nw.is_default DESC,nw.created_at""",
+        (variant["id"], user_id(), variant["game_id"]),
+    ).fetchall()
+    return jsonify({"game_id": variant["game_id"], "lists": [{**dict(row), "contains": bool(row["contains"])} for row in rows]})
+
+
+@app.post("/api/watchlists/<int:list_id>/entries/add")
+@login_required
+def add_watchlist_entries(list_id):
+    """Bulk-adds cards to one list (the collection's multi-select); cards already on it stay as they are."""
+    owned_list = db().execute("SELECT id,game_id FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
+    if not owned_list: return jsonify({"error":"watchlist not found"}), 404
+    variant_ids = [v for v in ((request.get_json(force=True) or {}).get("variant_ids") or []) if isinstance(v, str)]
+    if not variant_ids: return jsonify({"error":"no variants selected"}), 400
+    placeholders = ",".join("?" * len(variant_ids))
+    found = [row["id"] for row in db().execute(f"SELECT id FROM variants WHERE game_id=? AND id IN ({placeholders})", (owned_list["game_id"], *variant_ids))]
+    stamp = now_iso()
+    added = sum(db().execute(
+        "INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,1,?)", (list_id, variant_id, stamp),
+    ).rowcount for variant_id in found)
+    db().commit()
+    return jsonify({"added": added})
 
 
 @app.patch("/api/watchlists/<int:list_id>/entries/<variant_id>")
@@ -103,12 +147,22 @@ def remove_watchlist_entries(list_id):
 @login_required
 def watchlists():
     if request.method == "POST":
-        payload=request.get_json(force=True); game_id=payload.get("game_id"); name=payload.get("name","Neue Watchlist").strip()[:80]
+        payload=request.get_json(force=True); game_id=payload.get("game_id"); name=str(payload.get("name") or "Neue Watchlist").strip()[:80]
         if not name: return jsonify({"error":"name required"}),400
+        # A list made from a card's heart menu starts with that card on it.
+        variant_id=payload.get("variant_id")
+        if variant_id:
+            variant=db().execute("SELECT game_id FROM variants WHERE id=?",(variant_id,)).fetchone()
+            if not variant: return jsonify({"error":"variant not found"}),404
+            game_id=game_id or variant["game_id"]
+            if variant["game_id"]!=game_id: return jsonify({"error":"Diese Karte gehört zu einem anderen Spiel als die Watchlist."}),400
         try:
-            cur=db().execute("INSERT INTO named_watchlists(user_id,game_id,name,is_default,created_at) VALUES(?,?,?,?,?)",(user_id(),game_id,name,0,now_iso()));db().commit()
+            cur=db().execute("INSERT INTO named_watchlists(user_id,game_id,name,is_default,created_at) VALUES(?,?,?,?,?)",(user_id(),game_id,name,0,now_iso()))
         except sqlite3.IntegrityError: return jsonify({"error":"Eine Watchlist mit diesem Namen existiert bereits."}),409
-        return jsonify({"id":cur.lastrowid,"name":name,"game_id":game_id,"count":0,"value":0}),201
+        if variant_id:
+            db().execute("INSERT INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,1,?)",(cur.lastrowid,variant_id,now_iso()))
+        db().commit()
+        return jsonify({"id":cur.lastrowid,"name":name,"game_id":game_id,"count":1 if variant_id else 0,"value":0}),201
     game_id=request.args.get("game_id")
     # "value" is the cost to actually complete the list -- price times how many copies are
     # *wanted* (nwe.quantity), not one price per distinct variant.

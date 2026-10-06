@@ -345,7 +345,7 @@ def test_comments_filed_once_per_sheet_are_merged(tmp_path):
         connection.execute("INSERT INTO inbox_items(id,user_id,sheet_id,post_id,kind,external_id,state,created_at) VALUES(?,1,?,?,'comment',?,?,'t')",
                            (item_id, link - 10, link, external_id, state))
     connection.commit()
-    assert migrations.migrate(connection, log=lambda message: None) == [8]
+    assert migrations.migrate(connection, migrations=migrations.MIGRATIONS[:8], log=lambda message: None) == [8]
     assert [tuple(row) for row in connection.execute("SELECT id,sheet_id,post_id,external_id,state FROM inbox_items ORDER BY id")] == [
         (1, 4, 14, "t1_a", "done"), (4, 4, 14, "t1_b", "new")]
     connection.close()

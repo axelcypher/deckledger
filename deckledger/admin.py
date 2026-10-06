@@ -139,7 +139,8 @@ def admin_delete_user(target_id):
     db().execute("DELETE FROM deals WHERE user_id=?", (target_id,))  # their cards and events go with them (ON DELETE CASCADE)
     db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id IN (SELECT id FROM trade_sheets WHERE user_id=?)", (target_id,))
     remove_user_backgrounds(target_id)
-    for table in ("decks", "named_watchlists", "trade_sheets", "watchlist_entries", "collection_entries", "import_operations", "user_settings", "applied_requests"):
+    for table in ("decks", "named_watchlists", "trade_sheets", "watchlist_entries", "collection_entries", "import_operations", "user_settings", "applied_requests",
+                  "ebay_accounts", "ebay_listings", "ebay_sales", "ebay_drafts"):
         db().execute(f"DELETE FROM {table} WHERE user_id=?", (target_id,))
     db().execute("DELETE FROM users WHERE id=?", (target_id,))
     db().commit()
@@ -440,7 +441,7 @@ def admin_delete_manual_card(game_id, identity_id):
     if row["source_type"] != "manual-override":
         return jsonify({"error": "Nur manuell angelegte Karten können hier gelöscht werden."}), 400
     variant_filter = "variant_id IN (SELECT v.id FROM variants v JOIN printings p ON p.id=v.printing_id WHERE p.identity_id=?)"
-    for table in ("collection_entries", "deck_cards", "watchlist_entries", "named_watchlist_entries", "trade_sheet_cards", "marketplace_products", "price_observations"):
+    for table in ("collection_entries", "deck_cards", "watchlist_entries", "named_watchlist_entries", "trade_sheet_cards", "marketplace_products", "price_observations", "ebay_tracked_items", "ebay_drafts"):
         db().execute(f"DELETE FROM {table} WHERE {variant_filter}", (identity_id,))
     db().execute("DELETE FROM variants WHERE printing_id IN (SELECT id FROM printings WHERE identity_id=?)", (identity_id,))
     db().execute("DELETE FROM printings WHERE identity_id=?", (identity_id,))

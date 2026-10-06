@@ -173,7 +173,7 @@ def trade_sheet(sheet_id):
 @app.post("/api/trade-sheets/<int:sheet_id>/cards")
 @login_required
 def update_trade_sheet_cards(sheet_id):
-    """One entry ({variant_id, delta | quantity, label}) or several ({entries: [...]}, used to take
+    """One entry ({variant_id, delta | quantity | at_least, label}) or several ({entries: [...]}, used to take
     over a whole list at once). A quantity of 0 removes the card from the sheet."""
     p = request.get_json(force=True)
     if not isinstance(p, dict):
@@ -195,6 +195,9 @@ def update_trade_sheet_cards(sheet_id):
         before = existing["quantity"] if existing else 0
         try:
             quantity = max(0, min(99, int(entry.get("quantity", before + int(entry.get("delta", 0))))))
+            if entry.get("at_least") is not None:
+                # Taken over from a selection: a card already on the sheet keeps its count.
+                quantity = max(before, min(99, int(entry["at_least"])))
         except (TypeError, ValueError):
             return jsonify({"error": "Die Menge muss eine Zahl sein."}), 400
         label = str(entry.get("label", existing["label"] if existing else "") or "").strip()[:24]

@@ -243,6 +243,7 @@ def write_database(catalog: dict, fetched_game_ids: set[str]) -> None:
             referenced = """SELECT variant_id FROM collection_entries UNION SELECT variant_id FROM deck_cards
                 UNION SELECT variant_id FROM named_watchlist_entries UNION SELECT variant_id FROM watchlist_entries
                 UNION SELECT variant_id FROM trade_sheet_cards UNION SELECT variant_id FROM deal_cards
+                UNION SELECT variant_id FROM ebay_tracked_items UNION SELECT variant_id FROM ebay_drafts WHERE status!='published'
                 UNION SELECT cover_variant_id FROM decks WHERE cover_variant_id IS NOT NULL"""
             retained = connection.execute(
                 f"SELECT COUNT(*) FROM ({referenced}) WHERE variant_id IN (SELECT id FROM variants) AND variant_id NOT IN (SELECT id FROM incoming_variants)"

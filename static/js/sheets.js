@@ -23,6 +23,7 @@ async function renderSheets(){
   if(state.route!=='sheets')return;
   if(state.dealId)return renderDeal();
   if(!state.sheetId&&sheetView.tab==='deals')return renderDeals();
+  if(!state.sheetId&&sheetView.tab==='ebay')return renderEbay();
   if(!state.sheetId){
     content.innerHTML='<div class="page-loader"><span></span><p>Sheets werden geladen …</p></div>';
     const sheets=await api(`/api/trade-sheets?game_id=${encodeURIComponent(game.id)}`);
@@ -54,6 +55,7 @@ async function renderSheets(){
       <header class="sheet-head"><button class="compact-back-button" id="sheet-back" title="Alle Sheets" aria-label="Alle Sheets">←</button>
         <div class="sheet-kinds" role="group" aria-label="Art des Sheets"><span class="sheet-kinds-label">Biete</span>${SHEET_KIND_GROUPS.offer.map(kindChip).join('')}<span class="sheet-kinds-label">Suche</span>${SHEET_KIND_GROUPS.wanted.map(kindChip).join('')}</div>
         <input id="sheet-name" class="sheet-name-input" value="${escapeHtml(sheet.name)}" maxlength="80" aria-label="Titel des Sheets">
+        ${wanted?'':'<button class="secondary-button" id="sheet-ebay" title="Aus den Karten dieses Sheets eBay-Angebotsentwürfe machen (Menge und Preis vom Sheet)">eBay-Entwürfe</button>'}
         <button class="icon-button" id="sheet-delete" title="Sheet löschen" aria-label="Sheet löschen">🗑</button></header>
       <div class="sheet-options">
         <label>Zusatzzeile<input id="sheet-subtitle" value="${escapeHtml(sheet.subtitle)}" maxlength="80" placeholder="z. B. u/deinname · Datum"></label>
@@ -79,6 +81,12 @@ async function renderSheets(){
   $('#sheet-back').onclick=()=>{state.sheetId=null;renderSheets()};
   $('#sheet-delete').onclick=async()=>{if(!confirm(`Sheet „${sheetView.payload.sheet.name}“ löschen?`))return;await api(`/api/trade-sheets/${state.sheetId}`,{method:'DELETE'});state.sheetId=null;toast('Sheet gelöscht');renderSheets()};
   $('#sheet-name').onchange=event=>patchSheet({name:event.target.value});
+  $('#sheet-ebay')?.addEventListener('click',async event=>{
+    if(!sheetView.payload.cards.length){toast('Auf dem Sheet liegen noch keine Karten.');return}
+    const button=event.currentTarget;button.disabled=true;
+    try{await createEbayDrafts({sheet_id:state.sheetId})}catch(error){toast(error.message)}
+    button.disabled=false;
+  });
   $('#sheet-subtitle').onchange=event=>patchSheet({subtitle:event.target.value});
   $('#sheet-sort').onchange=event=>patchSheet({sort:event.target.value});
   $('#sheet-layout').onchange=event=>patchSheet({layout:event.target.value});

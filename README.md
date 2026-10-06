@@ -39,6 +39,9 @@ the demo hint on the login page disappears once the `demo` password has been cha
 - Trade and sale sheets, for what is offered (WTS, WTT or both) and for what is looked for (WTB, WTTF or both; picked from the watchlists or the whole catalogue): pick cards from the collection, set quantities and price labels, and download the sheet as an image collage on a playmat-style background, with a ready-to-paste text list for the post; the background is one of the drawn mats or a picture of your own (uploaded in the sheet editor, per account); holo and other foil prints are marked in the image with a rainbow sheen and an iridescent frame, and VCard's print-file images are trimmed to the cut card
 - Deals: what was sold, bought or traded, with whom and at what price, booked into the collection and kept as a history
 - JSON backups carry collection, decks, watchlists, sheets and deals, and restore all five
+- Holding (or right-clicking) any heart opens the card's watchlists: put it on any of them or on a new one
+- Multi-select in the collection: one manual price for many cards (or remove theirs), put them on a watchlist or a sheet, make eBay drafts, or take them out of the collection (with undo)
+- eBay: connect a seller account (Settings), follow any eBay listing in a card's price tab as its price source, make listing drafts from a sheet or the collection with a per-user listing preset, check and publish them, and see the account's own listings and sales (tab "eBay" next to Sheets)
 
 There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
 
@@ -260,3 +263,12 @@ Add `DECKLEDGER_DEPLOY_TOKEN` as a repository secret. It must be a fine-grained
 personal access token with read/write access to repository contents in the
 target repository. The deployment-update job stays disabled until
 `DECKLEDGER_DEPLOY_REPOSITORY` is configured.
+
+eBay needs an application from the eBay Developer Program. An admin enters its client id, client
+secret and RuName under **Admin → eBay** (or sets `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`,
+`EBAY_RU_NAME`, optionally `EBAY_ENVIRONMENT` and `EBAY_MARKETPLACE`). The RuName's accept and
+decline URL is `https://<host>/ebay/callback`. Client id and secret alone are enough to follow
+listings as prices; connecting accounts and publishing need the RuName too. Drafts stay in
+DeckLedger until published — eBay's API cannot create Seller Hub drafts. `ebay_sync.py` runs every
+ten minutes in the container and re-reads followed listings (every six hours) and connected
+accounts' listings (every 30 minutes).

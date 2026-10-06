@@ -5,7 +5,7 @@ const state = {
   edit: false, zoom: 220, setZoom: 3, setType: 'all', setSort: 'type', setDirection:'desc', language: 'combined',
   filter: 'all', sort: 'number', query: '', modalCard: null, modalVariant: null, modalTab: 'collection',
   modalFoilLayerMeta: null, modalFoilLayerMetaVariantId: null,
-  activeGameId: null, watchlistId: null, activeWatchlists: [], watchSelection: new Set(), watchSelectionMode: false,  deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
+  activeGameId: null, watchlistId: null, activeWatchlists: [], watchSelection: new Set(), watchSelectionMode: false, collectionSelection: new Set(), collectionSelectionMode: false,  deckId: null, deckView: 'grid', deckZoom: 135, deckCatalogOpen: false,
   collapsedSetGroups: {},
   cardFilters: {rarity:'', rarities:[], costs:[], colors:[], inkwell:'', finish:'normal', foilMode:''},
   collectionFilters: {q:'',set_id:'',language:'all',rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',mode:'all',sort:'number'},
@@ -147,7 +147,7 @@ function setActiveGame(gameId, persist=true) {
   const iconName=state.game.icon||'generic';
   if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=3')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
-  state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.deckId=null; state.sheetId=null; state.dealId=null;
+  state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.collectionSelection.clear(); state.collectionSelectionMode=false; state.deckId=null; state.sheetId=null; state.dealId=null;
   if(changed||isInitial){
     // Settings shows languages[0] as each game's assumed default even before
     // the user ever touches that dropdown (it's only actually saved once they
@@ -175,6 +175,7 @@ function routeTo(route, data) {
   hideDeckImagePreview();closeDeckAddPopup();setDeckCatalogOpen(false);clearTimeout(state.homeBannerTimer);
   state.mobileFiltersOpen={};
   if(route!=='watchlist'){state.watchSelection.clear();state.watchSelectionMode=false}
+  if(route!=='collection'){state.collectionSelection.clear();state.collectionSelectionMode=false}
   state.statsUrl=null;state.statsItems=null;tileFeed?.observer?.disconnect();tileFeed=null;
   state.route=route; document.body.dataset.route=route; setNav(route); window.scrollTo({top:0,behavior:'smooth'});
   if(route==='dashboard') renderDashboard();
