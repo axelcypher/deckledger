@@ -1222,7 +1222,10 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .ebay-link-heading { font-size:11px;color:var(--muted); }
 .sheet-ebay { color:var(--muted); }
 .sheet-ebay a { color:var(--brand);font-weight:700;text-decoration:none; }
-.sheet-ebay-sync { display:flex!important;flex-direction:row!important;align-items:center;gap:8px;align-self:end;min-height:38px; }
+.sheet-options:has(.sheet-ebay-sync) { grid-template-columns:1.4fr 1fr 1fr auto; }
+.sheet-ebay-sync-row { display:flex;align-items:center;gap:8px;height:36px;color:var(--ink);font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;white-space:nowrap;cursor:pointer; }
+.sheet-options .oauth-toggle-control input { width:1px;height:1px;padding:0;border:0; }
+@media(max-width:640px){ .sheet-options:has(.sheet-ebay-sync) { grid-template-columns:1fr; } }
 .ebay-link-suggestions { display:grid;gap:2px; }
 .ebay-link-suggestions button { padding:6px 8px;border:0;border-radius:7px;background:var(--surface-2);color:var(--ink);text-align:left;font-weight:700;cursor:pointer; }
 .ebay-link-suggestions button small { color:var(--muted);font-weight:500; }

@@ -602,15 +602,15 @@ def test_a_sheet_can_stop_following_ebay(client):
     assert (card["quantity"], card["label"]) == (3, "4,50 €"), "switching it on catches up at once"
 
 
-def test_cards_on_ebay_get_a_badge_on_the_sheet(client, monkeypatch):
+def test_cards_on_ebay_are_marked_on_the_sheet(client, monkeypatch):
     import sheet_render
     drawn = []
-    real = sheet_render.ebay_badge
-    monkeypatch.setattr(sheet_render, "ebay_badge", lambda width: drawn.append(width) or real(width))
+    real = sheet_render.draw_tags
+    monkeypatch.setattr(sheet_render, "draw_tags", lambda draw, card, *rest: drawn.append(card["ebay"]) or real(draw, card, *rest))
     client.post("/api/collection", json={"variant_id": EMBER8, "delta": 1})
     sheet = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Verkauf", "kind": "WTS"}).get_json()["id"]
     client.post(f"/api/trade-sheets/{sheet}/cards", json={"entries": [{"variant_id": EMBER8, "quantity": 1}, {"variant_id": TIDE8, "quantity": 1}]})
     own_listing("111", variant_id=EMBER8)
     assert client.get(f"/api/trade-sheets/{sheet}/image/1.jpg?scale=0.3").status_code == 200
-    assert len(drawn) == 1
+    assert sorted(drawn) == [False, True]
 

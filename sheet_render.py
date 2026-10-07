@@ -355,26 +355,6 @@ def reserved_stamp(size: tuple[int, int], reserved: int, quantity: int, accent: 
     return layer
 
 
-EBAY_LETTERS = (("e", "#e53238"), ("b", "#0064d2"), ("a", "#f5af02"), ("y", "#86b817"))
-
-
-def ebay_badge(card_w: int) -> Image.Image:
-    """The "on eBay" mark in a card's top left corner: eBay's four letters on a white pill."""
-    face = font(card_w * .11, 800)
-    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    widths = [probe.textlength(letter, font=face) for letter, _ in EBAY_LETTERS]
-    pad, height = card_w * .045, round(card_w * .15)
-    width = round(sum(widths) + pad * 2)
-    badge = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(badge)
-    draw.rounded_rectangle((0, 0, width - 1, height - 1), height / 2, fill=(255, 255, 255, 238), outline=(16, 18, 22, 90), width=max(1, card_w // 160))
-    x = pad
-    for (letter, colour), letter_w in zip(EBAY_LETTERS, widths):
-        draw.text((x, height / 2), letter, font=face, fill=colour, anchor="lm")
-        x += letter_w
-    return badge
-
-
 def render_page(cards: list[dict], columns: int, rows: int, *, background: str = DEFAULT_BACKGROUND, kind: str = "WTS",
                 title: str = "", subtitle: str = "", page: tuple[int, int] = (1, 1), scale: float = 1.0,
                 background_image=None, accent: str | None = None) -> Image.Image:
@@ -385,7 +365,7 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
     card_h = round(card_w * CARD_RATIO)
     gap = round(card_w * .09)
     margin = round(card_w * .34)
-    labelled = any(card.get("label") for card in cards)
+    labelled = any(card.get("label") or card.get("ebay") for card in cards)
     row_h = card_h + (round(card_w * .2) if labelled else 0)
     header = round(card_w * .44)
     # A lone card or a single column would give a canvas too narrow for the heading.
@@ -441,8 +421,6 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
         reserved = min(quantity, int(card.get("reserved") or 0))
         if reserved:
             canvas.alpha_composite(reserved_stamp((card_w, card_h), reserved, quantity, accent), (x, y))
-        if card.get("ebay"):
-            canvas.alpha_composite(ebay_badge(card_w), (x + round(card_w * .04), y + round(card_w * .04)))
         if quantity > 1:
             text = f"×{quantity}"
             face = font(card_w * .12)
@@ -450,13 +428,29 @@ def render_page(cards: list[dict], columns: int, rows: int, *, background: str =
             cx, cy = x + card_w - radius * .7, y + radius * .7
             draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill="#101216", outline=accent, width=max(2, card_w // 90))
             draw.text((cx, cy), text, font=face, fill="#ffffff", anchor="mm")
-        if card.get("label"):
-            text, face = fit_text(draw, str(card["label"]), card_w * .1, card_w * .92)
-            text_w = draw.textlength(text, font=face)
-            cy = y + card_h + card_w * .11
-            draw.rounded_rectangle((x + card_w / 2 - text_w / 2 - card_w * .05, cy - card_w * .075, x + card_w / 2 + text_w / 2 + card_w * .05, cy + card_w * .075), card_w * .04, fill=(16, 18, 22, 215))
-            draw.text((x + card_w / 2, cy), text, font=face, fill=accent, anchor="mm")
+        draw_tags(draw, card, x, y + card_h + card_w * .11, card_w, accent)
     return canvas
+
+
+def draw_tags(draw: ImageDraw.ImageDraw, card: dict, x: int, cy: float, card_w: int, accent: str) -> None:
+    """What goes under a card, centred side by side in the sheet's colours: its label (a price, a
+    note) and "eBay" when it is on sale there -- the label filled, the eBay mark outlined."""
+    pad, gap, half = card_w * .05, card_w * .04, card_w * .075
+    face = font(card_w * .1)
+    ebay_w = draw.textlength("eBay", font=face) if card.get("ebay") else 0
+    tags = []
+    if card.get("label"):
+        room = card_w * .92 - (ebay_w + pad * 2 + gap if ebay_w else 0)
+        text, label_face = fit_text(draw, str(card["label"]), card_w * .1, room)
+        tags.append((text, label_face, draw.textlength(text, font=label_face), False))
+    if ebay_w:
+        tags.append(("eBay", face, ebay_w, True))
+    left = x + card_w / 2 - (sum(width + pad * 2 for *_, width, _ in tags) + gap * (len(tags) - 1)) / 2
+    for text, tag_face, width, outlined in tags:
+        box = (left, cy - half, left + width + pad * 2, cy + half)
+        draw.rounded_rectangle(box, card_w * .04, fill=(16, 18, 22, 215), outline=accent if outlined else None, width=max(1, card_w // 120))
+        draw.text(((box[0] + box[2]) / 2, cy), text, font=tag_face, fill=accent, anchor="mm")
+        left = box[2] + gap
 
 
 def swatch(name: str, size: tuple[int, int] = (240, 150)) -> Image.Image:
