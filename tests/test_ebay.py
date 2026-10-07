@@ -78,6 +78,8 @@ class FakeEbay:
                     content=f'<{call}Response xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><SeverityCode>Error</SeverityCode><LongMessage>{self.fail[call]}</LongMessage></Errors></{call}Response>'.encode())
             if call == "UploadSiteHostedPictures":
                 return trading(call, "<SiteHostedPictureDetails><FullURL>https://i.ebayimg.com/card.jpg</FullURL></SiteHostedPictureDetails>")
+            if call == "ReviseFixedPriceItem":
+                return trading(call, "<ItemID>111</ItemID>")
             if call in ("AddFixedPriceItem", "VerifyAddFixedPriceItem"):
                 return trading(call, "<ItemID>555000111222</ItemID><Fees><Fee><Name>ListingFee</Name><Fee currencyID=\"EUR\">0.35</Fee></Fee></Fees>")
             if call == "GetMyeBaySelling":
@@ -631,4 +633,36 @@ def test_a_listing_shows_how_it_compares_with_the_market_value(client, configure
     assert (listings["111"]["shipping_cost"], listings["111"]["market_ratio"]) == (0.6, 97), "4,25 + 0,60 of 5,00"
     assert listings["222"]["market_ratio"] == 105
     assert listings["333"]["market_ratio"] is None, "no card, no market value"
+
+
+
+def test_first_editions_are_short_in_titles(client):
+    from conftest import EMBER8_HOLO
+    query("UPDATE variants SET finish='1st Edition Holo' WHERE id=?", (EMBER8_HOLO,))
+    client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8_HOLO]})
+    draft = client.get("/api/ebay/drafts").get_json()["drafts"][0]
+    assert "1st Ed Holo" in draft["title"] and "Edition" not in draft["title"]
+    assert dict(draft["aspects"])["Besonderheiten"] == "1st Edition", "the item specific keeps eBay's wording"
+
+
+def test_active_listings_take_over_the_preset(client, configured):
+    connect()
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "title_template": "{name} {set_code} {game}", "shipping_service": "DE_DeutschePostBrief",
+                                         "shipping_cost": "1,10", "best_offer": True})
+    own_listing("111", variant_id=EMBER8, title="ember karte alt", quantity=3, sold=1)
+    own_listing("222", title="Nicht zugeordnet")
+    own_listing("333", variant_id=TIDE8, title="Tide alt", status="sold")
+    revisions = {row["item_id"]: row for row in client.get("/api/ebay/listings/revisions").get_json()}
+    assert set(revisions) == {"111", "222"} and revisions["111"]["new_title"] == "Ember (PL8) 1 VCard" and "new_title" not in revisions["222"]
+    response = client.post("/api/ebay/listings/111/revise", json={"parts": ["title", "aspects", "shipping"]})
+    assert response.get_json()["revised"] is True
+    document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "ReviseFixedPriceItem"][0][2]["data"].decode()
+    for part in ("<ItemID>111</ItemID>", "<Title>Ember (PL8) 1 VCard</Title>", "<Name>Kartenname</Name>", "<ShippingService>DE_DeutschePostBrief</ShippingService>",
+                 "<BestOfferEnabled>true</BestOfferEnabled>"):
+        assert part in document
+    assert "<Description>" not in document and "<StartPrice" not in document and "<Quantity>" not in document, "only what was chosen; price and quantity stay"
+    assert query("SELECT title FROM ebay_listings WHERE item_id='111'")[0]["title"] == "Ember (PL8) 1 VCard"
+    assert client.post("/api/ebay/listings/222/revise", json={"parts": ["title"]}).status_code == 400
+    assert client.post("/api/ebay/listings/333/revise", json={"parts": ["title"]}).status_code == 400
+    assert client.post("/api/ebay/listings/111/revise", json={"parts": []}).status_code == 400
 

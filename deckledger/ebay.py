@@ -133,6 +133,7 @@ GAME_PRESET_DEFAULTS = {
 HTML_TAG = re.compile(r"</?[a-zA-Z][a-zA-Z0-9]*(?:\s[^<>]*)?/?>")
 PRICE_ROUNDINGS = ("none", "up99", "up49")
 TITLE_LIMIT = 80
+FIRST_EDITION = re.compile(r"\b1st\s+Edition\b", re.I)
 DESCRIPTION_LIMIT = 4000
 DRAFT_BATCH_LIMIT = 400
 TRACKED_PER_CARD = 20
@@ -794,7 +795,8 @@ def description_html(text, title=""):
 def build_draft(connection, uid, card, preset, quantity, label=None, sheet_id=None, currency="EUR"):
     condition = card_condition(connection, uid, card["variant_id"], preset)
     values = card_values(card, condition, quantity, preset)
-    title = re.sub(r"\s+", " ", fill(preset["title_template"], values)).strip()[:TITLE_LIMIT].strip()
+    # eBay allows 80 characters; "1st Edition" spelled out pushed long names over.
+    title = re.sub(r"\s+", " ", FIRST_EDITION.sub("1st Ed", fill(preset["title_template"], values))).strip()[:TITLE_LIMIT].strip()
     # In an HTML description the card's own text must not turn into markup.
     template = preset["description_template"]
     escaped = {key: html.escape(str(value), quote=False) for key, value in values.items()} if is_html(template) else values
@@ -1077,6 +1079,92 @@ def publish_ebay_draft(draft_id):
     )
     db().commit()
     return jsonify({"published": True, "item_id": item_id, "url": f'https://{marketplace(config)["domain"]}/itm/{item_id}', "warnings": warnings})
+
+
+# ---- Revising listings with the preset ----------------------------------------------------------
+# A listing made elsewhere (or from an older preset) can be brought in line with the current one:
+# ReviseFixedPriceItem replaces the parts chosen -- title, description, item specifics, shipping
+# and returns -- and leaves price, quantity and pictures as they are.
+REVISE_PARTS = ("title", "description", "aspects", "shipping")
+
+
+def revision(connection, uid, listing):
+    """What the preset makes of a listing's card: (draft-like fields, preset)."""
+    card = connection.execute(f"{CARD_SQL} WHERE v.id=?", (listing["variant_id"],)).fetchone()
+    if not card:
+        raise EbayError("Die zugeordnete Karte gibt es im Katalog nicht mehr.", 404)
+    preset = load_preset(connection, uid, card["game_id"])
+    available = max(1, (listing["quantity"] or 1) - (listing["quantity_sold"] or 0))
+    return build_draft(connection, uid, dict(card), preset, available), preset
+
+
+def revise_xml(connection, listing, draft, preset, parts):
+    config = ebay_config(connection)
+    pieces = [f'<ItemID>{xml_escape(listing["item_id"])}</ItemID>']
+    if "title" in parts:
+        if not draft["title"]:
+            raise EbayError("Die Vorlage ergibt keinen Titel.")
+        pieces.append(f'<Title>{xml_escape(draft["title"])}</Title>')
+    if "description" in parts:
+        description = description_html(draft["description"], draft["title"])
+        pieces.append(f'<Description><![CDATA[{description.replace("]]>", "]]&gt;")}]]></Description>')
+    if "aspects" in parts:
+        aspects = "".join(f"<NameValueList><Name>{xml_escape(name)}</Name><Value>{xml_escape(value)}</Value></NameValueList>"
+                          for name, value in jload(draft["aspects"], []))
+        if aspects:
+            pieces.append(f"<ItemSpecifics>{aspects}</ItemSpecifics>")
+    if "shipping" in parts:
+        if preset["shipping_mode"] == "policies":
+            if not all(preset[key] for key in ("fulfillment_policy_id", "payment_policy_id", "return_policy_id")):
+                raise EbayError("In der Angebotsvorlage fehlen Richtlinien für Versand, Zahlung oder Rücknahme.")
+            pieces.append(seller_profiles(preset))
+        else:
+            if not preset["shipping_service"]:
+                raise EbayError("In der Angebotsvorlage ist keine Versandart gewählt.")
+            pieces.append(direct_shipping(preset, marketplace(config)["currency"]))
+        pieces.append(f'<BestOfferDetails><BestOfferEnabled>{"true" if preset["best_offer"] else "false"}</BestOfferEnabled></BestOfferDetails>')
+    return f"<Item>{''.join(pieces)}</Item>"
+
+
+def own_listing(item_id):
+    return db().execute("SELECT * FROM ebay_listings WHERE user_id=? AND item_id=?", (user_id(), item_id)).fetchone()
+
+
+@app.get("/api/ebay/listings/revisions")
+@login_required
+def ebay_listing_revisions():
+    """The active listings with a card, each with the title the preset would give it."""
+    uid, result = user_id(), []
+    for listing in db().execute("SELECT * FROM ebay_listings WHERE user_id=? AND status='active' ORDER BY started_at DESC", (uid,)).fetchall():
+        entry = {"item_id": listing["item_id"], "title": listing["title"], "variant_id": listing["variant_id"], "url": listing["url"]}
+        if listing["variant_id"]:
+            try:
+                entry["new_title"] = revision(db(), uid, listing)[0]["title"]
+            except EbayError as error:
+                entry["error"] = str(error)
+        result.append(entry)
+    return jsonify(result)
+
+
+@app.post("/api/ebay/listings/<item_id>/revise")
+@login_required
+def revise_ebay_listing(item_id):
+    listing = own_listing(item_id)
+    if not listing:
+        return jsonify({"error": "Angebot nicht gefunden."}), 404
+    if listing["status"] != "active":
+        return jsonify({"error": "Nur aktive Angebote lassen sich ändern."}), 400
+    if not listing["variant_id"]:
+        return jsonify({"error": "Ordne dem Angebot zuerst eine Karte zu."}), 400
+    parts = [part for part in (request.get_json(force=True) or {}).get("parts") or [] if part in REVISE_PARTS]
+    if not parts:
+        return jsonify({"error": "Nichts zum Ändern gewählt."}), 400
+    draft, preset = revision(db(), user_id(), listing)
+    _, warnings = trading_call(db(), user_id(), "ReviseFixedPriceItem", revise_xml(db(), listing, draft, preset, parts))
+    if "title" in parts:
+        db().execute("UPDATE ebay_listings SET title=? WHERE user_id=? AND item_id=?", (draft["title"], user_id(), item_id))
+        db().commit()
+    return jsonify({"revised": True, "title": draft["title"], "warnings": warnings})
 
 
 # ---- The account's own listings -----------------------------------------------------------------

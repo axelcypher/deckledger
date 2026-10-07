@@ -277,7 +277,7 @@ async function renderEbay(){
       ${done.length?`<details class="ebay-done"><summary>${done.length} eingestellt</summary><div class="ebay-drafts">${done.map(draft=>ebayDraftRow(draft,status)).join('')}</div></details>`:''}
     </section>
     <section class="ebay-section">
-      <div class="sheet-section-head"><b>Meine Angebote</b>${listings.listings.length?'<button class="secondary-button" id="ebay-open-stats">Statistik</button>':''}<div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div></div>
+      <div class="sheet-section-head"><b>Meine Angebote</b>${listings.listings.length?'<button class="secondary-button" id="ebay-open-stats">Statistik</button>':''}${status.connected&&listings.listings.some(item=>item.status==='active')?'<button class="secondary-button" id="ebay-open-revise" title="Titel, Beschreibung, Artikelmerkmale und Versand der aktiven Angebote aus der Vorlage neu setzen">Vorlage anwenden</button>':''}<div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div></div>
       ${shown.length?`<div class="ebay-listings">${shown.map(ebayListingRow).join('')}</div>`
         :`<div class="deck-zone-empty">${status.connected?'Keine Angebote in dieser Ansicht.':'Verbinde dein eBay-Konto, um deine Angebote hier zu sehen.'}</div>`}
     </section>
@@ -285,6 +285,7 @@ async function renderEbay(){
   bindSheetTabs();
   $('#ebay-open-settings')?.addEventListener('click',()=>openEbaySettings());
   $('#ebay-open-stats')?.addEventListener('click',()=>openEbayStats(listings));
+  $('#ebay-open-revise')?.addEventListener('click',()=>openEbayRevise());
   $('#ebay-sync')?.addEventListener('click',async event=>{
     const button=event.currentTarget;button.disabled=true;button.textContent='Wird abgeglichen …';
     try{const r=await post('/api/ebay/listings/sync',{});toast(`Abgeglichen: ${r.active} aktiv, ${r.sold} neue Verkäufe`);renderEbay()}
@@ -384,7 +385,7 @@ function ebayMarketRatio(item){
   if(item.market_ratio==null)return '';
   const below=item.market_ratio<100,above=item.market_ratio>100;
   const shipping=item.shipping_cost?` + ${ebayMoney(item.shipping_cost,item.currency)} Versand`:'';
-  return `<small class="ebay-vs-market ${below?'is-below':above?'is-above':''}" title="${ebayMoney(item.price,item.currency)}${shipping} gegenüber Marktwert ${money(item.market_price)}">${below?'↓':above?'↑':'='} ${item.market_ratio} %</small>`;
+  return `<small class="ebay-vs-market ${below?'is-below':above?'is-above':''}" title="${ebayMoney(item.price,item.currency)}${shipping} gegenüber Marktwert ${money(item.market_price)}">${below?'↓ ':above?'↑ ':''}${item.market_ratio} %</small>`;
 }
 
 // Watchers, views, impressions and the place in the popularity ranking of one listing.
@@ -417,6 +418,46 @@ function bindEbayListingRow(row){
       $$('[data-ebay-pick]',results).forEach(button=>button.onclick=()=>link(button.dataset.ebayPick));
     },200)};
   });
+}
+
+// ---- Bringing active listings in line with the preset -------------------------------------------
+const EBAY_REVISE_PARTS=[['title','Titel'],['description','Beschreibung'],['aspects','Artikelmerkmale'],['shipping','Versand, Rücknahme & Preisvorschläge']];
+
+async function openEbayRevise(){
+  const modal=openSettingsModal({id:'ebay-revise-modal',eyebrow:'EBAY',title:'Vorlage auf Angebote anwenden',
+    intro:'Setzt die gewählten Teile deiner aktiven Angebote neu aus der Angebotsvorlage des jeweiligen TCGs. Preis, Menge und Bilder bleiben, wie sie sind.',
+    body:'<div id="ebay-revise-body"><div class="page-loader compact"><span></span></div></div>'});
+  const body=$('#ebay-revise-body',modal);
+  let rows;
+  try{rows=await api('/api/ebay/listings/revisions')}catch(error){body.innerHTML=`<p class="dl-hint">${escapeHtml(error.message)}</p>`;return}
+  if(!body.isConnected)return;
+  const ready=rows.filter(row=>row.variant_id&&!row.error),skipped=rows.length-ready.length;
+  body.innerHTML=`<section class="dl-modal-section"><h3>Was wird übernommen</h3><div class="ebay-revise-parts">${EBAY_REVISE_PARTS.map(([id,label])=>`<label class="dl-check"><input type="checkbox" data-revise-part="${id}" checked><span><b>${label}</b></span></label>`).join('')}</div></section>
+    <section class="dl-modal-section"><h3>Angebote <small>${ready.length} von ${rows.length}${skipped?` · ohne zugeordnete Karte wird übersprungen`:''}</small></h3>
+      <label class="dl-check"><input type="checkbox" id="ebay-revise-all" checked><span><b>Alle auswählen</b></span></label>
+      <div class="ebay-revise-list">${rows.map(row=>`<label class="ebay-revise-row ${row.variant_id&&!row.error?'':'is-skipped'}" data-revise-item="${escapeHtml(row.item_id)}">
+        <input type="checkbox" ${row.variant_id&&!row.error?'checked':'disabled'}>
+        <span><b>${escapeHtml(row.new_title||row.title)}</b><small>${row.error?escapeHtml(row.error):!row.variant_id?'Keine Karte zugeordnet':row.new_title!==row.title?`bisher: ${escapeHtml(row.title)}`:'Titel bleibt gleich'}</small></span>
+        <em class="ebay-revise-state"></em></label>`).join('')}</div></section>
+    <div class="dl-modal-actions"><span class="spacer"></span><button class="primary-button" id="ebay-revise-run" ${ready.length?'':'disabled'}>Angebote aktualisieren</button></div>`;
+  const boxes=()=>$$('.ebay-revise-row:not(.is-skipped) input',body);
+  $('#ebay-revise-all',body).onchange=event=>boxes().forEach(box=>{box.checked=event.target.checked});
+  $('#ebay-revise-run',body).onclick=async event=>{
+    const parts=$$('[data-revise-part]:checked',body).map(box=>box.dataset.revisePart);
+    const chosen=boxes().filter(box=>box.checked).map(box=>box.closest('.ebay-revise-row'));
+    if(!parts.length||!chosen.length){toast('Wähle aus, was und welche Angebote aktualisiert werden.');return}
+    if(!confirm(`${chosen.length} Angebote bei eBay aktualisieren?`))return;
+    const button=event.currentTarget;button.disabled=true;let ok=0;
+    for(const [index,row] of chosen.entries()){
+      button.textContent=`Aktualisiere ${index+1}/${chosen.length} …`;
+      const state=$('.ebay-revise-state',row);
+      try{await post(`/api/ebay/listings/${encodeURIComponent(row.dataset.reviseItem)}/revise`,{parts});ok+=1;state.textContent='✓';state.className='ebay-revise-state is-done'}
+      catch(error){state.textContent=error.message;state.className='ebay-revise-state is-failed'}
+    }
+    button.textContent=`${ok} von ${chosen.length} aktualisiert`;
+    toast(`${ok} von ${chosen.length} Angeboten aktualisiert${ok<chosen.length?' – Fehler stehen am Angebot':''}`);
+    if(sheetView.tab==='ebay')renderEbay();
+  };
 }
 
 // ---- Statistics of the account's listings ----------------------------------------------------
