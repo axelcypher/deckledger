@@ -248,7 +248,7 @@ function ebayBulkActions(selected,count){
 }
 async function createEbayDrafts(payload){
   const r=await post('/api/ebay/drafts',payload);
-  const skipped=r.skipped?` · ${r.skipped} übersprungen (schon ein offener Entwurf)`:'';
+  const skipped=(r.listed?` · ${r.listed} schon auf eBay`:'')+(r.skipped?` · ${r.skipped} übersprungen (schon ein offener Entwurf)`:'');
   toast(r.created?`${r.created} Angebotsentwurf${r.created===1?'':'e'} angelegt${skipped}`:`Keine neuen Entwürfe${skipped}`,'Öffnen',()=>{state.sheetId=null;state.dealId=null;sheetView.tab='ebay';routeTo('sheets')});
   return r;
 }

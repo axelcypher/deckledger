@@ -863,9 +863,14 @@ def ebay_drafts():
     if len(wanted) > DRAFT_BATCH_LIMIT:
         return jsonify({"error": f"Höchstens {DRAFT_BATCH_LIMIT} Entwürfe auf einmal."}), 400
     db().execute("BEGIN IMMEDIATE")
-    created, skipped = [], 0
+    created, skipped, listed = [], 0, 0
     for variant_id, quantity, label, sheet_id in wanted:
         card = db().execute(f"{CARD_SQL} WHERE v.id=?", (variant_id,)).fetchone()
+        # A card that is on sale already -- an active listing with copies left -- gets no draft.
+        if card and db().execute("SELECT 1 FROM ebay_listings WHERE user_id=? AND variant_id=? AND status='active' AND quantity>quantity_sold",
+                                 (uid, variant_id)).fetchone():
+            listed += 1
+            continue
         # A card that already has an open draft gets no second one.
         if not card or db().execute("SELECT 1 FROM ebay_drafts WHERE user_id=? AND variant_id=? AND status!='published'", (uid, variant_id)).fetchone():
             skipped += 1
@@ -880,7 +885,7 @@ def ebay_drafts():
         cursor = db().execute(f"INSERT INTO ebay_drafts({','.join(draft)}) VALUES({','.join('?' * len(draft))})", tuple(draft.values()))
         created.append(cursor.lastrowid)
     db().commit()
-    return jsonify({"created": len(created), "skipped": skipped, "ids": created}), 201
+    return jsonify({"created": len(created), "skipped": skipped, "listed": listed, "ids": created}), 201
 
 
 def own_draft(draft_id):

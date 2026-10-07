@@ -255,7 +255,7 @@ def test_drafts_follow_the_preset(client):
     assert ember["aspects"] == [["Spiel", "VCard"]]
     assert (drafts[EMBER9]["price"], drafts[EMBER9]["quantity"], drafts[EMBER9]["condition"]) == (None, 1, "400010")
     # A card with an open draft gets no second one.
-    assert client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json() == {"created": 0, "skipped": 1, "ids": []}
+    assert client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json() == {"created": 0, "skipped": 1, "listed": 0, "ids": []}
 
 
 def test_drafts_from_a_sheet_take_its_counts_and_prices(client):
@@ -665,4 +665,18 @@ def test_active_listings_take_over_the_preset(client, configured):
     assert client.post("/api/ebay/listings/222/revise", json={"parts": ["title"]}).status_code == 400
     assert client.post("/api/ebay/listings/333/revise", json={"parts": ["title"]}).status_code == 400
     assert client.post("/api/ebay/listings/111/revise", json={"parts": []}).status_code == 400
+
+
+
+def test_cards_already_on_ebay_get_no_draft(client):
+    for variant in (EMBER8, EMBER9, TIDE8):
+        client.post("/api/collection", json={"variant_id": variant, "delta": 1})
+    sheet = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Verkauf", "kind": "WTS"}).get_json()["id"]
+    client.post(f"/api/trade-sheets/{sheet}/cards", json={"entries": [{"variant_id": variant, "quantity": 1} for variant in (EMBER8, EMBER9, TIDE8)]})
+    own_listing("111", variant_id=EMBER8)
+    own_listing("222", variant_id=EMBER9, quantity=1, sold=1, status="sold")
+    response = client.post("/api/ebay/drafts", json={"sheet_id": sheet}).get_json()
+    assert (response["created"], response["listed"]) == (2, 1), "a sold-out listing does not count"
+    assert {draft["variant_id"] for draft in client.get("/api/ebay/drafts").get_json()["drafts"]} == {EMBER9, TIDE8}
+    assert client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["listed"] == 1
 
