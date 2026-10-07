@@ -3,11 +3,12 @@
 import re
 from functools import cmp_to_key
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 from .config import jload
 from .games import game as game_rules, playset_size, rarity_filter_ranks, rarity_rank
-from .web import app, db, login_required, search_pattern, user_id
+from . import search
+from .web import app, db, login_required, user_id
 from .prices import MANUAL_PRICE_PROVIDER, latest_price_meta_sql, latest_price_sql
 from .assets import set_visual_version
 
@@ -140,21 +141,20 @@ def game_card_rows(game_id, uid):
     ).fetchall()
 
 
+def set_labels():
+    """Every set's name and code, once per request: card rows carry only the set id."""
+    if "set_labels" not in g:
+        g.set_labels = {row["id"]: (row["name"], row["code"]) for row in db().execute("SELECT id,name,code FROM sets")}
+    return g.set_labels
+
+
 def query_matches_row(query, row):
-    """The match used by every card search box (see web.search_pattern) -- canonical (English)
-    name, collector number, and (since a search box that only understands English names is
-    useless if you're looking at German/Japanese-localized cards) the printing's own localized
-    name and localized rules text, plus the English rules text as a bonus "search by card text"
-    field. `row` needs canonical_name/collector_number/rules_text and, when available,
-    printing_attrs (the raw printings.attributes JSON, which carries localizedName/
-    localizedRulesText) -- callers without that column just get the English-only fields."""
-    printing_attrs = jload(row.get("printing_attrs"), {})
-    fields = (
-        row.get("canonical_name"), row.get("collector_number"), row.get("rules_text"),
-        printing_attrs.get("localizedName"), printing_attrs.get("localizedRulesText"),
-    )
-    pattern = search_pattern(query)
-    return any(pattern.search(str(field)) for field in fields if field)
+    """The match used by every card search box (deckledger/search.py) for rows filtered in Python:
+    name and localized name, number, set, finish, rarity, rules text. `row` needs at least
+    canonical_name/collector_number; printing_attrs (the raw printings.attributes JSON) adds the
+    localized name and text."""
+    set_name, set_code = set_labels().get(row.get("set_id"), (None, None))
+    return search.matches(query, search.card_fields(row, set_name, set_code, jload(row.get("printing_attrs"), {})))
 
 
 def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", foil_mode="", rarities=None, costs=None, colors=None, inkwell="", finish="normal"):
@@ -527,15 +527,18 @@ def global_search():
     if len(q) < 2: return jsonify([])
     limit = min(80, max(1, request.args.get("limit", 24, type=int)))
     rows = db().execute(
-        f"""SELECT DISTINCT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,p.rarity,s.name set_name,
+        f"""SELECT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,p.rarity,s.name set_name,
           g.id game_id,g.short_name game_name,g.accent,v.id variant_id,v.finish,{latest_price_sql('v')} price,
           s.code set_code,v.variant_code,v.is_parallel,
           COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=?2 AND c.variant_id=v.id),0) quantity,
           CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?3) THEN 1 ELSE 0 END watchlisted
           FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id
           JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=i.game_id
-          WHERE (?4 IS NULL OR g.id=?5) AND (search_matches(?1,i.canonical_name) OR search_matches(?1,p.collector_number) OR search_matches(?1,s.name)
-            OR search_matches(?1,i.rules_text) OR search_matches(?1,json_extract(p.attributes,'$.localizedName')) OR search_matches(?1,json_extract(p.attributes,'$.localizedRulesText')))
+          JOIN (SELECT v.id found_id,{search.card_score_sql("?1")} score
+                FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id JOIN sets s ON s.id=p.set_id
+                WHERE ?4 IS NULL OR i.game_id=?5) found ON found.found_id=v.id
+          WHERE found.score>0
+          ORDER BY found.score DESC,i.canonical_name,p.collector_number,v.id
           LIMIT ?6""", (q,user_id(),user_id(),game_id,game_id,limit)
     ).fetchall()
     return jsonify([dict(r) for r in rows])

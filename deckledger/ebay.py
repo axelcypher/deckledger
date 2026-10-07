@@ -127,6 +127,7 @@ LISTING_SYNC_MINUTES = 30
 SYNC_PAGES = 10
 ITEM_URL = re.compile(r"(?:/itm/(?:[^/?#]+/)?|[?&](?:item|itm|itemId)=)(\d{9,15})(?:\D|$)", re.I)
 PLAIN_ITEM_ID = re.compile(r"^\s*(\d{9,15})\s*$")
+VARIATION_ID = re.compile(r"[?&]var=(\d{6,20})(?:\D|$)")
 
 
 class EbayError(Exception):
@@ -1127,18 +1128,33 @@ def link_ebay_listing(item_id):
 # ---- Listings followed as a card's price --------------------------------------------------------
 
 def parse_item_id(value):
+    """The listing's number; for one variation of a listing with variations (the link's var=...)
+    "<item>-<variation>", since each variation has its own price."""
     value = str(value or "").strip()
     match = PLAIN_ITEM_ID.match(value) or ITEM_URL.search(value)
-    return match.group(1) if match else None
+    if not match:
+        return None
+    variation = VARIATION_ID.search(value)
+    return f"{match.group(1)}-{variation.group(1)}" if variation else match.group(1)
+
+
+def item_url(config, item_id):
+    item, _, variation = item_id.partition("-")
+    return f'https://{marketplace(config)["domain"]}/itm/{item}' + (f"?var={variation}" if variation else "")
 
 
 def fetch_item(connection, item_id):
     """One public listing through the Browse API: (fields to store, status)."""
     config = require_config(connection)
+    item, _, variation = item_id.partition("-")
+    params = {"legacy_item_id": item, **({"legacy_variation_id": variation} if variation else {})}
     response, payload = rest_get(connection, f'{hosts(config)["api"]}/buy/browse/v1/item/get_item_by_legacy_id',
-                                 app_token(connection), config, {"legacy_item_id": item_id})
+                                 app_token(connection), config, params)
     if response.status_code == 404:
         return {"status": "ended", "error": ""}
+    if any("item_group" in str(error.get("message") or error.get("longMessage") or "") for error in payload.get("errors") or []):
+        # A listing with variations needs the one meant -- the link eBay shows once one is picked.
+        return {"status": "error", "error": "Das Angebot hat mehrere Varianten. Auf eBay die gewünschte Variante auswählen und den Link mit „var=…“ einfügen."}
     if response.status_code != 200:
         return {"status": "error", "error": rest_error(payload, f"HTTP {response.status_code}")[:300]}
     price = payload.get("price") or {}
@@ -1231,7 +1247,7 @@ def variant_ebay_items(variant_id):
     config = ebay_config(db())
     cursor = db().execute(
         "INSERT INTO ebay_tracked_items(variant_id,item_id,url,added_by,created_at) VALUES(?,?,?,?,?)",
-        (variant_id, item_id, f'https://{marketplace(config)["domain"]}/itm/{item_id}', user_id(), now_iso()),
+        (variant_id, item_id, item_url(config, item_id), user_id(), now_iso()),
     )
     db().commit()
     refresh_tracked(db(), {"id": cursor.lastrowid, "item_id": item_id})

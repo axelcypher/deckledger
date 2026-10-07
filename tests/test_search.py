@@ -1,8 +1,9 @@
-"""What the search boxes match: the text as typed, or the text read as a regular expression."""
+"""What the search boxes match: every word somewhere in the card, forgiving about spacing, case and
+small typos -- or, with regular-expression syntax, the text as typed or read as an expression."""
 import pytest
 
 from conftest import EMBER8, EMBER9, TIDE8
-from deckledger.web import search_pattern
+from deckledger import search
 
 
 def names(rows):
@@ -40,9 +41,45 @@ def test_collection_and_watchlist_take_alternatives(client):
     assert names(watched) == {"Ember (PL9)", "Tide (PL8)"}
 
 
-def test_pattern():
-    assert search_pattern("PL9|10").search("Monarch (PL10)"), "an alternative stands on its own"
-    assert not search_pattern("PL9|PL10").search("Monarch (PL8) 010")
-    assert search_pattern("mr. mime").search("MR. MIME") and search_pattern("C++").search("c++")
-    assert search_pattern("\\d{3}").search("No. 204") and not search_pattern("\\D").search("204")
-    assert not search_pattern("a" * 300 + "|b").search("b"), "a very long text is not compiled as an expression"
+SMUG_ALANA = (("Smug Alana (PL9)", search.NAME), ("PL9", search.NUMBER), ("Fractured Paradox", search.SET), ("FP", search.SET),
+              ("1st Edition Holo", search.DETAIL), ("Rare", search.DETAIL), ("Gains 2 power when attacking.", search.TEXT))
+
+
+@pytest.mark.parametrize("query", [
+    "Smug Alana", "smug alana", "Smugalana", "SmugAlana PL9", "SmugAlana Fractured Paradox 1st Ed", "alana smug",
+    "Smug Alana (PL9)", "Smug Allana", "smgu alana", "Smug Alana Holo", "PL9 Paradox", "Smúg Alana",
+])
+def test_a_card_is_found_however_it_is_typed(query):
+    assert search.score(query, *[value for field in SMUG_ALANA for value in field]) > 0
+
+
+@pytest.mark.parametrize("query", ["Smug Alana PL8", "Smug Bob", "Alana Shattered", "Smug Alana 2nd"])
+def test_every_word_has_to_fit(query):
+    assert search.score(query, *[value for field in SMUG_ALANA for value in field]) == 0
+
+
+def test_rules_text_is_searched_but_not_for_typos():
+    assert search.matches("attacking", SMUG_ALANA) and not search.matches("atacking", SMUG_ALANA)
+
+
+def test_the_closest_name_ranks_first():
+    exact = search.query("Goddess").score((("Goddess", search.NAME),))
+    longer = search.query("Goddess").score((("Goddess Sansindra", search.NAME),))
+    in_text = search.query("Goddess").score((("Ember", search.NAME), ("Pray to the goddess.", search.TEXT)))
+    assert exact > longer > in_text > 0
+
+
+def test_expressions_still_work():
+    fields = (("Monarch (PL10)", search.NAME),)
+    assert search.matches("PL9|10", fields), "an alternative stands on its own"
+    assert not search.matches("PL9|PL10", (("Monarch (PL8) 010", search.NAME),))
+    assert search.matches("C++", (("c++", search.NAME),)) and search.matches("mr. mime", (("MR. MIME", search.NAME),))
+    assert search.matches(r"\d{3}", (("No. 204", search.NAME),)) and not search.matches(r"\D", (("204", search.NAME),))
+    assert not search.matches("a" * 300 + "|b", (("b", search.NAME),)), "a very long text is not compiled as an expression"
+
+
+def test_the_global_search_is_forgiving_and_ranked(client):
+    found = client.get("/api/search", query_string={"q": "emberpl8", "game_id": "vcard", "limit": 80}).get_json()
+    assert {row["canonical_name"] for row in found} == {"Ember (PL8)"}
+    found = client.get("/api/search", query_string={"q": "Embr Test Set", "game_id": "vcard", "limit": 80}).get_json()
+    assert found and found[0]["canonical_name"] == "Ember" and {"Ember (PL8)", "Ember (PL9)"} <= {row["canonical_name"] for row in found}

@@ -6,6 +6,7 @@ from flask import Response, jsonify, request
 
 from .config import jload, now_iso
 from .games import DECK_RULESETS, game as game_rules, rarity_case_sql, rarity_filter_ranks, rarity_rank, zone_for_card_type
+from . import search
 from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
 from .catalog import match_collector_number, split_set_prefix
@@ -72,14 +73,9 @@ def deck_catalog():
         filters.append(f"i.card_type IN ({','.join('?' for _ in rules.playable_types)})")
         values.extend(rules.playable_types)
     if q:
-        # Matches the English name, the localized (DE/JP/...) name and rules text for this
-        # printing, and the English rules text -- a search box that only understood the English
-        # canonical_name was useless while actually browsing German- or Japanese-language cards.
-        filters.append(
-            "(search_matches(?,i.canonical_name) OR search_matches(?,p.collector_number) OR search_matches(?,i.rules_text)"
-            " OR search_matches(?,json_extract(p.attributes,'$.localizedName')) OR search_matches(?,json_extract(p.attributes,'$.localizedRulesText')))"
-        )
-        values.extend((q, q, q, q, q))
+        # The search every box uses (deckledger/search.py), localized names and texts included.
+        filters.append(f"{search.card_score_sql()}>0")
+        values.append(q)
     if set_id:
         filters.append("p.set_id=?")
         values.append(set_id)

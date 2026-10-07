@@ -192,7 +192,7 @@ async function renderSheetPicker(){
   const box=$('#sheet-picker-list');if(!box)return;
   const picker=sheetView.picker,gameId=state.activeGameId;
   const query=picker.q.trim(),found=searchMatcher(query),loading=()=>{box.innerHTML='<div class="page-loader compact"><span></span></div>'};
-  const matches=card=>[card.canonical_name,card.collector_number,card.set_name,card.set_code].some(found);
+  const matches=card=>found([card.canonical_name,card.collector_number,card.set_name,card.set_code,card.finish,card.rarity]);
   // "Über Playset": what is owned beyond a full playset, offered with exactly that surplus.
   const playset=state.boot.games.find(game=>game.id===gameId)?.playset_size||4;
   let cards=[],empty='Keine Karten in der Sammlung.';

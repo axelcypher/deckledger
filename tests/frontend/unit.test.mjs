@@ -55,15 +55,18 @@ describe('text and money', () => {
     assert.match(run(`price(1234.5)`), /^1\.234,50\s€$/);
   });
 
-  test('a search text is taken as typed or as a regular expression', () => {
+  test('a search finds every word anywhere, or reads an expression', () => {
     // tests/test_search.py checks the server's side of the same rule.
-    const found = (query, text) => run(`searchMatcher(${JSON.stringify(query)})(${JSON.stringify(text)})`);
+    const found = (query, ...fields) => run(`searchMatcher(${JSON.stringify(query)})(${JSON.stringify(fields)})`);
     assert.equal(found('PL9|PL10', 'Monarch (PL10)'), true);
     assert.equal(found('PL9|PL10', 'Monarch (PL8)'), false);
     assert.equal(found('pl(8|9)', 'Ember (PL9)'), true);
     assert.equal(found('Ember (PL8)', 'ember (pl8)'), true);
-    assert.equal(found('(PL9', 'Ember (PL9)'), true);
-    assert.equal(found('(PL9', 'Ember PL9'), false);
+    assert.equal(found('(PL9', 'Ember PL9'), true);
+    assert.equal(found('Smugalana PL9', 'Smug Alana (PL9)'), true);
+    assert.equal(found('SmugAlana Fractured Paradox 1st Ed', 'Smug Alana (PL9)', 'PL9', 'Fractured Paradox', '1st Edition Holo'), true);
+    assert.equal(found('Godess', 'Goddess Sansindra'), true);
+    assert.equal(found('Smug Alana PL8', 'Smug Alana (PL9)'), false);
     assert.equal(found('ember', null), false);
   });
 

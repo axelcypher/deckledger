@@ -38,6 +38,7 @@ class FakeEbay:
         self.selling = {"ActiveList": "", "UnsoldList": "", "SoldList": ""}
         self.fail = {}
         self.public_key = ""
+        self.groups = set()
 
     def __call__(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
@@ -52,7 +53,11 @@ class FakeEbay:
         if "/commerce/identity/v1/user/" in url:
             return Response(payload={"username": "kartenhai"})
         if "/buy/browse/v1/item/get_item_by_legacy_id" in url:
-            item = self.items.get(kwargs["params"]["legacy_item_id"])
+            params = kwargs["params"]
+            key = params["legacy_item_id"] + (f'-{params["legacy_variation_id"]}' if "legacy_variation_id" in params else "")
+            if key in self.groups:
+                return Response(400, {"errors": [{"errorId": 11006, "message": f"The legacy Id is invalid. Use https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id={key} to get the item group details."}]})
+            item = self.items.get(key)
             return Response(404, {"errors": [{"errorId": 11001}]}) if item is None else Response(payload=item)
         if "/sell/account/v1/" in url:
             kind = url.rsplit("/", 1)[-1].split("_")[0]
@@ -107,6 +112,7 @@ def connect(user_id=1):
     (f"https://cgi.ebay.de/ws/eBayISAPI.dll?ViewItem&item={ITEM}", ITEM),
     (f"  {ITEM} ", ITEM),
     ("https://www.ebay.de/sch/i.html?_nkw=ember", None),
+    (f"https://www.ebay.de/itm/{ITEM}?itmmeta=01M4B&hash=item34fb%3Ag&var=526719127153", f"{ITEM}-526719127153"),
     ("12345", None),
 ])
 def test_item_ids_are_read_from_links(text, expected):
@@ -451,3 +457,15 @@ def test_a_deleted_account_is_forgotten(ebay_key):
     assert response.status_code == 204
     assert query("SELECT COUNT(*) AS n FROM ebay_accounts")[0]["n"] == 0
     assert [row["buyer"] for row in query("SELECT buyer FROM ebay_sales ORDER BY item_id")] == ["", "other"]
+
+
+def test_a_listing_with_variations_needs_the_chosen_one(client, configured):
+    configured.groups = {ITEM}
+    configured.items = {f"{ITEM}-526719127153": listing(4)}
+    response = client.post(f"/api/variants/{EMBER8}/ebay-items", json={"url": f"https://www.ebay.de/itm/{ITEM}"})
+    assert "mehrere Varianten" in response.get_json()["items"][0]["error"]
+    response = client.post(f"/api/variants/{EMBER8}/ebay-items", json={"url": f"https://www.ebay.de/itm/{ITEM}?hash=x&var=526719127153"})
+    item = next(item for item in response.get_json()["items"] if item["item_id"] == f"{ITEM}-526719127153")
+    assert (item["status"], item["price"]) == ("active", 4.0)
+    assert price_of(client, EMBER8, "vcard-card-ember8")["price"] == 4.0
+

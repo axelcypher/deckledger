@@ -3,16 +3,15 @@
 import gzip
 import hashlib
 import os
-import re
 import sqlite3
-from functools import lru_cache, wraps
+from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, redirect, request, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import migrations
+from . import migrations, search
 from .config import DB_PATH, ROOT
 
 
@@ -45,32 +44,10 @@ def asset_url(filename):
     return f"{url_for('static', filename=filename)}?v={cached[1]}"
 
 
-SEARCH_PATTERN_MAX = 200
-
-
-@lru_cache(maxsize=256)
-def search_pattern(query):
-    """What a search box's text matches, ignoring case: the text as typed, or the text read as a
-    regular expression -- so "PL9|PL10" finds either and "Monarch (PL8)" still finds the card of
-    that name. Text that is no valid expression is only ever taken literally."""
-    literal = re.escape(query)
-    if len(query) <= SEARCH_PATTERN_MAX:
-        try:
-            return re.compile(f"{literal}|(?:{query})", re.I)
-        except re.error:
-            pass
-    return re.compile(literal, re.I)
-
-
-def search_matches(query, text):
-    """SQL: search_matches(?, column)."""
-    return 0 if text is None else int(search_pattern(query).search(str(text)) is not None)
-
-
 def db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
-        g.db.create_function("search_matches", 2, search_matches, deterministic=True)
+        g.db.create_function("search_score", -1, search.score, deterministic=True)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
         g.db.execute("PRAGMA journal_mode = WAL")

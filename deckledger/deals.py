@@ -17,7 +17,8 @@ A deal that is done is the record and is no longer edited.
 from flask import jsonify, request
 
 from .config import now_iso
-from .web import app, db, login_required, search_pattern, user_id
+from . import search
+from .web import app, db, login_required, user_id
 from .sheets import RESERVED_SQL, WANTED_SHEET_KINDS
 
 DEAL_STATES = ("open", "reserved", "done", "cancelled")
@@ -266,8 +267,8 @@ def deals():
     elif status in DEAL_STATES:
         found = [deal for deal in found if deal["status"] == status]
     if query:
-        pattern = search_pattern(query)
-        found = [deal for deal in found if any(pattern.search(str(text)) for text in (deal["partner"], deal["platform"], deal["note"], *(card["name"] for card in deal["cards"])))]
+        found = [deal for deal in found if search.matches(query, [(deal["partner"], search.NAME), (deal["platform"], search.DETAIL), (deal["note"], search.TEXT),
+                                                                  *((card["name"], search.NAME) for card in deal["cards"])])]
     done = [deal for deal in found if deal["status"] == "done"]
     totals = {
         "count": len(found), "done": len(done),
