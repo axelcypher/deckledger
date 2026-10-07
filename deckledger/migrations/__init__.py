@@ -16,9 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import now_iso
-from . import m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting, m0005_sheet_posts, m0006_communities, m0007_deals, m0008_one_comment_per_user, m0009_ebay, m0010_lock_demo_account, m0011_ebay_stats_and_sheets
+from . import m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting, m0005_sheet_posts, m0006_communities, m0007_deals, m0008_one_comment_per_user, m0009_ebay, m0010_lock_demo_account, m0011_ebay_stats_and_sheets, m0012_ebay_listing_shipping
 
-MIGRATIONS = [m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting, m0005_sheet_posts, m0006_communities, m0007_deals, m0008_one_comment_per_user, m0009_ebay, m0010_lock_demo_account, m0011_ebay_stats_and_sheets]
+MIGRATIONS = [m0001_baseline, m0002_sale_lists_to_sheets, m0003_sheet_backgrounds, m0004_drop_classic_theme_setting, m0005_sheet_posts, m0006_communities, m0007_deals, m0008_one_comment_per_user, m0009_ebay, m0010_lock_demo_account, m0011_ebay_stats_and_sheets, m0012_ebay_listing_shipping]
 
 BACKUPS_KEPT = 2
 

@@ -1232,6 +1232,10 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .ebay-listing-stats { display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--muted);font-size:11px; }
 .ebay-listing-stats b { color:var(--ink); }
 .ebay-rank { color:var(--brand);font-weight:800; }
+.ebay-listing-price { display:grid;justify-items:end;gap:1px; }
+.ebay-vs-market { color:var(--muted);font-size:10px;font-weight:800;white-space:nowrap; }
+.ebay-vs-market.is-below { color:var(--success,#12805b); }
+.ebay-vs-market.is-above { color:var(--danger,#b4232a); }
 .ebay-aspects { display:grid;gap:6px;margin-bottom:8px; }
 .ebay-aspect-row { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:8px;align-items:center; }
 .ebay-stats-tiles { display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px; }

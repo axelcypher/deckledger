@@ -364,8 +364,10 @@ def test_publishing_needs_a_connected_account(client, configured):
 
 # ---- The account's listings ---------------------------------------------------------------------
 
-def item_xml(item_id, title, price, quantity=1, sold=0, sku=""):
-    return (f"<Item><ItemID>{item_id}</ItemID><Title>{title}</Title><SKU>{sku}</SKU><Quantity>{quantity}</Quantity>"
+def item_xml(item_id, title, price, quantity=1, sold=0, sku="", shipping=None):
+    shipping = (f'<ShippingDetails><ShippingServiceOptions><ShippingServiceCost currencyID="EUR">{shipping}</ShippingServiceCost>'
+                "</ShippingServiceOptions></ShippingDetails>") if shipping else ""
+    return (f"<Item><ItemID>{item_id}</ItemID><Title>{title}</Title><SKU>{sku}</SKU><Quantity>{quantity}</Quantity>{shipping}"
             f'<SellingStatus><CurrentPrice currencyID="EUR">{price}</CurrentPrice><QuantitySold>{sold}</QuantitySold></SellingStatus>'
             f"<ListingDetails><StartTime>2026-09-01T10:00:00.000Z</StartTime><ViewItemURL>https://www.ebay.de/itm/{item_id}</ViewItemURL></ListingDetails>"
             "<WatchCount>3</WatchCount></Item>")
@@ -613,4 +615,20 @@ def test_cards_on_ebay_are_marked_on_the_sheet(client, monkeypatch):
     own_listing("111", variant_id=EMBER8)
     assert client.get(f"/api/trade-sheets/{sheet}/image/1.jpg?scale=0.3").status_code == 200
     assert sorted(drawn) == [False, True]
+
+
+
+def test_a_listing_shows_how_it_compares_with_the_market_value(client, configured):
+    connect()
+    observe(EMBER8, "cardmarket", 5.0, "2026-09-01T06:00:00+00:00")
+    configured.selling = {"ActiveList": "<ActiveList><ItemArray>"
+                                        f"{item_xml('111', 'Ember PL8', '4.25', sku=f'DL-{EMBER8}', shipping='0.60')}"
+                                        f"{item_xml('222', 'Ember PL8 Holo', '5.00', sku=f'DL-{EMBER8}', shipping='0.25')}"
+                                        f"{item_xml('333', 'Something else', '9.00')}</ItemArray></ActiveList>",
+                          "UnsoldList": "<UnsoldList/>", "SoldList": "<SoldList/>"}
+    client.post("/api/ebay/listings/sync")
+    listings = {row["item_id"]: row for row in client.get("/api/ebay/listings").get_json()["listings"]}
+    assert (listings["111"]["shipping_cost"], listings["111"]["market_ratio"]) == (0.6, 97), "4,25 + 0,60 of 5,00"
+    assert listings["222"]["market_ratio"] == 105
+    assert listings["333"]["market_ratio"] is None, "no card, no market value"
 

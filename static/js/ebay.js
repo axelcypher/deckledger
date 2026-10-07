@@ -375,8 +375,16 @@ function ebayListingRow(item){
       <div class="ebay-link-search hidden"><b class="ebay-link-heading">Vorschläge aus deiner Sammlung</b><div class="ebay-link-suggestions"><small class="muted">Wird gesucht …</small></div>
         <input class="select-control" placeholder="Oder in deiner Sammlung suchen: Name, Nummer, Set …"><div class="ebay-link-results"></div></div>
     </div>
-    <strong>${ebayMoney(item.price,item.currency)}</strong>
+    <strong class="ebay-listing-price">${ebayMoney(item.price,item.currency)}${ebayMarketRatio(item)}</strong>
   </div>`;
+}
+
+// Price with shipping against the card's market value, from 100 %: green below, red above.
+function ebayMarketRatio(item){
+  if(item.market_ratio==null)return '';
+  const below=item.market_ratio<100,above=item.market_ratio>100;
+  const shipping=item.shipping_cost?` + ${ebayMoney(item.shipping_cost,item.currency)} Versand`:'';
+  return `<small class="ebay-vs-market ${below?'is-below':above?'is-above':''}" title="${ebayMoney(item.price,item.currency)}${shipping} gegenüber Marktwert ${money(item.market_price)}">${below?'↓':above?'↑':'='} ${item.market_ratio} %</small>`;
 }
 
 // Watchers, views, impressions and the place in the popularity ranking of one listing.
@@ -418,6 +426,7 @@ const EBAY_STAT_SORTS=[
   ['click_through_rate','Klickrate',item=>item.click_through_rate??-1,-1],['quantity_sold','Verkauft',item=>item.quantity_sold||0,-1],
   ['newest','Neueste zuerst',item=>item.started_at||'',-1],['oldest','Älteste zuerst',item=>item.started_at||'',1],
   ['price_desc','Preis absteigend',item=>item.price??-1,-1],['price_asc','Preis aufsteigend',item=>item.price??Infinity,1],
+  ['market_low','Am günstigsten zum Marktwert',item=>item.market_ratio??Infinity,1],['market_high','Am teuersten zum Marktwert',item=>item.market_ratio??-1,-1],
   ['title','Titel A–Z',item=>(item.title||'').toLowerCase(),1],
 ];
 const ebayStatsView={sort:'popularity',status:'active'};
@@ -444,7 +453,7 @@ function openEbayStats(listings){
     $('#ebay-stats-table',modal).innerHTML=rows.length?`<div class="ebay-stats-row is-head"><span>#</span><span>Angebot</span><span>Preis</span><span>Beobachter</span><span>Aufrufe</span><span>Impressionen</span><span>Klickrate</span><span>Verkauft</span><span>Beliebtheit</span></div>
       ${rows.map(item=>`<div class="ebay-stats-row"><span class="ebay-rank">${item.rank?`#${item.rank}`:'–'}</span>
         <a href="${escapeHtml(item.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.title)}</b><small>${item.variant_id?escapeHtml(item.canonical_name||''):'keine Karte zugeordnet'}</small></a>
-        <span>${ebayMoney(item.price,item.currency)}</span><span>${number(item.watch_count||0)}</span><span>${number(item.view_count)}</span><span>${number(item.impression_count)}</span>
+        <span class="ebay-listing-price">${ebayMoney(item.price,item.currency)}${ebayMarketRatio(item)}</span><span>${number(item.watch_count||0)}</span><span>${number(item.view_count)}</span><span>${number(item.impression_count)}</span>
         <span>${percent(item.click_through_rate)}</span><span>${number(item.quantity_sold||0)}</span><span><b>${number(item.popularity)}</b></span></div>`).join('')}`
       :'<div class="deck-zone-empty">Keine Angebote in dieser Ansicht.</div>';
   };

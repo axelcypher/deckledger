@@ -1120,8 +1120,9 @@ def sync_listings(connection, uid):
         quantity = int(number(item, "Quantity") or 0)
         sold = int(number(item, "SellingStatus/QuantitySold") or 0)
         connection.execute(
-            """INSERT INTO ebay_listings(user_id,item_id,variant_id,title,sku,price,currency,quantity,quantity_sold,status,url,image_url,watch_count,started_at,ended_at,synced_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET
+            """INSERT INTO ebay_listings(user_id,item_id,variant_id,title,sku,price,currency,quantity,quantity_sold,status,url,image_url,watch_count,started_at,ended_at,synced_at,shipping_cost)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET
+               shipping_cost=COALESCE(excluded.shipping_cost,ebay_listings.shipping_cost),
                variant_id=COALESCE(ebay_listings.variant_id,excluded.variant_id),title=excluded.title,sku=excluded.sku,
                price=COALESCE(excluded.price,ebay_listings.price),currency=CASE WHEN excluded.currency!='' THEN excluded.currency ELSE ebay_listings.currency END,
                quantity=CASE WHEN excluded.quantity>0 THEN excluded.quantity ELSE ebay_listings.quantity END,
@@ -1133,7 +1134,8 @@ def sync_listings(connection, uid):
             (uid, item_id, item_link(connection, uid, item_id, sku), text(item, "Title"), sku, price, currency, quantity, sold, status,
              text(item, "ListingDetails/ViewItemURL"), text(item, "PictureDetails/GalleryURL") or text(item, "PictureDetails/PictureURL"),
              int(number(item, "WatchCount") or 0), text(item, "ListingDetails/StartTime"),
-             text(item, "ListingDetails/EndTime") if status != "active" else "", stamp),
+             text(item, "ListingDetails/EndTime") if status != "active" else "", stamp,
+             number(item, "ShippingDetails/ShippingServiceOptions/ShippingServiceCost")),
         )
         return item_id
 
@@ -1295,10 +1297,19 @@ def ebay_listings():
     listings = [dict(row) for row in rows]
     for listing in listings:
         listing["popularity"] = popularity(listing)
+        listing["market_ratio"] = market_ratio(listing)
     # The ranking: the active listings by popularity, 1 the most popular.
     for rank, listing in enumerate(sorted((row for row in listings if row["status"] == "active"), key=lambda row: -row["popularity"]), 1):
         listing["rank"] = rank
     return jsonify({"listings": listings, "sales": [dict(row) for row in sales], "status": status_payload(db(), uid)})
+
+
+def market_ratio(listing):
+    """The listing's price with shipping as a percentage of the card's market value: 97 is 3 %
+    below it, 105 is 5 % above. None without a market value (or not in EUR, as market values are)."""
+    if not listing.get("market_price") or listing.get("price") is None or listing.get("currency") not in ("EUR", ""):
+        return None
+    return round((listing["price"] + (listing.get("shipping_cost") or 0)) / listing["market_price"] * 100)
 
 
 def popularity(listing):
