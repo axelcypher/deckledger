@@ -373,6 +373,11 @@ async function renderAdminEbay(){
         </div></div>
       <div class="oauth-form-group"><div class="oauth-form-group-head"><span>02</span><div><b>Rückleitung</b><small>Beim RuName unter „User Tokens → Your auth accepted URL“ und „Your auth declined URL“ eintragen. eBay verlangt dafür HTTPS.</small></div></div>
         <div class="admin-form-grid"><label class="oauth-field oauth-field-wide"><span>Callback-URL</span><input value="${escapeHtml(config.callback_url)}" readonly onclick="this.select()"></label></div></div>
+      <div class="oauth-form-group"><div class="oauth-form-group-head"><span>03</span><div><b>Kontolöschungen</b><small>Unter „Application Keys → Notifications → Marketplace Account Deletion“ eintragen. eBay muss diese eine Adresse über HTTPS von außen erreichen; steht hier ein interner Host, die öffentliche Adresse mit demselben Pfad nehmen.</small></div></div>
+        <div class="admin-form-grid">
+          <label class="oauth-field oauth-field-wide"><span>Endpoint-URL</span><input value="${escapeHtml(config.deletion_endpoint)}" readonly onclick="this.select()"></label>
+          <label class="oauth-field oauth-field-wide"><span>Verification Token</span><input value="${escapeHtml(config.deletion_token)}" readonly onclick="this.select()"></label>
+        </div></div>
       <div class="oauth-admin-actions"><span>Für Preisbeobachtung reichen Client-ID und Secret; Kontoverbindung und Einstellen brauchen zusätzlich den RuName.</span>${locked?'':'<button class="primary-button" id="ebay-admin-save">eBay-Einstellungen speichern</button>'}</div>
     </div></div>
   </details>`;

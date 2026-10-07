@@ -22,6 +22,7 @@ EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_RU_NAME.
 """
 
 import base64
+import hashlib
 import html
 import io
 import json
@@ -48,6 +49,9 @@ from .images import card_image
 PRICE_PROVIDER = "ebay"
 CONFIG_KEY = "ebay_config"
 APP_TOKEN_KEY = "ebay_app_token"
+DELETION_TOKEN_KEY = "ebay_deletion_token"
+# eBay's notification keys by id; they do not change, so they are fetched once per process.
+PUBLIC_KEYS = {}
 PRESET_SETTING = "ebayPreset"
 CONFIG_DEFAULTS = {"client_id": "", "client_secret": "", "ru_name": "", "environment": "production", "marketplace": "EBAY_DE"}
 ENVIRONMENTS = {
@@ -426,7 +430,8 @@ def admin_get_ebay():
     config = ebay_config(db())
     return jsonify({
         **{key: value for key, value in config.items() if key != "client_secret"}, "client_secret_set": bool(config["client_secret"]),
-        "callback_url": url_for("ebay_callback", _external=True), "marketplaces": {key: value["label"] for key, value in MARKETPLACES.items()},
+        "callback_url": url_for("ebay_callback", _external=True), "deletion_endpoint": deletion_endpoint(),
+        "deletion_token": deletion_token(db()), "marketplaces": {key: value["label"] for key, value in MARKETPLACES.items()},
     })
 
 
@@ -452,6 +457,86 @@ def admin_save_ebay():
     db().execute("DELETE FROM app_settings WHERE key=?", (APP_TOKEN_KEY,))
     db().commit()
     return jsonify({"saved": True})
+
+
+# ---- Marketplace account deletion ---------------------------------------------------------------
+# eBay only hands out production keys to applications that listen for "this eBay account was
+# deleted": the developer portal registers an endpoint URL and a verification token, checks the
+# endpoint once with a challenge, and from then on posts every deleted account on all of eBay --
+# thousands a day. Only those naming an account DeckLedger knows (a connected seller, a buyer in
+# the sales) are verified against eBay's signature and acted on; everything else is just
+# acknowledged.
+
+def deletion_token(connection):
+    """The verification token entered in the developer portal: EBAY_VERIFICATION_TOKEN, else one
+    made up once (64 characters of the alphabet eBay allows)."""
+    if os.environ.get("EBAY_VERIFICATION_TOKEN"):
+        return os.environ["EBAY_VERIFICATION_TOKEN"]
+    row = connection.execute("SELECT value FROM app_settings WHERE key=?", (DELETION_TOKEN_KEY,)).fetchone()
+    if row:
+        return row[0]
+    token = secrets.token_urlsafe(48)
+    connection.execute("INSERT INTO app_settings(key,value) VALUES(?,?)", (DELETION_TOKEN_KEY, token))
+    connection.commit()
+    return token
+
+
+def deletion_endpoint():
+    """The URL as registered at eBay -- it is part of the challenge's hash. Behind a proxy that
+    rewrites the host, EBAY_DELETION_ENDPOINT names it."""
+    return os.environ.get("EBAY_DELETION_ENDPOINT") or url_for("ebay_account_deletion", _external=True)
+
+
+def public_key(connection, kid):
+    if kid not in PUBLIC_KEYS:
+        config = require_config(connection)
+        response, payload = rest_get(connection, f'{hosts(config)["api"]}/commerce/notification/v1/public_key/{kid}', app_token(connection), config)
+        if response.status_code != 200 or not payload.get("key"):
+            raise EbayError(rest_error(payload, "eBay hat den Schlüssel der Benachrichtigung nicht geliefert."), 502)
+        body = re.sub(r"-----(BEGIN|END) PUBLIC KEY-----|\s", "", payload["key"])
+        PUBLIC_KEYS[kid] = "-----BEGIN PUBLIC KEY-----\n" + "\n".join(body[i:i + 64] for i in range(0, len(body), 64)) + "\n-----END PUBLIC KEY-----\n"
+    return PUBLIC_KEYS[kid]
+
+
+def signed_by_ebay(connection, body, header):
+    """X-EBAY-SIGNATURE is base64 JSON naming the key (kid) and an ECDSA/SHA1 signature of the body."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    try:
+        signature = json.loads(base64.b64decode(header or ""))
+        key = serialization.load_pem_public_key(public_key(connection, str(signature["kid"])).encode())
+        key.verify(base64.b64decode(signature["signature"]), body, ec.ECDSA(hashes.SHA1()))
+        return True
+    except (InvalidSignature, ValueError, KeyError, TypeError, EbayError) as error:
+        app.logger.warning("eBay account deletion notice not verified: %s", error or type(error).__name__)
+        return False
+
+
+@app.route("/ebay/account-deletion", methods=["GET", "POST"])
+def ebay_account_deletion():
+    """Open to eBay without a login. GET is the portal's challenge, POST a deleted account."""
+    connection = db()
+    if request.method == "GET":
+        challenge = request.args.get("challenge_code", "")
+        if not challenge:
+            return jsonify({"error": "challenge_code fehlt"}), 400
+        digest = hashlib.sha256((challenge + deletion_token(connection) + deletion_endpoint()).encode()).hexdigest()
+        return jsonify({"challengeResponse": digest})
+    data = ((request.get_json(silent=True) or {}).get("notification") or {}).get("data") or {}
+    username = str(data.get("username") or "")
+    known = username and (
+        connection.execute("SELECT 1 FROM ebay_accounts WHERE username=?", (username,)).fetchone()
+        or connection.execute("SELECT 1 FROM ebay_sales WHERE buyer=? LIMIT 1", (username,)).fetchone())
+    if not known:
+        return "", 204
+    if not signed_by_ebay(connection, request.get_data(), request.headers.get("X-EBAY-SIGNATURE")):
+        return "", 412
+    connection.execute("DELETE FROM ebay_accounts WHERE username=?", (username,))
+    connection.execute("UPDATE ebay_sales SET buyer='' WHERE buyer=?", (username,))
+    connection.commit()
+    app.logger.info("eBay account deletion: removed what DeckLedger stored about an eBay account")
+    return "", 204
 
 
 # ---- The listing preset -------------------------------------------------------------------------

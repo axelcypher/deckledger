@@ -272,3 +272,13 @@ listings as prices; connecting accounts and publishing need the RuName too. Draf
 DeckLedger until published — eBay's API cannot create Seller Hub drafts. `ebay_sync.py` runs every
 ten minutes in the container and re-reads followed listings (every six hours) and connected
 accounts' listings (every 30 minutes).
+
+eBay unlocks production keys only once the application listens for deleted eBay accounts. Under
+**Application Keys → Notifications → Marketplace Account Deletion** enter the endpoint URL and
+verification token shown under **Admin → eBay**. The endpoint is `https://<public
+host>/ebay/account-deletion`; it needs no login and must be reachable by eBay over HTTPS, so
+exposing just that path is enough. If the public host differs from the one the admin page is opened
+on, set `EBAY_DELETION_ENDPOINT` to the full URL (it is part of the challenge hash);
+`EBAY_VERIFICATION_TOKEN` replaces the generated token. Notices naming a known account (a connected
+seller, a buyer in the sales) are checked against eBay's signature, then that account's tokens and
+the buyer name are removed.

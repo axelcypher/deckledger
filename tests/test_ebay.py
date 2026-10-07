@@ -37,6 +37,7 @@ class FakeEbay:
         self.calls = []
         self.selling = {"ActiveList": "", "UnsoldList": "", "SoldList": ""}
         self.fail = {}
+        self.public_key = ""
 
     def __call__(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
@@ -46,6 +47,8 @@ class FakeEbay:
                 return Response(400, {"error": "invalid_grant"})
             return Response(payload={"access_token": f'token-{form["grant_type"]}', "expires_in": 7200,
                                      "refresh_token": "refresh", "refresh_token_expires_in": 47304000})
+        if "/commerce/notification/v1/public_key/" in url:
+            return Response(payload={"algorithm": "ECDSA", "digest": "SHA1", "key": self.public_key})
         if "/commerce/identity/v1/user/" in url:
             return Response(payload={"username": "kartenhai"})
         if "/buy/browse/v1/item/get_item_by_legacy_id" in url:
@@ -390,3 +393,61 @@ def test_descriptions_may_be_html(client):
     assert description == "<p><b>Ember &lt;PL8&gt;</b></p>"
     assert deckledger.ebay.description_html(description) == description
     assert deckledger.ebay.description_html("Zeile 1\nA & B") == "Zeile 1<br>A &amp; B"
+
+
+# ---- Marketplace account deletion ---------------------------------------------------------------
+
+def deletion_notice(username):
+    return json.dumps({"metadata": {"topic": "MARKETPLACE_ACCOUNT_DELETION", "schemaVersion": "1.0"},
+                       "notification": {"notificationId": "n-1", "data": {"username": username, "userId": "u-1", "eiasToken": "e"}}},
+                      separators=(",", ":")).encode()
+
+
+def signed(body, key):
+    import base64
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    signature = base64.b64encode(key.sign(body, ec.ECDSA(hashes.SHA1()))).decode()
+    return base64.b64encode(json.dumps({"alg": "ECDSA", "kid": "key-1", "signature": signature, "digest": "SHA1"}).encode()).decode()
+
+
+@pytest.fixture
+def ebay_key(configured):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    # eBay sends the key on one line.
+    configured.public_key = pem.replace("\n", "")
+    deckledger.ebay.PUBLIC_KEYS.clear()
+    return key
+
+
+def test_the_deletion_endpoint_answers_ebays_challenge(admin):
+    import hashlib
+    config = admin.get("/api/admin/ebay").get_json()
+    token, endpoint = config["deletion_token"], config["deletion_endpoint"]
+    assert re.fullmatch(r"[A-Za-z0-9_-]{32,80}", token) and endpoint == "http://localhost/ebay/account-deletion"
+    response = deckledger.app.test_client().get("/ebay/account-deletion?challenge_code=abc123")
+    assert response.status_code == 200 and response.is_json
+    assert response.get_json() == {"challengeResponse": hashlib.sha256(f"abc123{token}{endpoint}".encode()).hexdigest()}
+    assert admin.get("/api/admin/ebay").get_json()["deletion_token"] == token
+
+
+def test_deletions_of_unknown_accounts_are_only_acknowledged(configured):
+    calls = len(configured.calls)
+    response = deckledger.app.test_client().post("/ebay/account-deletion", data=deletion_notice("someone"), content_type="application/json")
+    assert response.status_code == 204 and len(configured.calls) == calls
+
+
+def test_a_deleted_account_is_forgotten(ebay_key):
+    connect()
+    query("INSERT INTO ebay_sales(user_id,item_id,transaction_id,buyer) VALUES(1,'1','t1','kartenhai'),(1,'2','t2','other')")
+    body = deletion_notice("kartenhai")
+    anonymous = deckledger.app.test_client()
+    forged = anonymous.post("/ebay/account-deletion", data=body, content_type="application/json", headers={"X-EBAY-SIGNATURE": signed(b"{}", ebay_key)})
+    assert forged.status_code == 412 and query("SELECT COUNT(*) AS n FROM ebay_accounts")[0]["n"] == 1
+    response = anonymous.post("/ebay/account-deletion", data=body, content_type="application/json", headers={"X-EBAY-SIGNATURE": signed(body, ebay_key)})
+    assert response.status_code == 204
+    assert query("SELECT COUNT(*) AS n FROM ebay_accounts")[0]["n"] == 0
+    assert [row["buyer"] for row in query("SELECT buyer FROM ebay_sales ORDER BY item_id")] == ["", "other"]
