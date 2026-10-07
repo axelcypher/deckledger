@@ -8,14 +8,9 @@ Self-hosted, multi-user collection manager for trading card games. This reposito
 docker compose up --build -d
 ```
 
-Open <http://localhost:18081> and sign in with:
-
-- User: `demo`
-- Password: `deckledger`
-
-An administrator demo account is also available as `admin` / `admin`. Change both
-passwords under **Admin → Benutzer** before more than one person uses the instance;
-the demo hint on the login page disappears once the `demo` password has been changed.
+Open <http://localhost:18081> and sign in as `admin` / `admin`. Change that password
+under **Admin → Benutzer** right away and create the other accounts there. There is no demo
+account; a database that still has the old `demo` / `deckledger` one gets it locked.
 
 ## Included in the MVP
 

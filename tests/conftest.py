@@ -38,6 +38,25 @@ DEMO = ("demo", "deckledger")
 ADMIN = ("admin", "admin")
 
 
+def add_users():
+    """The suite's accounts: demo (id 1), an ordinary user the app itself no longer creates, and
+    admin (id 2), in place of the admin the app seeds."""
+    from werkzeug.security import generate_password_hash
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection.execute("PRAGMA foreign_keys=OFF")
+    connection.execute("DELETE FROM users")
+    connection.executemany("INSERT INTO users(id, username, display_name, password_hash, role, created_at) VALUES(?,?,?,?,?,'2026-01-01T00:00:00+00:00')", [
+        (1, "demo", "Alex Morgan", generate_password_hash("deckledger"), "user"),
+        (2, "admin", "DeckLedger Admin", generate_password_hash("admin"), "admin"),
+    ])
+    connection.commit()
+    connection.close()
+    deckledger.schema.init_database()
+
+
+add_users()
+
+
 def card(catalog, game, set_id, key, name, card_type, number, rarity, finishes=("Normal", "Holo"), language="EN", **attributes):
     """Adds one identity + printing + its variants; the first finish is the base variant."""
     identity_id, printing_id = f"{game}-card-{key}", f"{game}-print-{key}-{language.lower()}"
@@ -126,7 +145,7 @@ def fresh_database():
         connection.execute(f"DELETE FROM {table}")
     connection.commit()
     connection.close()
-    deckledger.schema.init_database()
+    add_users()
     catalog_sync.write_database(sample_catalog(), {"vcard", "lorcana", "one-piece"})
     yield
 

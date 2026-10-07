@@ -85,8 +85,6 @@ button, input { font:inherit; }
 .login-submit span { transition:transform .15s; }
 .login-submit:hover span { transform:translateX(3px); }
 .login-error { padding:11px 14px; border-radius:11px; background:var(--error-bg); color:var(--error-ink); font-size:13px; font-weight:600; }
-.login-demo { display:flex; flex-wrap:wrap; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
-.login-demo code { padding:2px 7px; border-radius:6px; background:var(--gold-soft); color:var(--ink); font-size:12px; }
 .login-divider { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:12px; }
 .login-divider::before, .login-divider::after { content:""; flex:1; height:1px; background:var(--line); }
 .login-sso { display:flex; align-items:center; justify-content:center; height:46px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--ink); font-weight:700; text-decoration:none; transition:border-color .15s; }

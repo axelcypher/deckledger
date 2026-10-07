@@ -93,10 +93,8 @@ def resolve_oauth_identity(config, subject, email, display_name, email_verified=
 @app.route("/login", methods=["GET", "POST"])
 def login():
     oauth_config = resolve_oauth_config()
-    demo = db().execute("SELECT password_hash FROM users WHERE username='demo'").fetchone()
     oauth_context = {
         "oauth_enabled": oauth_config["enabled"], "oauth_provider_name": oauth_config["provider_name"],
-        "show_demo_hint": bool(demo and demo["password_hash"] and check_password_hash(demo["password_hash"], "deckledger")),
     }
     if request.method == "POST":
         username = request.form.get("username", "").strip()

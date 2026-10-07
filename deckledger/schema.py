@@ -95,10 +95,7 @@ def seed_database(connection):
         return
     connection.executemany(
         "INSERT INTO users(username, display_name, password_hash, role, created_at) VALUES(?,?,?,?,?)",
-        [
-            ("demo", "Alex Morgan", generate_password_hash("deckledger"), "user", now_iso()),
-            ("admin", "DeckLedger Admin", generate_password_hash("admin"), "admin", now_iso()),
-        ],
+        [("admin", "DeckLedger Admin", generate_password_hash("admin"), "admin", now_iso())],
     )
     connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", game_rows)
     seed_default_providers(connection)
@@ -128,7 +125,7 @@ def init_database():
     try:
         migrate(connection, DB_PATH)
         # Gunicorn workers can import the app concurrently on a fresh volume.
-        # Serialize the one-time seed so both workers never insert the demo user.
+        # Serialize the one-time seed so both workers never insert the first admin.
         connection.execute("BEGIN IMMEDIATE")
         seed_database(connection)
         ensure_user_lists(connection)

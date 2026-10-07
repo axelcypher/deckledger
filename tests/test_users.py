@@ -81,8 +81,6 @@ def test_deleting_an_account_removes_its_data_and_ends_its_session(admin):
     assert demo.get("/").status_code == 302
 
 
-def test_demo_hint_disappears_with_the_default_password(admin, anonymous):
-    assert "Demo-Zugang" in anonymous.get("/login").get_data(as_text=True)
-    demo_id = query("SELECT id FROM users WHERE username='demo'")[0]["id"]
-    admin.patch(f"/api/admin/users/{demo_id}", json={"password": "nicht-mehr-oeffentlich"})
-    assert "Demo-Zugang" not in anonymous.get("/login").get_data(as_text=True)
+def test_the_login_page_offers_no_demo_account(anonymous):
+    page = anonymous.get("/login").get_data(as_text=True)
+    assert "Demo-Zugang" not in page and 'value="deckledger"' not in page

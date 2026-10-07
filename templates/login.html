@@ -51,10 +51,9 @@
         <h2>Sammlung öffnen</h2>
         <p class="login-lead">Melde dich an, um deinen Fortschritt fortzusetzen.</p>
         {% if error %}<div class="login-error" role="alert">{{ error }}</div>{% endif %}
-        <label><span>Benutzername</span><input name="username" {% if show_demo_hint %}value="demo" {% endif %}autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
-        <label><span>Passwort</span><input name="password" type="password" {% if show_demo_hint %}value="deckledger" {% endif %}autocomplete="current-password" required></label>
+        <label><span>Benutzername</span><input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+        <label><span>Passwort</span><input name="password" type="password" autocomplete="current-password" required></label>
         <button class="login-submit" type="submit">Anmelden <span aria-hidden="true">→</span></button>
-        {% if show_demo_hint %}<div class="login-demo"><span>Demo-Zugang</span><code>demo</code><span>/</span><code>deckledger</code></div>{% endif %}
         {% if oauth_enabled %}
         <div class="login-divider"><span>oder</span></div>
         <a class="login-sso" href="{{ url_for('oauth_login') }}">Mit {{ oauth_provider_name }} anmelden</a>

@@ -268,3 +268,19 @@ def test_nothing_but_a_migration_changes_the_schema():
         if pattern.search(line) and "TEMP TABLE" not in line
     ]
     assert offenders == []
+
+
+@pytest.mark.parametrize("password, locked", [("deckledger", True), ("changed", False)])
+def test_the_demo_account_is_locked_while_it_has_the_published_password(tmp_path, password, locked):
+    from werkzeug.security import generate_password_hash
+    path = tmp_path / "old.db"
+    run(path, migrations=migrations.MIGRATIONS[:9])
+    connection = connect(path)
+    connection.execute("INSERT INTO users(username, display_name, password_hash, role, created_at) VALUES('demo','Demo',?,'user','t')",
+                       (generate_password_hash(password),))
+    connection.commit()
+    connection.close()
+    run(path)
+    connection = connect(path)
+    assert (connection.execute("SELECT password_hash FROM users WHERE username='demo'").fetchone()[0] == "") is locked
+    connection.close()
