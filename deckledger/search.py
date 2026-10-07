@@ -152,3 +152,35 @@ def card_score_sql(parameter="?"):
         f"s.name,{SET},s.code,{SET},v.finish,{DETAIL},p.rarity,{DETAIL},p.language,{DETAIL},"
         f"i.rules_text,{TEXT},json_extract(p.attributes,'$.localizedRulesText'),{TEXT})"
     )
+
+
+def title_score(title, card):
+    """How well a long listing title ("Smug Alana PL9 Fractured Paradox 1st Edition Holo VCard
+    NM") describes a card -- the other way round from a search: the card's words are looked for
+    in the title. Every word of the name has to be there (a letter off allowed); its number, set,
+    set code, finish and rarity add to the score. 0 when the name is not in the title."""
+    words, compact = field_words(title)
+    present = set(words)
+    name_words = field_words(card.get("canonical_name") or "")[0]
+    if not name_words:
+        return 0.0
+    total = 0.0
+    for word in name_words:
+        if word in compact:
+            total += NAME
+        elif near_miss(word, title):
+            total += NAME * FUZZY
+        else:
+            return 0.0
+    number = field_words(card.get("collector_number") or "")[1]
+    if number and (number in present or (len(number) >= 3 and number in compact)):
+        total += NUMBER
+    set_words = field_words(card.get("set_name") or "")[0]
+    if set_words:
+        total += SET * sum(word in present for word in set_words) / len(set_words)
+    set_code = field_words(card.get("set_code") or "")[1]
+    if len(set_code) >= 2 and set_code in present:
+        total += SET
+    for field in ("finish", "rarity"):
+        total += DETAIL * sum(word in present for word in field_words(card.get(field) or "")[0] if word not in ("normal", "standard"))
+    return round(total, 2)

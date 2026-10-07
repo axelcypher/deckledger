@@ -91,7 +91,11 @@ function openEbaySettings(gameId=state.activeGameId){
   renderEbayAccount(modal);
   renderEbayPreset(modal);
 }
-const ebaySettingsState={gameId:null,dirty:false,policies:null};
+const ebaySettingsState={gameId:null,dirty:false,policies:null,services:null};
+const EBAY_DISPATCH_DAYS=[[0,'Am selben Tag'],[1,'1 Werktag'],[2,'2 Werktage'],[3,'3 Werktage'],[4,'4 Werktage'],[5,'5 Werktage'],[10,'10 Werktage']];
+// "Name: Wert" lines (how the preset stores item specifics) <-> one row per specific.
+const ebayAspectRows=text=>String(text||'').split('\n').map(line=>line.trim()).filter(Boolean).map(line=>{const at=line.indexOf(':');return at<0?[line,'']:[line.slice(0,at).trim(),line.slice(at+1).trim()]});
+const ebayAspectRowHtml=([name,value])=>`<div class="ebay-aspect-row"><input class="dl-control" data-aspect-name value="${escapeHtml(name)}" placeholder="Merkmal, z. B. Besonderheiten" aria-label="Merkmal"><input class="dl-control" data-aspect-value value="${escapeHtml(value)}" placeholder="Wert, z. B. {features}" aria-label="Wert"><button type="button" class="ebay-tracked-remove" data-aspect-remove title="Merkmal entfernen" aria-label="Merkmal entfernen">×</button></div>`;
 
 async function renderEbayAccount(modal){
   const body=$('#ebay-account-body',modal);if(!body)return;
@@ -128,9 +132,17 @@ async function renderEbayPreset(modal){
   const select=(id,label,options,value)=>`<label class="dl-field"><span>${label}</span><select class="dl-control" id="${id}">${options.map(([key,text])=>`<option value="${escapeHtml(key)}" ${String(value)===String(key)?'selected':''}>${escapeHtml(text)}</option>`).join('')}</select></label>`;
   const policy=(key,label)=>`<label class="dl-field"><span>${label}</span><select class="dl-control" data-ebay-policy="${key}"><option value="${escapeHtml(preset[key])}">${preset[key]?`Richtlinie ${escapeHtml(preset[key])}`:status.connected?'Wird geladen …':'Erst eBay-Konto verbinden'}</option></select></label>`;
   const money2=value=>value==null?'':String(value).replace('.',',');
-  body.innerHTML=`<section class="dl-modal-section"><h3>Versand &amp; Standort <small>gilt für alle TCGs</small></h3>
-      <div class="dl-grid">${policy('fulfillment_policy_id','Versand-Richtlinie')}${policy('payment_policy_id','Zahlungs-Richtlinie')}${policy('return_policy_id','Rücknahme-Richtlinie')}
-        ${field('ebay-postal-code','Postleitzahl',preset.postal_code,'autocomplete="postal-code"')}${field('ebay-location','Ort',preset.location)}
+  body.innerHTML=`<section class="dl-modal-section"><h3>Versand, Rücknahme &amp; Standort <small>gilt für alle TCGs</small></h3>
+      <div class="dl-segmented" role="tablist" id="ebay-shipping-mode">${[['direct','In der Vorlage'],['policies','eBay-Geschäftsrichtlinien']].map(([mode,label])=>`<button type="button" role="tab" data-ebay-shipping-mode="${mode}" aria-selected="${preset.shipping_mode===mode}" class="${preset.shipping_mode===mode?'active':''}">${label}</button>`).join('')}</div>
+      <p class="dl-hint hidden" id="ebay-no-policies">Dein eBay-Konto nutzt keine Geschäftsrichtlinien (bei Privatkonten üblich) – Versand und Rücknahme stehen deshalb direkt in der Vorlage.</p>
+      <div class="dl-grid" data-ebay-mode="policies">${policy('fulfillment_policy_id','Versand-Richtlinie')}${policy('payment_policy_id','Zahlungs-Richtlinie')}${policy('return_policy_id','Rücknahme-Richtlinie')}</div>
+      <div class="dl-grid" data-ebay-mode="direct">
+        <label class="dl-field"><span>Versandart</span><select class="dl-control" id="ebay-shipping-service"><option value="${escapeHtml(preset.shipping_service)}">${preset.shipping_service?escapeHtml(preset.shipping_service):status.connected?'Wird geladen …':'Erst eBay-Konto verbinden'}</option></select></label>
+        ${field('ebay-shipping-cost','Versandkosten €',money2(preset.shipping_cost),'inputmode="decimal"')}${field('ebay-shipping-additional','Je weiteres Exemplar €',money2(preset.shipping_additional_cost),'inputmode="decimal"')}
+        ${select('ebay-dispatch-days','Bearbeitungszeit',EBAY_DISPATCH_DAYS,preset.dispatch_days)}
+        <label class="dl-check"><input type="checkbox" id="ebay-returns-accepted" ${preset.returns_accepted?'checked':''}><span><b>Rücknahme anbieten</b><small>Privatverkäufer müssen keine Rücknahme anbieten.</small></span></label>
+        ${select('ebay-returns-days','Rücknahmefrist',[[14,'14 Tage'],[30,'30 Tage'],[60,'60 Tage']],preset.returns_days)}${select('ebay-return-paid-by','Rückversand zahlt',[['Buyer','Käufer'],['Seller','Verkäufer']],preset.return_shipping_paid_by)}</div>
+      <div class="dl-grid">${field('ebay-postal-code','Postleitzahl',preset.postal_code,'autocomplete="postal-code"')}${field('ebay-location','Ort',preset.location)}
         <label class="dl-check"><input type="checkbox" id="ebay-best-offer" ${preset.best_offer?'checked':''}><span><b>Preisvorschläge annehmen</b><small>Käufer können einen eigenen Preis vorschlagen.</small></span></label></div>
     </section>
     <section class="dl-modal-section"><h3>Vorlage je TCG</h3>
@@ -149,26 +161,45 @@ async function renderEbayPreset(modal){
       <div class="dl-grid dl-grid-wide">
         ${field('ebay-title-template','Titel (eBay erlaubt 80 Zeichen)',preset.title_template,'maxlength="400"')}
         <label class="dl-field"><span>Beschreibung – HTML erlaubt (z. B. &lt;p&gt;, &lt;b&gt;, &lt;br&gt;); ohne Tags werden Zeilenumbrüche übernommen</span><textarea class="dl-control" id="ebay-description-template" rows="7">${escapeHtml(preset.description_template)}</textarea></label>
-        <label class="dl-field"><span>Artikelmerkmale – eine Zeile je Merkmal: <i>Name: Wert</i>. Bleibt der Wert leer, entfällt die Zeile.</span><textarea class="dl-control" id="ebay-aspects" rows="12">${escapeHtml(preset.aspects)}</textarea></label>
       </div>
+      <h4>Artikelmerkmale <small class="muted">– jedes wird bei eBay ein eigenes Produktmerkmal, nicht Teil der Beschreibung. Ergibt der Wert nichts (z. B. {features} ohne Besonderheit), entfällt es.</small></h4>
+      <div class="ebay-aspects" id="ebay-aspects">${ebayAspectRows(preset.aspects).map(ebayAspectRowHtml).join('')}</div>
+      <button type="button" class="secondary-button" id="ebay-aspect-add">Merkmal hinzufügen</button>
       <p class="dl-hint">Platzhalter: ${EBAY_PLACEHOLDERS.map(name=>`<code>{${name}}</code>`).join(' ')}. <code>{features}</code> ist „1st Edition“ bei Erstauflagen, <code>{surface}</code> der Oberflächeneffekt von oben. Ein Preis auf dem Sheet (z. B. „4,50 €“) geht der Preisregel vor.</p>
     </section>
     <div class="dl-modal-actions"><button class="secondary-button" id="ebay-preset-reset">Texte zurücksetzen</button><span class="spacer"></span><button class="primary-button" id="ebay-preset-save">Speichern</button></div>`;
-  $$('.dl-control,#ebay-best-offer',body).forEach(control=>control.addEventListener('input',()=>{ebaySettingsState.dirty=true}));
+  body.addEventListener('input',()=>{ebaySettingsState.dirty=true});
+  let shippingMode=preset.shipping_mode;
+  const showMode=mode=>{
+    shippingMode=mode;
+    $$('[data-ebay-shipping-mode]',body).forEach(button=>{const on=button.dataset.ebayShippingMode===mode;button.classList.toggle('active',on);button.setAttribute('aria-selected',on)});
+    $$('[data-ebay-mode]',body).forEach(group=>group.classList.toggle('hidden',group.dataset.ebayMode!==mode));
+  };
+  showMode(shippingMode);
+  $$('[data-ebay-shipping-mode]',body).forEach(button=>button.onclick=()=>{showMode(button.dataset.ebayShippingMode);ebaySettingsState.dirty=true});
+  const aspects=$('#ebay-aspects',body);
+  const bindAspects=()=>$$('[data-aspect-remove]',aspects).forEach(button=>button.onclick=()=>{button.closest('.ebay-aspect-row').remove();ebaySettingsState.dirty=true});
+  bindAspects();
+  $('#ebay-aspect-add',body).onclick=()=>{aspects.insertAdjacentHTML('beforeend',ebayAspectRowHtml(['','']));bindAspects();$('.ebay-aspect-row:last-child [data-aspect-name]',aspects).focus()};
+  const readAspects=()=>$$('.ebay-aspect-row',aspects).map(row=>[$('[data-aspect-name]',row).value.trim(),$('[data-aspect-value]',row).value.trim()]).filter(([name])=>name).map(([name,value])=>`${name}: ${value}`).join('\n');
   const read=()=>({
     game_id:gameId,game_label:$('#ebay-game-label',body).value,manufacturer:$('#ebay-manufacturer',body).value,
     surface_foil:$('#ebay-surface-foil',body).value,surface_normal:$('#ebay-surface-normal',body).value,
-    title_template:$('#ebay-title-template',body).value,description_template:$('#ebay-description-template',body).value,aspects:$('#ebay-aspects',body).value,
+    title_template:$('#ebay-title-template',body).value,description_template:$('#ebay-description-template',body).value,aspects:readAspects(),
     category_id:$('#ebay-category',body).value,condition:$('#ebay-condition',body).value,quantity:$('#ebay-quantity',body).value,
     price_factor:$('#ebay-price-factor',body).value,price_min:$('#ebay-price-min',body).value,price_rounding:$('#ebay-price-rounding',body).value,price_fallback:$('#ebay-price-fallback',body).value,
     postal_code:$('#ebay-postal-code',body).value,location:$('#ebay-location',body).value,best_offer:$('#ebay-best-offer',body).checked,
+    shipping_mode:shippingMode,shipping_service:$('#ebay-shipping-service',body).value,shipping_cost:$('#ebay-shipping-cost',body).value,
+    shipping_additional_cost:$('#ebay-shipping-additional',body).value,dispatch_days:$('#ebay-dispatch-days',body).value,
+    returns_accepted:$('#ebay-returns-accepted',body).checked,returns_days:$('#ebay-returns-days',body).value,return_shipping_paid_by:$('#ebay-return-paid-by',body).value,
     ...Object.fromEntries($$('[data-ebay-policy]',body).map(control=>[control.dataset.ebayPolicy,control.value])),
   });
   const save=async()=>{await api('/api/ebay/preset',{method:'PUT',body:JSON.stringify(read())});ebaySettingsState.dirty=false};
   $('#ebay-preset-save',body).onclick=async()=>{try{await save();toast(`Vorlage für ${games.find(game=>game.id===gameId)?.short_name||gameId} gespeichert`);renderEbayPreset(modal)}catch(error){toast(error.message)}};
   $('#ebay-preset-reset',body).onclick=()=>{
     if(!confirm('Titel, Beschreibung und Artikelmerkmale dieses TCGs auf den Standard zurücksetzen?'))return;
-    $('#ebay-title-template',body).value=preset.defaults.title_template;$('#ebay-description-template',body).value=preset.defaults.description_template;$('#ebay-aspects',body).value=preset.defaults.aspects;
+    $('#ebay-title-template',body).value=preset.defaults.title_template;$('#ebay-description-template',body).value=preset.defaults.description_template;
+    aspects.innerHTML=ebayAspectRows(preset.defaults.aspects).map(ebayAspectRowHtml).join('');bindAspects();
     ebaySettingsState.dirty=true;
   };
   $$('[data-ebay-preset-game]',body).forEach(button=>button.onclick=async()=>{
@@ -177,15 +208,29 @@ async function renderEbayPreset(modal){
     if(ebaySettingsState.dirty){try{await save();toast('Vorlage gespeichert')}catch(error){toast(error.message);return}}
     ebaySettingsState.gameId=button.dataset.ebayPresetGame;renderEbayPreset(modal);
   });
-  if(status.connected)loadEbayPolicies(body,preset);
+  if(status.connected){loadEbayPolicies(body,preset,showMode);loadEbayShippingServices(body,preset)}
 }
 
-async function loadEbayPolicies(body,preset){
+async function loadEbayShippingServices(body,preset){
+  const control=$('#ebay-shipping-service',body);
+  try{ebaySettingsState.services??=await api('/api/ebay/shipping-services')}catch(error){control.options[0].textContent=preset.shipping_service||'Versandarten nicht geladen';toast(error.message);return}
+  if(!body.isConnected)return;
+  const groups=Object.groupBy?Object.groupBy(ebaySettingsState.services,service=>service.category||'Weitere'):{Versandarten:ebaySettingsState.services};
+  control.innerHTML=`<option value="">Bitte wählen</option>${Object.entries(groups).map(([group,list])=>`<optgroup label="${escapeHtml(group)}">${list.map(service=>`<option value="${escapeHtml(service.id)}">${escapeHtml(service.name)}</option>`).join('')}</optgroup>`).join('')}`;
+  control.value=preset.shipping_service;
+}
+
+async function loadEbayPolicies(body,preset,showMode){
   try{ebaySettingsState.policies??=await api('/api/ebay/policies')}catch(error){
     $$('[data-ebay-policy]',body).forEach(control=>{if(!control.value)control.options[0].textContent='Nicht geladen'});
     toast(error.message);return;
   }
   if(!body.isConnected)return;
+  if(ebaySettingsState.policies.available===false){
+    // Private accounts: no business policies to pick, so the choice is not offered at all.
+    $('#ebay-shipping-mode',body).classList.add('hidden');$('#ebay-no-policies',body).classList.remove('hidden');
+    showMode('direct');return;
+  }
   const kinds={fulfillment_policy_id:'fulfillment',payment_policy_id:'payment',return_policy_id:'return'};
   $$('[data-ebay-policy]',body).forEach(control=>{
     const key=control.dataset.ebayPolicy,list=ebaySettingsState.policies[kinds[key]]||[];
@@ -232,13 +277,14 @@ async function renderEbay(){
       ${done.length?`<details class="ebay-done"><summary>${done.length} eingestellt</summary><div class="ebay-drafts">${done.map(draft=>ebayDraftRow(draft,status)).join('')}</div></details>`:''}
     </section>
     <section class="ebay-section">
-      <div class="sheet-section-head"><b>Meine Angebote</b><div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div></div>
+      <div class="sheet-section-head"><b>Meine Angebote</b>${listings.listings.length?'<button class="secondary-button" id="ebay-open-stats">Statistik</button>':''}<div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div></div>
       ${shown.length?`<div class="ebay-listings">${shown.map(ebayListingRow).join('')}</div>`
         :`<div class="deck-zone-empty">${status.connected?'Keine Angebote in dieser Ansicht.':'Verbinde dein eBay-Konto, um deine Angebote hier zu sehen.'}</div>`}
     </section>
     ${listings.sales.length?`<section class="ebay-section"><div class="sheet-section-head"><b>Letzte Verkäufe</b></div><div class="ebay-sales">${listings.sales.map(sale=>`<div class="ebay-sale"><span>${ebayDate(sale.sold_at)}</span><b>${sale.quantity}× ${escapeHtml(sale.title)}</b><span>${escapeHtml(sale.buyer)}</span><strong>${ebayMoney(sale.price,sale.currency)}</strong></div>`).join('')}</div></section>`:''}`;
   bindSheetTabs();
   $('#ebay-open-settings')?.addEventListener('click',()=>openEbaySettings());
+  $('#ebay-open-stats')?.addEventListener('click',()=>openEbayStats(listings));
   $('#ebay-sync')?.addEventListener('click',async event=>{
     const button=event.currentTarget;button.disabled=true;button.textContent='Wird abgeglichen …';
     try{const r=await post('/api/ebay/listings/sync',{});toast(`Abgeglichen: ${r.active} aktiv, ${r.sold} neue Verkäufe`);renderEbay()}
@@ -322,30 +368,90 @@ function ebayListingRow(item){
   return `<div class="ebay-listing" data-item="${escapeHtml(item.item_id)}">
     ${image?`<img class="sheet-thumb" src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="sheet-thumb ebay-tracked-noimg">eBay</span>'}
     <div class="ebay-listing-main"><a href="${escapeHtml(item.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.title)}</b></a>
-      <small><em class="ebay-chip ${item.status==='active'?'is-live':item.status==='sold'?'is-sold':'is-ended'}">${statusLabel}</em> ${item.quantity_sold?`${item.quantity_sold} verkauft · `:''}${item.status==='active'?`${Math.max(0,item.quantity-item.quantity_sold)} verfügbar · `:''}${item.watch_count?`${item.watch_count} beobachten · `:''}seit ${date(item.started_at)}</small>
+      <small><em class="ebay-chip ${item.status==='active'?'is-live':item.status==='sold'?'is-sold':'is-ended'}">${statusLabel}</em> ${item.quantity_sold?`${item.quantity_sold} verkauft · `:''}${item.status==='active'?`${Math.max(0,item.quantity-item.quantity_sold)} verfügbar · `:''}seit ${date(item.started_at)}</small>
+      <div class="ebay-listing-stats">${ebayListingStats(item)}</div>
       <small>${item.variant_id?`Karte: ${escapeHtml(item.canonical_name||item.variant_id)}${item.set_code?` (${escapeHtml(item.set_code)} ${escapeHtml(item.collector_number)})`:''}${item.market_price!=null?` · Marktpreis ${money(item.market_price)}`:''} <button type="button" class="link-button" data-ebay-unlink>lösen</button>`
         :'<button type="button" class="link-button" data-ebay-link>Karte zuordnen</button>'}</small>
-      <div class="ebay-link-search hidden"><input class="select-control" placeholder="Karte suchen: Name oder Nummer"><div class="ebay-link-results"></div></div>
+      <div class="ebay-link-search hidden"><b class="ebay-link-heading">Vorschläge aus deiner Sammlung</b><div class="ebay-link-suggestions"><small class="muted">Wird gesucht …</small></div>
+        <input class="select-control" placeholder="Oder in deiner Sammlung suchen: Name, Nummer, Set …"><div class="ebay-link-results"></div></div>
     </div>
     <strong>${ebayMoney(item.price,item.currency)}</strong>
   </div>`;
 }
+
+// Watchers, views, impressions and the place in the popularity ranking of one listing.
+function ebayListingStats(item){
+  const stat=(value,label,title)=>value==null?'':`<span title="${title}"><b>${Number(value).toLocaleString('de-DE')}</b> ${label}</span>`;
+  return [item.rank?`<span class="ebay-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:'',
+    stat(item.watch_count||0,'Beobachter','Wie viele das Angebot beobachten'),stat(item.view_count,'Aufrufe','Seitenaufrufe der letzten 90 Tage'),
+    stat(item.impression_count,'Impressionen','Wie oft das Angebot in Suchergebnissen und Listen gezeigt wurde (90 Tage)')].join('');
+}
+const ebayPickButton=card=>`<button type="button" data-ebay-pick="${escapeHtml(card.variant_id)}"><span>${escapeHtml(card.canonical_name)}</span> <small>${escapeHtml(card.game_name||'')} · ${escapeHtml(card.set_name)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.finish)} · ${card.language} · ${card.quantity}× in der Sammlung</small></button>`;
 
 function bindEbayListingRow(row){
   const itemId=row.dataset.item;
   const link=async variantId=>{try{await api(`/api/ebay/listings/${encodeURIComponent(itemId)}`,{method:'PATCH',body:JSON.stringify({variant_id:variantId})});renderEbay()}catch(error){toast(error.message)}};
   $('[data-ebay-unlink]',row)?.addEventListener('click',()=>link(null));
   $('[data-ebay-link]',row)?.addEventListener('click',()=>{
-    const box=$('.ebay-link-search',row),input=$('input',box),results=$('.ebay-link-results',box);
-    box.classList.toggle('hidden');input.focus();
+    const box=$('.ebay-link-search',row),input=$('input',box),results=$('.ebay-link-results',box),suggestions=$('.ebay-link-suggestions',box);
+    box.classList.toggle('hidden');
+    if(box.classList.contains('hidden'))return;
+    // Only cards of the collection are offered -- a listing sells something that is owned.
+    api(`/api/ebay/listings/${encodeURIComponent(itemId)}/suggestions`).then(cards=>{
+      suggestions.innerHTML=cards.map(ebayPickButton).join('')||'<small class="muted">Keine passende Karte in deiner Sammlung gefunden – such unten selbst.</small>';
+      $$('[data-ebay-pick]',suggestions).forEach(button=>button.onclick=()=>link(button.dataset.ebayPick));
+    }).catch(error=>{suggestions.innerHTML=`<small class="muted">${escapeHtml(error.message)}</small>`});
     let timer;
     input.oninput=()=>{clearTimeout(timer);timer=setTimeout(async()=>{
       const q=input.value.trim();if(q.length<2){results.innerHTML='';return}
-      const rows=await api(`/api/search?game_id=${encodeURIComponent(state.activeGameId)}&limit=8&q=${encodeURIComponent(q)}`).catch(()=>[]);
-      results.innerHTML=rows.map(card=>`<button type="button" data-ebay-pick="${escapeHtml(card.variant_id)}">${escapeHtml(card.canonical_name)} <small>${escapeHtml(card.set_name)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.finish)} · ${card.language}</small></button>`).join('')||'<small class="muted">Keine Treffer</small>';
+      const rows=await api(`/api/search?owned=1&limit=8&q=${encodeURIComponent(q)}`).catch(()=>[]);
+      results.innerHTML=rows.map(card=>ebayPickButton({...card,quantity:card.quantity})).join('')||'<small class="muted">Keine Karte deiner Sammlung passt.</small>';
       $$('[data-ebay-pick]',results).forEach(button=>button.onclick=()=>link(button.dataset.ebayPick));
     },200)};
   });
+}
+
+// ---- Statistics of the account's listings ----------------------------------------------------
+const EBAY_STAT_SORTS=[
+  ['popularity','Beliebtheit (Ranking)',item=>item.popularity,-1],['watch_count','Beobachter',item=>item.watch_count||0,-1],
+  ['view_count','Aufrufe',item=>item.view_count??-1,-1],['impression_count','Impressionen',item=>item.impression_count??-1,-1],
+  ['click_through_rate','Klickrate',item=>item.click_through_rate??-1,-1],['quantity_sold','Verkauft',item=>item.quantity_sold||0,-1],
+  ['newest','Neueste zuerst',item=>item.started_at||'',-1],['oldest','Älteste zuerst',item=>item.started_at||'',1],
+  ['price_desc','Preis absteigend',item=>item.price??-1,-1],['price_asc','Preis aufsteigend',item=>item.price??Infinity,1],
+  ['title','Titel A–Z',item=>(item.title||'').toLowerCase(),1],
+];
+const ebayStatsView={sort:'popularity',status:'active'};
+
+function openEbayStats(listings){
+  const status=listings.status;
+  const modal=openSettingsModal({id:'ebay-stats-modal',eyebrow:'EBAY',title:'Angebotsstatistik',
+    intro:'Beobachter, Aufrufe und Impressionen deiner Angebote. Die Beliebtheit ist DeckLedgers eigenes Maß: ein Beobachter zählt wie zehn Aufrufe, ein Verkauf wie 25, hundert Impressionen wie ein Aufruf – eBay selbst verrät keinen Suchrang.',
+    body:`${status.stats_need_reconnect?`<p class="dl-hint">Aufrufe und Impressionen liefert eBay erst, wenn du DeckLedger den Zugriff auf deine Verkaufsstatistik erlaubst. <a href="/ebay/connect">eBay neu verbinden</a></p>`:''}
+      <div class="ebay-stats-tiles" id="ebay-stats-tiles"></div>
+      <div class="ebay-stats-controls"><div class="deal-filter-chips">${[['active','Aktiv'],['all','Alle']].map(([id,label])=>`<button type="button" class="community-chip" data-ebay-stats-status="${id}">${label}</button>`).join('')}</div>
+        <label class="dl-field"><span>Sortieren nach</span><select class="dl-control" id="ebay-stats-sort">${EBAY_STAT_SORTS.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label></div>
+      <div class="ebay-stats-table" id="ebay-stats-table"></div>`});
+  const render=()=>{
+    const [, , key, direction]=EBAY_STAT_SORTS.find(([id])=>id===ebayStatsView.sort)||EBAY_STAT_SORTS[0];
+    const rows=listings.listings.filter(item=>ebayStatsView.status==='all'||item.status==='active')
+      .sort((a,b)=>{const x=key(a),y=key(b);return (x<y?-1:x>y?1:0)*direction});
+    const sum=field=>rows.reduce((total,item)=>total+(item[field]||0),0),known=rows.some(item=>item.view_count!=null);
+    $('#ebay-stats-tiles',modal).innerHTML=[[rows.length,'Angebote'],[sum('watch_count'),'Beobachter'],[known?sum('view_count'):'–','Aufrufe'],[known?sum('impression_count'):'–','Impressionen'],[sum('quantity_sold'),'Verkauft']]
+      .map(([value,label])=>`<div><b>${typeof value==='number'?value.toLocaleString('de-DE'):value}</b><span>${label}</span></div>`).join('');
+    $$('[data-ebay-stats-status]',modal).forEach(button=>button.classList.toggle('active',button.dataset.ebayStatsStatus===ebayStatsView.status));
+    const percent=value=>value==null?'–':`${Number(value).toLocaleString('de-DE',{maximumFractionDigits:1})} %`;
+    const number=value=>value==null?'–':Number(value).toLocaleString('de-DE');
+    $('#ebay-stats-table',modal).innerHTML=rows.length?`<div class="ebay-stats-row is-head"><span>#</span><span>Angebot</span><span>Preis</span><span>Beobachter</span><span>Aufrufe</span><span>Impressionen</span><span>Klickrate</span><span>Verkauft</span><span>Beliebtheit</span></div>
+      ${rows.map(item=>`<div class="ebay-stats-row"><span class="ebay-rank">${item.rank?`#${item.rank}`:'–'}</span>
+        <a href="${escapeHtml(item.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.title)}</b><small>${item.variant_id?escapeHtml(item.canonical_name||''):'keine Karte zugeordnet'}</small></a>
+        <span>${ebayMoney(item.price,item.currency)}</span><span>${number(item.watch_count||0)}</span><span>${number(item.view_count)}</span><span>${number(item.impression_count)}</span>
+        <span>${percent(item.click_through_rate)}</span><span>${number(item.quantity_sold||0)}</span><span><b>${number(item.popularity)}</b></span></div>`).join('')}`
+      :'<div class="deck-zone-empty">Keine Angebote in dieser Ansicht.</div>';
+  };
+  $('#ebay-stats-sort',modal).value=ebayStatsView.sort;
+  $('#ebay-stats-sort',modal).onchange=event=>{ebayStatsView.sort=event.target.value;render()};
+  $$('[data-ebay-stats-status]',modal).forEach(button=>button.onclick=()=>{ebayStatsView.status=button.dataset.ebayStatsStatus;render()});
+  render();
 }
 
 // ---- Admin: the eBay application ----------------------------------------------------------

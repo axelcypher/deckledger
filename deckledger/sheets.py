@@ -1,6 +1,7 @@
 """Trade / sale sheets: storage, sorting and handing cards to the renderer."""
 
 import io
+import json
 import re
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from .web import app, db, login_required, user_id
 from .prices import latest_price_sql
 from .images import card_image
 from .catalog import natural_code_key
+from .ebay import update_sheets_from_listings
 
 
 # ---- Trade / sale sheets ---------------------------------------------------------------------
@@ -30,6 +32,11 @@ SHEET_SORTS = ("number", "rarity")
 RESERVED_SQL = """(SELECT COALESCE(SUM(rc.quantity),0) FROM deal_cards rc JOIN deals rd ON rd.id=rc.deal_id
   WHERE rd.user_id=? AND rd.status='reserved' AND rc.side='give' AND rc.variant_id=v.id)"""
 SHEET_CARD_LIMIT = 400
+# The cheapest of the user's active eBay listings of a variant (v.id), with its numbers.
+EBAY_LISTING_SQL = """(SELECT json_object('item_id',l.item_id,'price',l.price,'currency',l.currency,'available',l.quantity-l.quantity_sold,
+    'watchers',l.watch_count,'views',l.view_count,'url',l.url)
+  FROM ebay_listings l WHERE l.user_id=? AND l.variant_id=v.id AND l.status='active' AND l.quantity>l.quantity_sold
+  ORDER BY l.price IS NULL,l.price LIMIT 1)"""
 
 
 def scout_communities(names):
@@ -48,12 +55,13 @@ def sheet_cards(sheet):
               i.id identity_id,i.canonical_name,p.collector_number,p.language,p.rarity,
               s.code set_code,s.name set_name,s.release_date,{latest_price_sql('v')} price,
               COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=v.id),0) owned,
-              {RESERVED_SQL} reserved
+              {RESERVED_SQL} reserved,{EBAY_LISTING_SQL} ebay
             FROM trade_sheet_cards e JOIN variants v ON v.id=e.variant_id JOIN printings p ON p.id=v.printing_id
               JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id
-            WHERE e.sheet_id=?""", (sheet["user_id"], sheet["user_id"], sheet["id"])
+            WHERE e.sheet_id=?""", (sheet["user_id"], sheet["user_id"], sheet["user_id"], sheet["id"])
     )]
     for row in rows:
+        row["ebay"] = json.loads(row["ebay"]) if row["ebay"] else None
         # Reserved is what a sheet of offers shows; no more copies than it lists can be.
         row["reserved"] = 0 if sheet["kind"] in WANTED_SHEET_KINDS else min(row["reserved"], row["quantity"])
 
@@ -160,11 +168,15 @@ def trade_sheet(sheet_id):
             # whether at all, and in which of the game's communities ('' = all of them).
             "scout": int(bool(p["scout"])) if "scout" in p else sheet["scout"],
             "scout_communities": scout_communities(p["scout_communities"]) if "scout_communities" in p else sheet["scout_communities"],
+            # Quantity and price of the cards from their active eBay listings (deckledger/ebay.py).
+            "ebay_sync": int(bool(p["ebay_sync"])) if "ebay_sync" in p else sheet["ebay_sync"],
         }
         db().execute(
-            "UPDATE trade_sheets SET name=?,subtitle=?,kind=?,background=?,sort=?,layout=?,scout=?,scout_communities=?,updated_at=? WHERE id=?",
+            "UPDATE trade_sheets SET name=?,subtitle=?,kind=?,background=?,sort=?,layout=?,scout=?,scout_communities=?,ebay_sync=?,updated_at=? WHERE id=?",
             (*values.values(), now_iso(), sheet_id),
         )
+        if values["ebay_sync"] and not sheet["ebay_sync"]:
+            update_sheets_from_listings(db(), user_id())
         db().commit()
         sheet = own_sheet(sheet_id)
     return jsonify(sheet_payload(sheet))
@@ -239,7 +251,7 @@ def trade_sheet_image(sheet_id, page, fmt):
             app.logger.warning("Sheet image for %s unavailable: %s", card["variant_id"], error)
         tiles.append({"image_path": image_path, "name": card["canonical_name"], "set_code": card["set_code"],
                       "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"], "reserved": card["reserved"],
-                      "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
+                      "ebay": bool(card["ebay"]), "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
     image = sheet_render.render_page(
         tiles, columns, rows, **background_for(sheet), kind=sheet["kind"], title=sheet["name"],
         subtitle=sheet["subtitle"], page=(page, len(pages)), scale=scale * sheet_render.scale_for(columns),

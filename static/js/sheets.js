@@ -61,6 +61,7 @@ async function renderSheets(){
         <label>Zusatzzeile<input id="sheet-subtitle" value="${escapeHtml(sheet.subtitle)}" maxlength="80" placeholder="z. B. u/deinname · Datum"></label>
         <label>Sortierung<select id="sheet-sort" class="select-control"><option value="number">Set &amp; Nummer</option><option value="rarity">Seltenheit, dann Nummer</option></select></label>
         <label>Raster<select id="sheet-layout" class="select-control">${options.layouts.map(layout=>`<option value="${layout}">${layout==='auto'?'Automatisch nach Anzahl':layout.replace('x',' × ')}</option>`).join('')}</select></label>
+        ${sheet.kind.split('/').includes('WTS')?`<label class="sheet-ebay-sync" title="Karten mit aktivem eBay-Angebot übernehmen Menge und Preis von dort; ausverkaufte verlassen das Sheet."><input type="checkbox" id="sheet-ebay-sync" ${sheet.ebay_sync?'checked':''}> Mit eBay-Angeboten abgleichen</label>`:''}
       </div>
       <div class="sheet-backgrounds" role="radiogroup" aria-label="Hintergrund">${options.backgrounds.map(bg=>`<button type="button" role="radio" aria-checked="${sheet.background===bg.id}" data-sheet-background="${bg.id}" class="${sheet.background===bg.id?'active':''}" title="${escapeHtml(bg.label)}"><img src="/api/trade-sheets/backgrounds/${bg.id}.jpg" alt=""><span>${escapeHtml(bg.label)}</span>${bg.custom?`<i class="sheet-background-delete" role="button" tabindex="0" data-delete-background="${bg.id}" title="Hintergrund löschen" aria-label="Hintergrund ${escapeHtml(bg.label)} löschen">×</i>`:''}</button>`).join('')}<label class="sheet-background-upload" title="Eigenes Bild als Hintergrund hochladen (JPEG, PNG, WebP)"><input type="file" id="sheet-background-file" accept="image/jpeg,image/png,image/webp" hidden><b>＋</b><span>Eigenes Bild</span></label></div>
       <div id="sheet-preview" class="sheet-preview"></div>
@@ -115,6 +116,7 @@ async function renderSheets(){
     if(sheetIsWanted(next)!==sheetIsWanted(current)){renderSheets();return}
     $$('[data-sheet-kind]',content).forEach(item=>{const on=chosen.includes(item.dataset.sheetKind);item.classList.toggle('active',on);item.setAttribute('aria-pressed',String(on))});
   });
+  $('#sheet-ebay-sync')?.addEventListener('change',async event=>{await patchSheet({ebay_sync:event.target.checked});renderSheets()});
   $$('[data-sheet-background]',content).forEach(button=>button.onclick=()=>{$$('[data-sheet-background]',content).forEach(item=>{item.classList.toggle('active',item===button);item.setAttribute('aria-checked',String(item===button))});patchSheet({background:button.dataset.sheetBackground})});
   // The option list is cached; after an upload or a delete it is fetched again with the view.
   $('#sheet-background-file').onchange=async event=>{
@@ -153,7 +155,7 @@ function applySheetPayload(payload,immediate=false){
   $('#sheet-text').value=payload.cards.length?payload.text:'';
   box.innerHTML=payload.cards.length?payload.cards.map(card=>`<div class="sheet-entry" data-variant="${escapeHtml(card.variant_id)}">
       ${finishThumb(card,artUrl(card.variant_id),card.canonical_name,'sheet-thumb')}
-      <div class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}${card.reserved?`<em class="sheet-reserved">${card.reserved>=card.quantity?'reserviert':`${card.reserved} reserviert`}</em>`:''}</b><small>${escapeHtml(card.set_code)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${escapeHtml(variantName(card))}${card.price!=null?` · ${price(card.price)}`:''}</small>${sheetIsWanted(payload.sheet.kind)?(card.owned?`<small>${card.owned}× schon in der Sammlung</small>`:''):card.quantity>card.owned?`<small class="sheet-warning">Nur ${card.owned}× in der Sammlung</small>`:''}</div>
+      <div class="sheet-entry-copy"><b>${escapeHtml(card.canonical_name)}${card.reserved?`<em class="sheet-reserved">${card.reserved>=card.quantity?'reserviert':`${card.reserved} reserviert`}</em>`:''}</b><small>${escapeHtml(card.set_code)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${escapeHtml(variantName(card))}${card.price!=null?` · ${price(card.price)}`:''}</small>${sheetIsWanted(payload.sheet.kind)?(card.owned?`<small>${card.owned}× schon in der Sammlung</small>`:''):card.quantity>card.owned?`<small class="sheet-warning">Nur ${card.owned}× in der Sammlung</small>`:''}${card.ebay?sheetEbayLine(card.ebay):''}</div>
       <input class="sheet-label" value="${escapeHtml(card.label)}" maxlength="24" placeholder="Preis / Notiz" aria-label="Preis oder Notiz">
       <div class="sheet-stepper"><button type="button" data-sheet-delta="-1" aria-label="Weniger">−</button><b>${card.quantity}</b><button type="button" data-sheet-delta="1" aria-label="Mehr">＋</button></div>
       <button type="button" class="sheet-remove" title="Entfernen" aria-label="Entfernen">×</button></div>`).join('')
@@ -186,6 +188,13 @@ function markPickedRow(row){
   const onSheet=sheetView.payload?.cards.find(card=>card.variant_id===row.dataset.pick);
   row.classList.toggle('on-sheet',Boolean(onSheet));
   const badge=$('.sheet-picked',row);if(badge)badge.textContent=onSheet?`${onSheet.quantity}× auf dem Sheet`:'';
+}
+
+// The card's active eBay listing (the cheapest, when there are several) and how it does.
+function sheetEbayLine(listing){
+  const parts=[ebayMoney(listing.price,listing.currency),`${listing.available} verfügbar`,`${listing.watchers||0} Beobachter`];
+  if(listing.views!=null)parts.push(`${listing.views} Aufrufe`);
+  return `<small class="sheet-ebay"><a href="${escapeHtml(listing.url||'#')}" target="_blank" rel="noopener noreferrer">Auf eBay</a> · ${parts.join(' · ')}</small>`;
 }
 
 async function renderSheetPicker(){

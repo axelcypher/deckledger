@@ -40,6 +40,7 @@ from flask import jsonify, redirect, request, session, url_for
 
 import sheet_render
 
+from . import search
 from .config import jload, now_iso
 from .web import admin_required, app, db, login_required, user_id
 from .prices import latest_price_sql
@@ -67,12 +68,17 @@ MARKETPLACES = {
     "EBAY_GB": {"label": "eBay.co.uk", "site_id": 3, "site": "UK", "currency": "GBP", "country": "GB", "domain": "www.ebay.co.uk", "language": "en_GB"},
     "EBAY_US": {"label": "eBay.com", "site_id": 0, "site": "US", "currency": "USD", "country": "US", "domain": "www.ebay.com", "language": "en_US"},
 }
-USER_SCOPES = (
+# Views and impressions (the traffic report) need sell.analytics.readonly. Accounts connected
+# before it was asked for keep their scopes (LEGACY_SCOPES): a token cannot be renewed for more
+# than was granted, so the statistics take a new connection.
+LEGACY_SCOPES = (
     "https://api.ebay.com/oauth/api_scope",
     "https://api.ebay.com/oauth/api_scope/sell.inventory",
     "https://api.ebay.com/oauth/api_scope/sell.account.readonly",
     "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
 )
+ANALYTICS_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly"
+USER_SCOPES = (*LEGACY_SCOPES, ANALYTICS_SCOPE)
 APP_SCOPE = "https://api.ebay.com/oauth/api_scope"
 TRADING_COMPATIBILITY_LEVEL = "1349"
 TRADING_NS = "urn:ebay:apis:eBLBaseComponents"
@@ -107,8 +113,17 @@ PRESET_DEFAULTS = {
     "quantity": "one", "best_offer": False,
     "fulfillment_policy_id": "", "payment_policy_id": "", "return_policy_id": "",
     "postal_code": "", "location": "",
+    # Shipping and returns: through the seller's business policies, or -- for accounts without
+    # them, as private sellers usually are -- written into every listing ("direct").
+    "shipping_mode": "direct", "shipping_service": "", "shipping_cost": 0.0, "shipping_additional_cost": 0.0,
+    "dispatch_days": 2, "returns_accepted": False, "returns_days": 30, "return_shipping_paid_by": "Buyer",
 }
-SHARED_PRESET_KEYS = ("fulfillment_policy_id", "payment_policy_id", "return_policy_id", "postal_code", "location", "best_offer")
+SHARED_PRESET_KEYS = ("fulfillment_policy_id", "payment_policy_id", "return_policy_id", "postal_code", "location", "best_offer",
+                      "shipping_mode", "shipping_service", "shipping_cost", "shipping_additional_cost", "dispatch_days",
+                      "returns_accepted", "returns_days", "return_shipping_paid_by")
+SHIPPING_MODES = ("direct", "policies")
+DISPATCH_DAYS = (0, 1, 2, 3, 4, 5, 10)
+RETURN_DAYS = (14, 30, 60)
 GAME_PRESET_DEFAULTS = {
     "lorcana": {"game_label": "Disney Lorcana", "manufacturer": "Ravensburger"},
     "one-piece": {"game_label": "One Piece Card Game", "manufacturer": "Bandai"},
@@ -237,6 +252,10 @@ def account(connection, uid):
     return connection.execute("SELECT * FROM ebay_accounts WHERE user_id=?", (uid,)).fetchone()
 
 
+def granted_scopes(row):
+    return row["scopes"] or " ".join(LEGACY_SCOPES)
+
+
 def user_token(connection, uid):
     """The user's access token, renewed with the refresh token when it has run out."""
     config = require_config(connection, for_users=True)
@@ -248,7 +267,7 @@ def user_token(connection, uid):
     if is_past(row["refresh_expires_at"]):
         raise EbayError("Die Verbindung zu eBay ist abgelaufen. Bitte unter Einstellungen → eBay neu verbinden.", 409)
     try:
-        payload = token_request(config, {"grant_type": "refresh_token", "refresh_token": row["refresh_token"], "scope": " ".join(USER_SCOPES)})
+        payload = token_request(config, {"grant_type": "refresh_token", "refresh_token": row["refresh_token"], "scope": granted_scopes(row)})
     except EbayError as error:
         connection.execute("UPDATE ebay_accounts SET last_error=? WHERE user_id=?", (str(error), uid))
         connection.commit()
@@ -352,6 +371,8 @@ def status_payload(connection, uid):
         "expired": bool(row and row["refresh_token"] and not connected),
         "listings_synced_at": row["listings_synced_at"] if row else None, "last_error": row["last_error"] if row else "",
         "refresh_expires_at": row["refresh_expires_at"] if row else None, "conditions": CARD_CONDITIONS,
+        # Connected before views could be read: reconnecting grants the traffic report.
+        "stats_need_reconnect": connected and ANALYTICS_SCOPE not in granted_scopes(row).split(),
     }
 
 
@@ -398,12 +419,12 @@ def ebay_callback():
         return redirect("/?ebay=failed")
     stamp = now_iso()
     db().execute(
-        """INSERT INTO ebay_accounts(user_id,username,access_token,access_expires_at,refresh_token,refresh_expires_at,environment,connected_at,last_error)
-           VALUES(?,?,?,?,?,?,?,?,'') ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,access_token=excluded.access_token,
+        """INSERT INTO ebay_accounts(user_id,username,access_token,access_expires_at,refresh_token,refresh_expires_at,environment,connected_at,last_error,scopes)
+           VALUES(?,?,?,?,?,?,?,?,'',?) ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,access_token=excluded.access_token,
            access_expires_at=excluded.access_expires_at,refresh_token=excluded.refresh_token,refresh_expires_at=excluded.refresh_expires_at,
-           environment=excluded.environment,connected_at=excluded.connected_at,last_error=''""",
+           environment=excluded.environment,connected_at=excluded.connected_at,last_error='',scopes=excluded.scopes""",
         (user_id(), username, payload["access_token"], later(payload.get("expires_in", 7200)), payload.get("refresh_token", ""),
-         later(payload.get("refresh_token_expires_in", 47304000)), config["environment"], stamp),
+         later(payload.get("refresh_token_expires_in", 47304000)), config["environment"], stamp, " ".join(USER_SCOPES)),
     )
     db().commit()
     return redirect("/?ebay=connected")
@@ -562,6 +583,28 @@ def clean_preset(raw, defaults):
     if raw.get("quantity") in ("one", "owned"):
         preset["quantity"] = raw["quantity"]
     preset["best_offer"] = bool(raw.get("best_offer", preset["best_offer"]))
+    if raw.get("shipping_mode") in SHIPPING_MODES:
+        preset["shipping_mode"] = raw["shipping_mode"]
+    elif all(raw.get(key) for key in ("fulfillment_policy_id", "payment_policy_id", "return_policy_id")):
+        preset["shipping_mode"] = "policies"    # saved before there was a choice
+    if re.fullmatch(r"[A-Za-z0-9_]{2,60}", str(raw.get("shipping_service", "")).strip()):
+        preset["shipping_service"] = str(raw["shipping_service"]).strip()
+    elif "shipping_service" in raw:
+        preset["shipping_service"] = ""
+    for key in ("shipping_cost", "shipping_additional_cost"):
+        try:
+            preset[key] = min(1000.0, max(0.0, round(float(str(raw.get(key, preset[key]) or 0).replace(",", ".")), 2)))
+        except ValueError:
+            pass
+    for key, allowed in (("dispatch_days", DISPATCH_DAYS), ("returns_days", RETURN_DAYS)):
+        try:
+            if int(raw.get(key, preset[key])) in allowed:
+                preset[key] = int(raw.get(key, preset[key]))
+        except (TypeError, ValueError):
+            pass
+    preset["returns_accepted"] = bool(raw.get("returns_accepted", preset["returns_accepted"]))
+    if raw.get("return_shipping_paid_by") in ("Buyer", "Seller"):
+        preset["return_shipping_paid_by"] = raw["return_shipping_paid_by"]
     for key, low, high in (("price_factor", 1, 1000), ("price_min", 0, 100000)):
         try:
             preset[key] = min(high, max(low, round(float(str(raw.get(key, preset[key])).replace(",", ".")), 2)))
@@ -633,10 +676,39 @@ def ebay_policies():
                                     ("payment", "payment_policy", "paymentPolicies", "paymentPolicyId"),
                                     ("return", "return_policy", "returnPolicies", "returnPolicyId")):
         response, payload = rest_get(db(), f'{hosts(config)["api"]}/sell/account/v1/{path}', token, config, {"marketplace_id": config["marketplace"]})
+        if response.status_code != 200 and not_opted_in(payload):
+            # Private sellers usually have no business policies; the preset then ships directly.
+            return jsonify({"available": False, "fulfillment": [], "payment": [], "return": []})
         if response.status_code != 200:
             raise EbayError(f"Die Richtlinien konnten nicht geladen werden: {rest_error(payload, response.status_code)}", 502)
         result[kind] = [{"id": str(policy.get(id_key)), "name": policy.get("name") or str(policy.get(id_key))} for policy in payload.get(key) or []]
-    return jsonify(result)
+    return jsonify({"available": True, **result})
+
+
+def not_opted_in(payload):
+    """eBay's answer for an account that does not use business policies (errorId 20403)."""
+    return any(str(error.get("errorId")) == "20403" or re.search(r"not (eligible|opted)", str(error.get("message") or ""), re.I)
+               for error in payload.get("errors") or [])
+
+
+SHIPPING_SERVICES = {}
+
+
+@app.get("/api/ebay/shipping-services")
+@login_required
+def ebay_shipping_services():
+    """The domestic shipping services of the marketplace (GeteBayDetails), once per process."""
+    config = require_config(db(), for_users=True)
+    if config["marketplace"] not in SHIPPING_SERVICES:
+        root, _ = trading_call(db(), user_id(), "GeteBayDetails", "<DetailName>ShippingServiceDetails</DetailName>")
+        services = []
+        for detail in root.findall("ShippingServiceDetails"):
+            if text(detail, "ValidForSellingFlow") != "true" or text(detail, "InternationalService") == "true":
+                continue
+            services.append({"id": text(detail, "ShippingService"), "name": text(detail, "Description") or text(detail, "ShippingService"),
+                             "category": text(detail, "ShippingCategory")})
+        SHIPPING_SERVICES[config["marketplace"]] = sorted(services, key=lambda service: service["name"].lower())
+    return jsonify(SHIPPING_SERVICES[config["marketplace"]])
 
 
 # ---- Drafts -------------------------------------------------------------------------------------
@@ -862,9 +934,12 @@ def item_xml(connection, uid, draft, preset, picture_url=None):
         problems.append("Titel fehlt")
     if not draft["price"]:
         problems.append("Preis fehlt")
+    policies = preset["shipping_mode"] == "policies"
     missing = [label for key, label in (("fulfillment_policy_id", "Versand"), ("payment_policy_id", "Zahlung"), ("return_policy_id", "Rücknahme")) if not preset[key]]
-    if missing:
+    if policies and missing:
         problems.append(f"Richtlinie für {', '.join(missing)} in der Angebotsvorlage wählen")
+    if not policies and not preset["shipping_service"]:
+        problems.append("Versandart in der Angebotsvorlage wählen")
     if not preset["postal_code"]:
         problems.append("Postleitzahl in der Angebotsvorlage eintragen")
     if problems:
@@ -889,12 +964,33 @@ def item_xml(connection, uid, draft, preset, picture_url=None):
 {f'<PictureDetails><PictureURL>{xml_escape(picture_url)}</PictureURL></PictureDetails>' if picture_url else ''}
 {f'<ItemSpecifics>{aspects}</ItemSpecifics>' if aspects else ''}
 {'<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>' if preset["best_offer"] else ''}
-<SellerProfiles>
+{seller_profiles(preset) if policies else direct_shipping(preset, site["currency"])}
+</Item>"""
+
+
+def seller_profiles(preset):
+    return f"""<SellerProfiles>
 <SellerShippingProfile><ShippingProfileID>{xml_escape(preset["fulfillment_policy_id"])}</ShippingProfileID></SellerShippingProfile>
 <SellerReturnProfile><ReturnProfileID>{xml_escape(preset["return_policy_id"])}</ReturnProfileID></SellerReturnProfile>
 <SellerPaymentProfile><PaymentProfileID>{xml_escape(preset["payment_policy_id"])}</PaymentProfileID></SellerPaymentProfile>
-</SellerProfiles>
-</Item>"""
+</SellerProfiles>"""
+
+
+def direct_shipping(preset, currency):
+    """Shipping and returns written into the listing, for accounts without business policies.
+    Payment needs nothing: eBay handles it for every seller."""
+    if preset["returns_accepted"]:
+        returns = (f'<ReturnPolicy><ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption><ReturnsWithinOption>Days_{preset["returns_days"]}</ReturnsWithinOption>'
+                   f'<ShippingCostPaidByOption>{preset["return_shipping_paid_by"]}</ShippingCostPaidByOption></ReturnPolicy>')
+    else:
+        returns = "<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>"
+    return f"""<DispatchTimeMax>{int(preset["dispatch_days"])}</DispatchTimeMax>
+<ShippingDetails><ShippingType>Flat</ShippingType><ShippingServiceOptions><ShippingServicePriority>1</ShippingServicePriority>
+<ShippingService>{xml_escape(preset["shipping_service"])}</ShippingService>
+<ShippingServiceCost currencyID="{currency}">{preset["shipping_cost"]:.2f}</ShippingServiceCost>
+<ShippingServiceAdditionalCost currencyID="{currency}">{preset["shipping_additional_cost"]:.2f}</ShippingServiceAdditionalCost>
+</ShippingServiceOptions></ShippingDetails>
+{returns}"""
 
 
 def listing_fees(root):
@@ -1078,7 +1174,95 @@ def sync_listings(connection, uid):
     )
     connection.execute("UPDATE ebay_accounts SET listings_synced_at=?,last_error='' WHERE user_id=?", (stamp, uid))
     connection.commit()
+    try:
+        sync_traffic(connection, uid)
+    except EbayError as error:
+        # Views are a bonus; the listings themselves are up to date.
+        app.logger.warning("eBay traffic report for user %s failed: %s", uid, error)
+    update_sheets_from_listings(connection, uid)
+    connection.commit()
     return counts
+
+
+def price_label(price, currency):
+    return (f"{price:.2f} €".replace(".", ",") if currency in ("EUR", "") else f"{price:.2f} {currency}") if price is not None else ""
+
+
+def update_sheets_from_listings(connection, uid):
+    """Sale sheets (WTS) that follow eBay (trade_sheets.ebay_sync) take quantity and price of
+    their cards from the account's active listings of them: as many copies as are still
+    available, the cheapest listing's price as the label. A card whose listing sold out leaves
+    the sheet; one whose listing ended unsold stays, without the eBay price."""
+    listings = {}
+    for row in connection.execute(
+        "SELECT item_id,variant_id,price,currency,quantity-quantity_sold available,status FROM ebay_listings WHERE user_id=? AND variant_id IS NOT NULL", (uid,)):
+        listings.setdefault(row["variant_id"], []).append(row)
+    entries = connection.execute(
+        """SELECT e.id,e.sheet_id,e.variant_id,e.quantity,e.label,e.ebay_item FROM trade_sheet_cards e JOIN trade_sheets t ON t.id=e.sheet_id
+           WHERE t.user_id=? AND t.ebay_sync=1 AND (t.kind='WTS' OR t.kind='WTS/WTT')""", (uid,)).fetchall()
+    changed = set()
+    for entry in entries:
+        rows = listings.get(entry["variant_id"], [])
+        active = sorted((row for row in rows if row["status"] == "active" and row["available"] > 0), key=lambda row: (row["price"] is None, row["price"] or 0))
+        if active:
+            cheapest = active[0]
+            update = (min(99, sum(row["available"] for row in active)), price_label(cheapest["price"], cheapest["currency"]) or entry["label"], cheapest["item_id"])
+            if update != (entry["quantity"], entry["label"], entry["ebay_item"]):
+                connection.execute("UPDATE trade_sheet_cards SET quantity=?,label=?,ebay_item=? WHERE id=?", (*update, entry["id"]))
+                changed.add(entry["sheet_id"])
+        elif entry["ebay_item"]:
+            last = next((row for row in rows if row["item_id"] == entry["ebay_item"]), None)
+            if last and last["status"] == "sold":
+                connection.execute("DELETE FROM trade_sheet_cards WHERE id=?", (entry["id"],))
+            else:
+                connection.execute("UPDATE trade_sheet_cards SET label='',ebay_item='' WHERE id=?", (entry["id"],))
+            changed.add(entry["sheet_id"])
+    for sheet_id in changed:
+        connection.execute("UPDATE trade_sheets SET updated_at=? WHERE id=?", (now_iso(), sheet_id))
+    return len(changed)
+
+
+TRAFFIC_METRICS = {
+    "LISTING_VIEWS_TOTAL": "view_count", "LISTING_IMPRESSION_TOTAL": "impression_count",
+    "CLICK_THROUGH_RATE": "click_through_rate", "SALES_CONVERSION_RATE": "conversion_rate",
+}
+TRAFFIC_DAYS = 90
+TRAFFIC_BATCH = 200
+
+
+def sync_traffic(connection, uid):
+    """Views, impressions, click-through and conversion of the account's listings of the last 90
+    days, from the Analytics API's traffic report -- when the account granted it."""
+    row = account(connection, uid)
+    if not row or ANALYTICS_SCOPE not in granted_scopes(row).split():
+        return
+    listing_ids = [item[0] for item in connection.execute(
+        "SELECT item_id FROM ebay_listings WHERE user_id=? AND (status='active' OR ended_at>=?) ORDER BY status!='active',started_at DESC",
+        (uid, (datetime.now(timezone.utc) - timedelta(days=TRAFFIC_DAYS)).isoformat()))]
+    if not listing_ids:
+        return
+    config, token = require_config(connection, for_users=True), user_token(connection, uid)
+    # eBay counts days in its own (Pacific) time; today there may not have started yet.
+    last = (datetime.now(timezone.utc) - timedelta(hours=8)).date()
+    first = last - timedelta(days=TRAFFIC_DAYS - 1)
+    for start in range(0, len(listing_ids), TRAFFIC_BATCH):
+        batch = listing_ids[start:start + TRAFFIC_BATCH]
+        response, payload = rest_get(connection, f'{hosts(config)["api"]}/sell/analytics/v1/traffic_report', token, config, {
+            "dimension": "LISTING", "metric": ",".join(TRAFFIC_METRICS),
+            "filter": f'marketplace_ids:{{{config["marketplace"]}}},date_range:[{first:%Y%m%d}..{last:%Y%m%d}],listing_ids:{{{"|".join(batch)}}}',
+        })
+        if response.status_code != 200:
+            raise EbayError(rest_error(payload, f"Traffic report: HTTP {response.status_code}"), 502)
+        keys = [metric.get("key") for metric in (payload.get("header") or {}).get("metrics") or []]
+        for record in payload.get("records") or []:
+            item_id = str(((record.get("dimensionValues") or [{}])[0] or {}).get("value") or "")
+            values = {}
+            for key, metric in zip(keys, record.get("metricValues") or []):
+                if key in TRAFFIC_METRICS and metric.get("value") is not None:
+                    values[TRAFFIC_METRICS[key]] = metric["value"]
+            if item_id and values:
+                connection.execute(f"UPDATE ebay_listings SET {','.join(f'{column}=?' for column in values)} WHERE user_id=? AND item_id=?",
+                                   (*values.values(), uid, item_id))
 
 
 @app.post("/api/ebay/listings/sync")
@@ -1108,7 +1292,44 @@ def ebay_listings():
         """SELECT sa.*,l.variant_id FROM ebay_sales sa LEFT JOIN ebay_listings l ON l.user_id=sa.user_id AND l.item_id=sa.item_id
            WHERE sa.user_id=? ORDER BY sa.sold_at DESC LIMIT 50""", (uid,),
     ).fetchall()
-    return jsonify({"listings": [dict(row) for row in rows], "sales": [dict(row) for row in sales], "status": status_payload(db(), uid)})
+    listings = [dict(row) for row in rows]
+    for listing in listings:
+        listing["popularity"] = popularity(listing)
+    # The ranking: the active listings by popularity, 1 the most popular.
+    for rank, listing in enumerate(sorted((row for row in listings if row["status"] == "active"), key=lambda row: -row["popularity"]), 1):
+        listing["rank"] = rank
+    return jsonify({"listings": listings, "sales": [dict(row) for row in sales], "status": status_payload(db(), uid)})
+
+
+def popularity(listing):
+    """DeckLedger's measure of how much interest a listing draws -- eBay does not say where it
+    ranks one: a watcher counts like ten views, a sale like twenty-five, a hundred impressions
+    like one view."""
+    return round((listing.get("view_count") or 0) + 10 * (listing.get("watch_count") or 0)
+                 + 25 * (listing.get("quantity_sold") or 0) + (listing.get("impression_count") or 0) / 100, 1)
+
+
+SUGGESTIONS = 6
+
+
+@app.get("/api/ebay/listings/<item_id>/suggestions")
+@login_required
+def ebay_listing_suggestions(item_id):
+    """The cards of the user's collection a listing most likely sells, judged by its title: a
+    card counts when every word of its name is in the title (a letter off allowed), and ranks
+    higher the more of its number, set, finish and rarity is there too."""
+    listing = db().execute("SELECT title FROM ebay_listings WHERE user_id=? AND item_id=?", (user_id(), item_id)).fetchone()
+    if not listing:
+        return jsonify({"error": "Angebot nicht gefunden."}), 404
+    rows = db().execute(
+        f"""SELECT v.id variant_id,i.canonical_name,p.collector_number,p.language,p.rarity,s.name set_name,s.code set_code,v.finish,
+              v.game_id,g.short_name game_name,SUM(c.quantity) quantity,{latest_price_sql('v')} price
+            FROM collection_entries c JOIN variants v ON v.id=c.variant_id JOIN printings p ON p.id=v.printing_id
+              JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
+            WHERE c.user_id=? GROUP BY v.id HAVING SUM(c.quantity)>0""", (user_id(),)).fetchall()
+    scored = [(search.title_score(listing["title"], dict(row)), dict(row)) for row in rows]
+    best = sorted(((score, row) for score, row in scored if score > 0), key=lambda pair: -pair[0])[:SUGGESTIONS]
+    return jsonify([{**row, "score": score} for score, row in best])
 
 
 @app.patch("/api/ebay/listings/<item_id>")
@@ -1121,6 +1342,7 @@ def link_ebay_listing(item_id):
     cursor = db().execute("UPDATE ebay_listings SET variant_id=? WHERE user_id=? AND item_id=?", (variant_id or None, user_id(), item_id))
     if not cursor.rowcount:
         return jsonify({"error": "Angebot nicht gefunden."}), 404
+    update_sheets_from_listings(db(), user_id())
     db().commit()
     return jsonify({"linked": bool(variant_id)})
 

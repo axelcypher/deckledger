@@ -268,6 +268,15 @@ DeckLedger until published — eBay's API cannot create Seller Hub drafts. `ebay
 ten minutes in the container and re-reads followed listings (every six hours) and connected
 accounts' listings (every 30 minutes).
 
+Listings show their watchers and, once the account granted DeckLedger its sales statistics
+(`sell.analytics.readonly`; accounts connected earlier reconnect once), views, impressions and
+click-through rate of the last 90 days; "Statistik" sorts them, also by DeckLedger's own popularity
+measure. Linking a listing to a card suggests cards of the collection whose name is in the title.
+Sale sheets take quantity and price of their cards from the account's active listings (switchable
+per sheet), drop cards whose listing sold out, and mark cards on eBay in the sheet image. Shipping
+and returns go into each listing straight from the preset, or through business policies where the
+account has them (private accounts usually do not).
+
 eBay unlocks production keys only once the application listens for deleted eBay accounts. Under
 **Application Keys → Notifications → Marketplace Account Deletion** enter the endpoint URL and
 verification token shown under **Admin → eBay**. The endpoint is `https://<public

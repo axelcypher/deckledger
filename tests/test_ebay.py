@@ -39,6 +39,8 @@ class FakeEbay:
         self.fail = {}
         self.public_key = ""
         self.groups = set()
+        self.traffic = {}
+        self.traffic_params = None
 
     def __call__(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
@@ -48,6 +50,11 @@ class FakeEbay:
                 return Response(400, {"error": "invalid_grant"})
             return Response(payload={"access_token": f'token-{form["grant_type"]}', "expires_in": 7200,
                                      "refresh_token": "refresh", "refresh_token_expires_in": 47304000})
+        if "/sell/analytics/v1/traffic_report" in url:
+            self.traffic_params = kwargs["params"]
+            return Response(payload={"header": {"metrics": [{"key": key} for key in kwargs["params"]["metric"].split(",")]},
+                                     "records": [{"dimensionValues": [{"value": item}], "metricValues": [{"value": value} for value in values]}
+                                                 for item, values in self.traffic.items()]})
         if "/commerce/notification/v1/public_key/" in url:
             return Response(payload={"algorithm": "ECDSA", "digest": "SHA1", "key": self.public_key})
         if "/commerce/identity/v1/user/" in url:
@@ -299,13 +306,44 @@ def test_publishing_a_draft(client, configured, monkeypatch, tmp_path):
     assert client.patch(f"/api/ebay/drafts/{draft_id}", json={"title": "x"}).status_code == 400
 
 
-def test_a_draft_missing_its_policies_is_not_sent(client, configured):
+def test_a_draft_missing_its_shipping_is_not_sent(client, configured):
     connect()
     draft_id = client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["ids"][0]
     response = client.post(f"/api/ebay/drafts/{draft_id}/publish")
     assert response.status_code == 400
-    assert "Preis fehlt" in response.get_json()["error"] and "Versand, Zahlung, Rücknahme" in response.get_json()["error"]
+    assert "Preis fehlt" in response.get_json()["error"] and "Versandart" in response.get_json()["error"]
+    client.put("/api/ebay/preset", json={"game_id": "vcard", "shipping_mode": "policies"})
+    assert "Versand, Zahlung, Rücknahme" in client.post(f"/api/ebay/drafts/{draft_id}/publish").get_json()["error"]
     assert not [call for call in configured.calls if call[1].endswith("/ws/api.dll")]
+
+
+def test_without_business_policies_shipping_goes_into_the_listing(client, configured, monkeypatch, tmp_path):
+    draft_id = ready_draft(client, monkeypatch, tmp_path)
+    preset = client.put("/api/ebay/preset", json={"game_id": "vcard", "shipping_mode": "direct", "shipping_service": "DE_DeutschePostBrief",
+                                                   "shipping_cost": "1,60", "shipping_additional_cost": "0,20", "dispatch_days": 1,
+                                                   "postal_code": "10115", "price_fallback": "2,50"}).get_json()
+    assert (preset["shipping_mode"], preset["shipping_cost"], preset["returns_accepted"]) == ("direct", 1.6, False)
+    other = client.get("/api/ebay/preset?game_id=lorcana").get_json()
+    assert other["shipping_service"] == "DE_DeutschePostBrief", "shipping holds for every game"
+    client.post(f"/api/ebay/drafts/{draft_id}/publish")
+    document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "AddFixedPriceItem"][0][2]["data"].decode()
+    for part in ("<ShippingService>DE_DeutschePostBrief</ShippingService>", '<ShippingServiceCost currencyID="EUR">1.60</ShippingServiceCost>',
+                 '<ShippingServiceAdditionalCost currencyID="EUR">0.20</ShippingServiceAdditionalCost>', "<DispatchTimeMax>1</DispatchTimeMax>",
+                 "<ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption>"):
+        assert part in document
+    assert "SellerProfiles" not in document
+
+
+def test_an_account_without_business_policies_gets_none_to_pick(client, configured):
+    connect()
+    real = configured.__call__
+
+    def not_opted_in(method, url, **kwargs):
+        if "/sell/account/v1/" in url:
+            return Response(400, {"errors": [{"errorId": 20403, "message": "User is not eligible for Business Policy."}]})
+        return real(method, url, **kwargs)
+    deckledger.ebay.http = not_opted_in
+    assert client.get("/api/ebay/policies").get_json() == {"available": False, "fulfillment": [], "payment": [], "return": []}
 
 
 def test_ebays_refusal_is_kept_on_the_draft(client, configured, monkeypatch, tmp_path):
@@ -468,4 +506,111 @@ def test_a_listing_with_variations_needs_the_chosen_one(client, configured):
     item = next(item for item in response.get_json()["items"] if item["item_id"] == f"{ITEM}-526719127153")
     assert (item["status"], item["price"]) == ("active", 4.0)
     assert price_of(client, EMBER8, "vcard-card-ember8")["price"] == 4.0
+
+
+
+# ---- Listing statistics, suggestions and sheets that follow eBay ----------------------------------
+
+ANALYTICS = deckledger.ebay.ANALYTICS_SCOPE
+
+
+def own_listing(item_id, variant_id=None, title="Ember PL8", price=4.99, quantity=1, sold=0, status="active", watchers=0):
+    query("""INSERT INTO ebay_listings(user_id,item_id,variant_id,title,price,currency,quantity,quantity_sold,status,watch_count,started_at,synced_at)
+             VALUES(1,?,?,?,?,'EUR',?,?,?,?,'2026-09-01T00:00:00+00:00','t')""", (item_id, variant_id, title, price, quantity, sold, status, watchers))
+
+
+def test_views_come_from_the_traffic_report_once_it_is_granted(client, configured):
+    connect()
+    configured.selling = {"ActiveList": f"<ActiveList><ItemArray>{item_xml('111', 'Ember PL8', '4.99', 3, 0, '')}</ItemArray></ActiveList>",
+                          "UnsoldList": "<UnsoldList/>", "SoldList": "<SoldList/>"}
+    configured.traffic = {"111": [120, 4000, 2.5, 1.2]}
+    client.post("/api/ebay/listings/sync")
+    assert configured.traffic_params is None, "an account connected before stays without views"
+    assert client.get("/api/ebay/status").get_json()["stats_need_reconnect"] is True
+    query("UPDATE ebay_accounts SET scopes=?", (" ".join(deckledger.ebay.USER_SCOPES),))
+    client.post("/api/ebay/listings/sync")
+    assert "listing_ids:{111}" in configured.traffic_params["filter"] and "marketplace_ids:{EBAY_DE}" in configured.traffic_params["filter"]
+    listing = client.get("/api/ebay/listings").get_json()["listings"][0]
+    assert (listing["view_count"], listing["impression_count"], listing["click_through_rate"], listing["watch_count"]) == (120, 4000, 2.5, 3)
+    assert (listing["popularity"], listing["rank"]) == (120 + 30 + 40, 1)
+    assert client.get("/api/ebay/status").get_json()["stats_need_reconnect"] is False
+
+
+def test_a_renewed_token_asks_only_for_what_was_granted(client, configured):
+    connect()
+    query("UPDATE ebay_accounts SET access_expires_at='2000-01-01T00:00:00+00:00'")
+    with deckledger.app.app_context():
+        deckledger.ebay.user_token(deckledger.ebay.db(), 1)
+    form = [call[2]["data"] for call in configured.calls if call[1].endswith("/identity/v1/oauth2/token")][-1]
+    assert ANALYTICS not in form["scope"] and "sell.inventory" in form["scope"]
+
+
+def test_suggestions_come_from_the_collection_and_read_long_titles(client):
+    from conftest import EMBER8_HOLO
+    for variant in (EMBER8, EMBER8_HOLO, EMBER9):
+        client.post("/api/collection", json={"variant_id": variant, "delta": 1})
+    own_listing("111", title="VCard Ember PL8 Test Set Holo Near Mint TCG Karte Sammlerstück")
+    suggested = client.get("/api/ebay/listings/111/suggestions").get_json()
+    assert [card["variant_id"] for card in suggested][:2] == [EMBER8_HOLO, EMBER8]
+    assert EMBER9 not in {card["variant_id"] for card in suggested}, "PL9 is not PL8"
+    assert TIDE8 not in {card["variant_id"] for card in suggested}, "not in the collection"
+    found = client.get("/api/search", query_string={"q": "tide", "owned": 1}).get_json()
+    assert found == []
+    assert client.get("/api/ebay/listings/nope/suggestions").status_code == 404
+
+
+def test_sale_sheets_follow_the_listings_of_their_cards(client):
+    connect()
+    for variant in (EMBER8, EMBER9, TIDE8):
+        client.post("/api/collection", json={"variant_id": variant, "delta": 3})
+    sheet = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Verkauf", "kind": "WTS"}).get_json()["id"]
+    trade = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Tausch", "kind": "WTT"}).get_json()["id"]
+    for target in (sheet, trade):
+        client.post(f"/api/trade-sheets/{target}/cards", json={"entries": [{"variant_id": EMBER8, "quantity": 1}, {"variant_id": EMBER9, "quantity": 2},
+                                                                         {"variant_id": TIDE8, "quantity": 1, "label": "3 €"}]})
+    own_listing("111", title="Ember PL8", price=4.5, quantity=3, sold=1, watchers=4)
+    own_listing("222", title="Ember PL9", price=9.0, quantity=2)
+    client.patch("/api/ebay/listings/111", json={"variant_id": EMBER8})
+    client.patch("/api/ebay/listings/222", json={"variant_id": EMBER9})
+    cards = {card["variant_id"]: card for card in client.get(f"/api/trade-sheets/{sheet}").get_json()["cards"]}
+    assert (cards[EMBER8]["quantity"], cards[EMBER8]["label"]) == (2, "4,50 €")
+    assert (cards[EMBER8]["ebay"]["available"], cards[EMBER8]["ebay"]["watchers"]) == (2, 4)
+    assert (cards[TIDE8]["label"], cards[TIDE8]["ebay"]) == ("3 €", None), "a card without a listing keeps what it had"
+    untouched = {card["variant_id"]: card for card in client.get(f"/api/trade-sheets/{trade}").get_json()["cards"]}
+    assert (untouched[EMBER8]["quantity"], untouched[EMBER8]["label"]) == (1, ""), "a trade sheet has no prices to follow"
+    # Sold out: off the sheet. Ended unsold: stays, without the eBay price.
+    query("UPDATE ebay_listings SET status='sold',quantity_sold=3 WHERE item_id='111'")
+    query("UPDATE ebay_listings SET status='unsold' WHERE item_id='222'")
+    with deckledger.app.app_context():
+        deckledger.ebay.update_sheets_from_listings(deckledger.ebay.db(), 1)
+        deckledger.ebay.db().commit()
+    cards = {card["variant_id"]: card for card in client.get(f"/api/trade-sheets/{sheet}").get_json()["cards"]}
+    assert EMBER8 not in cards and (cards[EMBER9]["quantity"], cards[EMBER9]["label"]) == (2, "")
+
+
+def test_a_sheet_can_stop_following_ebay(client):
+    connect()
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 3})
+    sheet = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Verkauf", "kind": "WTS"}).get_json()["id"]
+    client.post(f"/api/trade-sheets/{sheet}/cards", json={"variant_id": EMBER8, "quantity": 1})
+    assert client.patch(f"/api/trade-sheets/{sheet}", json={"ebay_sync": False}).get_json()["sheet"]["ebay_sync"] == 0
+    own_listing("111", variant_id=EMBER8, price=4.5, quantity=3)
+    client.patch("/api/ebay/listings/111", json={"variant_id": EMBER8})
+    card = client.get(f"/api/trade-sheets/{sheet}").get_json()["cards"][0]
+    assert (card["quantity"], card["label"]) == (1, "") and card["ebay"]["price"] == 4.5, "the listing still shows, nothing is taken over"
+    card = client.patch(f"/api/trade-sheets/{sheet}", json={"ebay_sync": True}).get_json()["cards"][0]
+    assert (card["quantity"], card["label"]) == (3, "4,50 €"), "switching it on catches up at once"
+
+
+def test_cards_on_ebay_get_a_badge_on_the_sheet(client, monkeypatch):
+    import sheet_render
+    drawn = []
+    real = sheet_render.ebay_badge
+    monkeypatch.setattr(sheet_render, "ebay_badge", lambda width: drawn.append(width) or real(width))
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 1})
+    sheet = client.post("/api/trade-sheets", json={"game_id": "vcard", "name": "Verkauf", "kind": "WTS"}).get_json()["id"]
+    client.post(f"/api/trade-sheets/{sheet}/cards", json={"entries": [{"variant_id": EMBER8, "quantity": 1}, {"variant_id": TIDE8, "quantity": 1}]})
+    own_listing("111", variant_id=EMBER8)
+    assert client.get(f"/api/trade-sheets/{sheet}/image/1.jpg?scale=0.3").status_code == 200
+    assert len(drawn) == 1
 

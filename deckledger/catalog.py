@@ -526,6 +526,8 @@ def global_search():
     game_id = request.args.get("game_id")
     if len(q) < 2: return jsonify([])
     limit = min(80, max(1, request.args.get("limit", 24, type=int)))
+    # owned=1: only cards in the collection (linking an eBay listing must not pick a stranger).
+    owned = 1 if request.args.get("owned") in ("1", "true") else None
     rows = db().execute(
         f"""SELECT i.id identity_id,i.canonical_name,p.collector_number,p.language,p.set_id,p.rarity,s.name set_name,
           g.id game_id,g.short_name game_name,g.accent,v.id variant_id,v.finish,{latest_price_sql('v')} price,
@@ -536,9 +538,10 @@ def global_search():
           JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=i.game_id
           JOIN (SELECT v.id found_id,{search.card_score_sql("?1")} score
                 FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id JOIN sets s ON s.id=p.set_id
-                WHERE ?4 IS NULL OR i.game_id=?5) found ON found.found_id=v.id
+                WHERE (?4 IS NULL OR i.game_id=?5)
+                  AND (?7 IS NULL OR (SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=?2 AND c.variant_id=v.id)>0)) found ON found.found_id=v.id
           WHERE found.score>0
           ORDER BY found.score DESC,i.canonical_name,p.collector_number,v.id
-          LIMIT ?6""", (q,user_id(),user_id(),game_id,game_id,limit)
+          LIMIT ?6""", (q,user_id(),user_id(),game_id,game_id,limit,owned)
     ).fetchall()
     return jsonify([dict(r) for r in rows])

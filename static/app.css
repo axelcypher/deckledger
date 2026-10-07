@@ -1219,6 +1219,30 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .ebay-listing-main small { color:var(--muted);font-size:11px; }
 .ebay-listing > strong { font-size:15px; }
 .ebay-link-search { display:grid;gap:6px;margin-top:4px; }
+.ebay-link-heading { font-size:11px;color:var(--muted); }
+.sheet-ebay { color:var(--muted); }
+.sheet-ebay a { color:var(--brand);font-weight:700;text-decoration:none; }
+.sheet-ebay-sync { display:flex!important;flex-direction:row!important;align-items:center;gap:8px;align-self:end;min-height:38px; }
+.ebay-link-suggestions { display:grid;gap:2px; }
+.ebay-link-suggestions button { padding:6px 8px;border:0;border-radius:7px;background:var(--surface-2);color:var(--ink);text-align:left;font-weight:700;cursor:pointer; }
+.ebay-link-suggestions button small { color:var(--muted);font-weight:500; }
+.ebay-listing-stats { display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--muted);font-size:11px; }
+.ebay-listing-stats b { color:var(--ink); }
+.ebay-rank { color:var(--brand);font-weight:800; }
+.ebay-aspects { display:grid;gap:6px;margin-bottom:8px; }
+.ebay-aspect-row { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:8px;align-items:center; }
+.ebay-stats-tiles { display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px; }
+.ebay-stats-tiles div { display:grid;gap:2px;padding:10px 12px;border-radius:12px;background:var(--surface-2); }
+.ebay-stats-tiles b { font-size:18px; }
+.ebay-stats-tiles span { color:var(--muted);font-size:11px; }
+.ebay-stats-controls { display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:10px;margin-bottom:10px; }
+.ebay-stats-controls .dl-field { min-width:220px; }
+.ebay-stats-table { display:grid;gap:4px;overflow-x:auto; }
+.ebay-stats-row { display:grid;grid-template-columns:40px minmax(200px,1fr) repeat(7,minmax(70px,auto));gap:10px;align-items:center;min-width:820px;padding:8px 10px;border-radius:10px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);font-size:12px; }
+.ebay-stats-row.is-head { background:transparent;box-shadow:none;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em; }
+.ebay-stats-row a { display:grid;min-width:0;color:inherit;text-decoration:none; }
+.ebay-stats-row a b, .ebay-stats-row a small { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.ebay-stats-row a small { color:var(--muted); }
 .ebay-link-search input { height:34px;padding:0 10px; }
 .ebay-link-results { display:grid;gap:2px; }
 .ebay-link-results button { padding:6px 8px;border:0;border-radius:7px;background:var(--surface-2);color:var(--ink);text-align:left;font-weight:700;cursor:pointer; }
