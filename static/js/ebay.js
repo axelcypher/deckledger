@@ -281,7 +281,7 @@ async function renderEbay(){
       ${shown.length?`<div class="ebay-listings">${shown.map(ebayListingRow).join('')}</div>`
         :`<div class="deck-zone-empty">${status.connected?'Keine Angebote in dieser Ansicht.':'Verbinde dein eBay-Konto, um deine Angebote hier zu sehen.'}</div>`}
     </section>
-    ${listings.sales.length?`<section class="ebay-section"><div class="sheet-section-head"><b>Letzte Verkäufe</b></div><div class="ebay-sales">${listings.sales.map(sale=>`<div class="ebay-sale"><span>${ebayDate(sale.sold_at)}</span><b>${sale.quantity}× ${escapeHtml(sale.title)}</b><span>${escapeHtml(sale.buyer)}</span><strong>${ebayMoney(sale.price,sale.currency)}</strong></div>`).join('')}</div></section>`:''}`;
+    ${listings.sales.length?`<section class="ebay-section"><div class="sheet-section-head"><b>Letzte Verkäufe</b></div><div class="ebay-sales">${listings.sales.map(sale=>`<div class="ebay-sale"><span class="ebay-sale-date">${ebayDate(sale.sold_at)}</span><b>${sale.quantity}× ${escapeHtml(sale.title)}</b><span class="ebay-sale-buyer">${escapeHtml(sale.buyer)}</span><strong>${ebayMoney(sale.price,sale.currency)}</strong></div>`).join('')}</div></section>`:''}`;
   bindSheetTabs();
   $('#ebay-open-settings')?.addEventListener('click',()=>openEbaySettings());
   $('#ebay-open-stats')?.addEventListener('click',()=>openEbayStats(listings));
@@ -315,19 +315,19 @@ function ebayDraftRow(draft,status){
   return `<div class="ebay-draft ${published?'is-published':''} ${draft.status==='failed'?'is-failed':''}" data-draft="${draft.id}">
     ${finishThumb({...draft,game_id:draft.game_id},artUrl(draft.variant_id),draft.canonical_name||draft.title,'sheet-thumb')}
     <div class="ebay-draft-main">
-      <input class="ebay-draft-title" value="${escapeHtml(draft.title)}" maxlength="80" aria-label="Titel" ${published?'disabled':''}><small class="ebay-draft-count">${draft.title.length}/80</small>
+      <div class="ebay-draft-titlebar"><input class="ebay-draft-title" value="${escapeHtml(draft.title)}" maxlength="80" aria-label="Titel" ${published?'disabled':''}>${published?'':`<small class="ebay-draft-count">${draft.title.length}/80</small>`}</div>
       <small>${detail}${draft.market_price!=null?` · Marktpreis ${money(draft.market_price)}`:''} · ${draft.owned}× in der Sammlung${draft.fees!=null?` · Gebühr ${money(draft.fees)}`:''}</small>
-      ${draft.error?`<small class="sheet-warning">${escapeHtml(draft.error)}</small>`:''}
-      ${published?'':`<details class="ebay-draft-more"><summary>Beschreibung &amp; Merkmale</summary><textarea class="select-control ebay-draft-description" rows="5">${escapeHtml(draft.description)}</textarea><small>${draft.aspects.map(([name,value])=>`${escapeHtml(name)}: ${escapeHtml(value)}`).join(' · ')||'Keine Merkmale'}</small></details>`}
     </div>
+    ${draft.error?`<p class="sheet-warning ebay-draft-error">${escapeHtml(draft.error)}</p>`:''}
+    ${published?'':`<details class="ebay-draft-more"><summary>Beschreibung &amp; Merkmale</summary><textarea class="ebay-draft-description" rows="5">${escapeHtml(draft.description)}</textarea><span class="ebay-draft-aspects">${draft.aspects.map(([name,value])=>`${escapeHtml(name)}: ${escapeHtml(value)}`).join(' · ')||'Keine Merkmale'}</span></details>`}
     ${published
-      ?`<div class="ebay-draft-actions"><span class="ebay-chip is-live">eingestellt ${ebayDate(draft.published_at)}</span><a class="secondary-button" href="${escapeHtml(draft.item_url||'#')}" target="_blank" rel="noopener noreferrer">Ansehen</a><button type="button" class="icon-button" data-ebay-draft-delete title="Aus der Liste entfernen" aria-label="Aus der Liste entfernen">×</button></div>`
-      :`<div class="ebay-draft-fields">
+      ?`<div class="ebay-draft-controls"><div class="ebay-draft-actions"><span class="ebay-chip is-live">eingestellt ${ebayDate(draft.published_at)}</span><a class="secondary-button" href="${escapeHtml(draft.item_url||'#')}" target="_blank" rel="noopener noreferrer">Ansehen</a><button type="button" class="icon-button" data-ebay-draft-delete title="Aus der Liste entfernen" aria-label="Aus der Liste entfernen">×</button></div></div>`
+      :`<div class="ebay-draft-controls"><div class="ebay-draft-fields">
           <label><span>Preis €</span><input class="ebay-draft-price" inputmode="decimal" value="${draft.price==null?'':draft.price.toFixed(2).replace('.',',')}" placeholder="fehlt"></label>
           <label><span>Menge</span><input class="ebay-draft-quantity" type="number" min="1" max="999" value="${draft.quantity}"></label>
           <label><span>Zustand</span><select class="select-control ebay-draft-condition">${Object.entries(conditions).map(([id,label])=>`<option value="${id}" ${draft.condition===id?'selected':''}>${escapeHtml(label)}</option>`).join('')}</select></label>
         </div>
-        <div class="ebay-draft-actions"><button type="button" class="secondary-button" data-ebay-draft-verify ${status.connected?'':'disabled'}>Prüfen</button><button type="button" class="primary-button" data-ebay-draft-publish ${status.connected?'':'disabled'}>Einstellen</button><button type="button" class="icon-button" data-ebay-draft-delete title="Entwurf löschen" aria-label="Entwurf löschen">🗑</button></div>`}
+        <div class="ebay-draft-actions"><button type="button" class="secondary-button" data-ebay-draft-verify ${status.connected?'':'disabled'}>Prüfen</button><button type="button" class="primary-button" data-ebay-draft-publish ${status.connected?'':'disabled'}>Einstellen</button><button type="button" class="icon-button" data-ebay-draft-delete title="Entwurf löschen" aria-label="Entwurf löschen">🗑</button></div></div>`}
   </div>`;
 }
 
@@ -335,7 +335,7 @@ function bindEbayDraftRow(row,draft){
   if(!draft)return;
   const id=draft.id;
   const save=async changes=>{
-    try{const updated=await api(`/api/ebay/drafts/${id}`,{method:'PATCH',body:JSON.stringify(changes)});Object.assign(draft,updated);$('.sheet-warning',row)?.remove()}
+    try{const updated=await api(`/api/ebay/drafts/${id}`,{method:'PATCH',body:JSON.stringify(changes)});Object.assign(draft,updated);$('.ebay-draft-error',row)?.remove()}
     catch(error){toast(error.message)}
   };
   const title=$('.ebay-draft-title',row);
@@ -385,13 +385,13 @@ function ebayMarketRatio(item){
   if(item.market_ratio==null)return '';
   const below=item.market_ratio<100,above=item.market_ratio>100;
   const shipping=item.shipping_cost?` + ${ebayMoney(item.shipping_cost,item.currency)} Versand`:'';
-  return `<small class="ebay-vs-market ${below?'is-below':above?'is-above':''}" title="${ebayMoney(item.price,item.currency)}${shipping} gegenüber Marktwert ${money(item.market_price)}">${below?'↓ ':above?'↑ ':''}${item.market_ratio} %</small>`;
+  return `<span class="ebay-vs-market ${below?'is-below':above?'is-above':''}" title="${ebayMoney(item.price,item.currency)}${shipping} gegenüber Marktwert ${money(item.market_price)}">${below?'↓ ':above?'↑ ':''}${item.market_ratio} %</span>`;
 }
 
 // Watchers, views, impressions and the place in the popularity ranking of one listing.
 function ebayListingStats(item){
-  const stat=(value,label,title)=>value==null?'':`<span title="${title}"><b>${Number(value).toLocaleString('de-DE')}</b> ${label}</span>`;
-  return [item.rank?`<span class="ebay-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:'',
+  const stat=(value,label,title)=>value==null?'':`<span class="variant-chip ebay-stat" title="${title}"><b>${Number(value).toLocaleString('de-DE')}</b> ${label}</span>`;
+  return [item.rank?`<span class="variant-chip ebay-stat ebay-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:'',
     stat(item.watch_count||0,'Beobachter','Wie viele das Angebot beobachten'),stat(item.view_count,'Aufrufe','Seitenaufrufe der letzten 90 Tage'),
     stat(item.impression_count,'Impressionen','Wie oft das Angebot in Suchergebnissen und Listen gezeigt wurde (90 Tage)')].join('');
 }
@@ -494,8 +494,8 @@ function openEbayStats(listings){
     $('#ebay-stats-table',modal).innerHTML=rows.length?`<div class="ebay-stats-row is-head"><span>#</span><span>Angebot</span><span>Preis</span><span>Beobachter</span><span>Aufrufe</span><span>Impressionen</span><span>Klickrate</span><span>Verkauft</span><span>Beliebtheit</span></div>
       ${rows.map(item=>`<div class="ebay-stats-row"><span class="ebay-rank">${item.rank?`#${item.rank}`:'–'}</span>
         <a href="${escapeHtml(item.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.title)}</b><small>${item.variant_id?escapeHtml(item.canonical_name||''):'keine Karte zugeordnet'}</small></a>
-        <span class="ebay-listing-price">${ebayMoney(item.price,item.currency)}${ebayMarketRatio(item)}</span><span>${number(item.watch_count||0)}</span><span>${number(item.view_count)}</span><span>${number(item.impression_count)}</span>
-        <span>${percent(item.click_through_rate)}</span><span>${number(item.quantity_sold||0)}</span><span><b>${number(item.popularity)}</b></span></div>`).join('')}`
+        <span class="ebay-listing-price">${ebayMoney(item.price,item.currency)}${ebayMarketRatio(item)}</span><span data-label="Beobachter">${number(item.watch_count||0)}</span><span data-label="Aufrufe">${number(item.view_count)}</span><span data-label="Impressionen">${number(item.impression_count)}</span>
+        <span data-label="Klickrate">${percent(item.click_through_rate)}</span><span data-label="Verkauft">${number(item.quantity_sold||0)}</span><span data-label="Beliebtheit"><b>${number(item.popularity)}</b></span></div>`).join('')}`
       :'<div class="deck-zone-empty">Keine Angebote in dieser Ansicht.</div>';
   };
   $('#ebay-stats-sort',modal).value=ebayStatsView.sort;
