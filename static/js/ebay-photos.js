@@ -4,12 +4,17 @@
 
 const EBAY_CROP_ASPECTS=[['free','Frei',null],['card','Karte 5:7',5/7],['square','Quadrat',1]];
 
-function ebayPhotoStrip(draft){
+// context: 'draft' (goes out with the listing) or 'listing' (a running listing, replaced on demand).
+function ebayPhotoStrip(draft,context='draft'){
   const photos=draft.photos||[];
-  return `<div class="ebay-photos" data-photo-variant="${escapeHtml(draft.variant_id)}">
+  const hint=photos.length
+    ?`${photos.length} ${photos.length===1?'Foto':'Fotos'} · antippen zum Zuschneiden, Drehen oder Löschen${context==='listing'?' · „Bei eBay ersetzen“ schickt genau diese Fotos':''}`
+    :context==='listing'?'Noch keine Fotos dieser Karte. Hol die Bilder des Angebots von eBay, um sie zuzuschneiden, oder lade neue hoch.'
+    :'Noch kein eigenes Foto – ohne bekommt eBay nur das Kartenbild aus dem Katalog.';
+  return `<div class="ebay-photos" data-photo-variant="${escapeHtml(draft.variant_id)}" data-photo-context="${context}">
     ${photos.map((photo,index)=>`<button type="button" class="ebay-photo" data-photo-id="${photo.id}" title="${index?'Foto bearbeiten':'Titelbild bearbeiten'}" aria-label="Foto ${index+1} bearbeiten"><img src="${escapeHtml(photo.url)}" alt="" loading="lazy">${index?'':'<i>Titel</i>'}</button>`).join('')}
     ${photos.length<24?`<label class="ebay-photo-add" title="Fotos hinzufügen"><input type="file" accept="image/*" multiple hidden data-photo-add><span aria-hidden="true">+</span><b>Foto</b></label>`:''}
-    <small class="ebay-photos-hint">${photos.length?`${photos.length} ${photos.length===1?'Foto':'Fotos'} · antippen zum Zuschneiden, Drehen oder Löschen`:'Noch kein eigenes Foto – ohne bekommt eBay nur das Kartenbild aus dem Katalog.'}</small>
+    <small class="ebay-photos-hint">${hint}</small>
   </div>`;
 }
 
@@ -17,8 +22,9 @@ function ebayPhotoStrip(draft){
 async function refreshEbayPhotos(variantId,photos){
   photos??=await api(`/api/ebay/photos?variant_id=${encodeURIComponent(variantId)}`);
   $$('.ebay-photos',content).filter(strip=>strip.dataset.photoVariant===variantId).forEach(strip=>{
-    strip.outerHTML=ebayPhotoStrip({variant_id:variantId,photos});
+    strip.outerHTML=ebayPhotoStrip({variant_id:variantId,photos},strip.dataset.photoContext);
   });
+  $$('[data-photo-count]',content).filter(label=>label.dataset.photoCount===variantId).forEach(label=>{label.textContent=photos.length?`Fotos (${photos.length})`:'Fotos'});
   $$('.ebay-photos',content).filter(strip=>strip.dataset.photoVariant===variantId).forEach(strip=>bindEbayPhotoStrip(strip));
 }
 

@@ -8,10 +8,15 @@ rotated original), so the crop can be changed any time without uploading again.
 
 On eBay a photo is uploaded once (UploadSiteHostedPictures) and its URL reused while eBay keeps
 it: a picture no listing uses expires after 30 days, so an older upload is made again.
+
+The pictures a listing already has on eBay can be fetched as photos of its card, to crop, sort or
+replace them and put them back on that listing.
 """
 import hashlib
 import io
 import json
+import re
+from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 
 from flask import jsonify, request, send_file
@@ -142,6 +147,40 @@ def listing_pictures(connection, uid, variant_id, upload_card_picture):
     return urls
 
 
+def add_photo(connection, uid, variant_id, payload, crop=None, eps_url=""):
+    """Stores one photo of the card. Raises PhotoError for anything eBay would not take."""
+    if connection.execute("SELECT COUNT(*) FROM ebay_photos WHERE user_id=? AND variant_id=?", (uid, variant_id)).fetchone()[0] >= PHOTOS_PER_CARD:
+        raise PhotoError(f"eBay nimmt höchstens {PHOTOS_PER_CARD} Fotos je Angebot.")
+    crop = crop or dict(FULL_CROP)
+    EBAY_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = now_iso()
+    position = connection.execute("SELECT COALESCE(MAX(position),-1)+1 FROM ebay_photos WHERE user_id=? AND variant_id=?", (uid, variant_id)).fetchone()[0]
+    photo_id = connection.execute(
+        "INSERT INTO ebay_photos(user_id,variant_id,position,crop,eps_url,eps_uploaded_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+        (uid, variant_id, position, json.dumps(crop), eps_url, stamp if eps_url else "", stamp, stamp)).lastrowid
+    try:
+        store_original(payload, photo_id)
+        render_listed(photo_id, crop)
+    except PhotoError:
+        connection.rollback()
+        photo_file(photo_id).unlink(missing_ok=True)
+        photo_file(photo_id, original=True).unlink(missing_ok=True)
+        raise
+    connection.commit()
+    return photo_id
+
+
+def largest_picture(url):
+    """eBay serves a picture in several sizes; its address names one. The largest is 1600 pixels."""
+    url = re.sub(r"/s-l\d+\.", "/s-l1600.", url)
+    return re.sub(r"\$_\d+\.", "$_57.", url)
+
+
+def is_ebay_picture(url):
+    parts = urlparse(url)
+    return parts.scheme == "https" and (parts.hostname or "").endswith(".ebayimg.com")
+
+
 def remove_user_photos(uid):
     """Rows and files of an account that is being deleted."""
     for row in db().execute("SELECT id FROM ebay_photos WHERE user_id=?", (uid,)).fetchall():
@@ -172,22 +211,54 @@ def upload_ebay_photo():
     payload = file.stream.read(UPLOAD_LIMIT + 1)
     if len(payload) > UPLOAD_LIMIT:
         return jsonify({"error": "Das Foto ist größer als 25 MB."}), 400
-    crop = parse_crop(request.form.get("crop"))
-    EBAY_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = now_iso()
-    position = db().execute("SELECT COALESCE(MAX(position),-1)+1 FROM ebay_photos WHERE user_id=? AND variant_id=?", (uid, variant_id)).fetchone()[0]
-    photo_id = db().execute("INSERT INTO ebay_photos(user_id,variant_id,position,crop,created_at,updated_at) VALUES(?,?,?,?,?,?)",
-                            (uid, variant_id, position, json.dumps(crop), stamp, stamp)).lastrowid
     try:
-        store_original(payload, photo_id)
-        render_listed(photo_id, crop)
+        photo_id = add_photo(db(), uid, variant_id, payload, parse_crop(request.form.get("crop")))
     except PhotoError as error:
-        db().rollback()
-        photo_file(photo_id).unlink(missing_ok=True)
-        photo_file(photo_id, original=True).unlink(missing_ok=True)
         return jsonify({"error": str(error)}), 400
-    db().commit()
     return jsonify(photo_payload(own_photo(photo_id))), 201
+
+
+@app.post("/api/ebay/listings/<item_id>/photos/import")
+@login_required
+def import_listing_pictures(item_id):
+    """The pictures the listing has on eBay become photos of its card, in their order, after the
+    ones there are. A picture fetched before is not fetched again. Each keeps its eBay address, so
+    putting it back unchanged needs no new upload."""
+    from .ebay import EbayError, http, text, trading_call
+
+    uid = user_id()
+    listing = db().execute("SELECT * FROM ebay_listings WHERE user_id=? AND item_id=?", (uid, item_id)).fetchone()
+    if not listing:
+        return jsonify({"error": "Angebot nicht gefunden."}), 404
+    if not listing["variant_id"]:
+        return jsonify({"error": "Ordne dem Angebot zuerst eine Karte zu: Fotos gehören zu einer Karte."}), 400
+    if not item_id.isdigit():
+        return jsonify({"error": "Angebot nicht gefunden."}), 404
+    try:
+        root, _ = trading_call(db(), uid, "GetItem", f"<ItemID>{item_id}</ItemID>")
+    except EbayError as error:
+        return jsonify({"error": str(error)}), error.status
+    urls = [url for url in (element.text or "" for element in root.findall("Item/PictureDetails/PictureURL")) if is_ebay_picture(url)]
+    known = {row["eps_url"] for row in db().execute("SELECT eps_url FROM ebay_photos WHERE user_id=? AND variant_id=?", (uid, listing["variant_id"]))}
+    added, failed = 0, []
+    for url in urls:
+        if url in known:
+            continue
+        try:
+            response = http("GET", largest_picture(url), timeout=30)
+            if response.status_code != 200 or len(response.content) > UPLOAD_LIMIT:
+                raise PhotoError(f"HTTP {response.status_code}")
+            add_photo(db(), uid, listing["variant_id"], response.content, eps_url=url)
+            added += 1
+        except PhotoError as error:
+            if "höchstens" in str(error):
+                failed.append(str(error))
+                break
+            failed.append(f"Ein Bild ließ sich nicht laden ({error}).")
+        except Exception as error:  # the picture server unreachable
+            failed.append(f"Ein Bild ließ sich nicht laden ({error.__class__.__name__}).")
+    return jsonify({"found": len(urls), "added": added, "errors": failed,
+                    "photos": card_photos(db(), uid, [listing["variant_id"]])[listing["variant_id"]]})
 
 
 @app.patch("/api/ebay/photos/<int:photo_id>")

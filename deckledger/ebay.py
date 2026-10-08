@@ -1195,7 +1195,9 @@ def revise_ebay_listing(item_id):
     _, warnings = trading_call(db(), user_id(), "ReviseFixedPriceItem", revise_xml(db(), listing, draft, preset, parts, pictures))
     if "title" in parts:
         db().execute("UPDATE ebay_listings SET title=? WHERE user_id=? AND item_id=?", (draft["title"], user_id(), item_id))
-        db().commit()
+    if pictures:
+        db().execute("UPDATE ebay_listings SET image_url=? WHERE user_id=? AND item_id=?", (pictures[0], user_id(), item_id))
+    db().commit()
     return jsonify({"revised": True, "title": draft["title"], "warnings": warnings})
 
 
@@ -1421,6 +1423,9 @@ def ebay_listings():
     # The ranking: the active listings by popularity, 1 the most popular.
     for rank, listing in enumerate(sorted((row for row in listings if row["status"] == "active"), key=lambda row: -row["popularity"]), 1):
         listing["rank"] = rank
+    photos = card_photos(db(), uid, [listing["variant_id"] for listing in listings if listing["variant_id"]])
+    for listing in listings:
+        listing["photos"] = photos.get(listing["variant_id"], [])
     return jsonify({"listings": listings, "sales": [dict(row) for row in sales], "status": status_payload(db(), uid)})
 
 

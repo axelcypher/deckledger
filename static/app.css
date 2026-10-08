@@ -1223,6 +1223,12 @@ body.sidebar-collapsed .brand>.brand-word { display:none; }
 .ebay-photo-add span { font-size:18px;line-height:1; }
 .ebay-photo-add b { font-size:9px; }
 .ebay-photos-hint { flex:1 1 180px;color:var(--muted);font-size:10px;line-height:1.4; }
+.ebay-listing:has(.ebay-listing-photos:not(.hidden)) { align-items:start; }
+.ebay-listing-photos { display:grid;gap:10px;margin-top:6px;padding:12px;border-radius:12px;background:var(--surface-2); }
+.ebay-listing-photos .ebay-photo, .ebay-listing-photos .ebay-photo-add { background:var(--surface); }
+.ebay-listing-photo-actions { display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px; }
+.ebay-listing-photo-actions > button { min-height:34px;padding-inline:14px; }
+@media (max-width:640px) { .ebay-listing-photo-actions > button { flex:1; } }
 .ebay-crop-overlay .dl-modal { width:min(760px,100%); }
 .ebay-crop-stage { position:relative;display:grid;place-items:center;min-height:240px;overflow:hidden;border-radius:14px;background:#14120f;user-select:none; }
 .ebay-crop-stage canvas { display:block;max-width:100%; }

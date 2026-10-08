@@ -298,7 +298,7 @@ async function renderEbay(){
   });
   $$('[data-ebay-filter]',content).forEach(button=>button.onclick=()=>{ebayView.listingFilter=button.dataset.ebayFilter;renderEbay()});
   $$('.ebay-draft',content).forEach(row=>bindEbayDraftRow(row,drafts.drafts.find(draft=>draft.id===Number(row.dataset.draft))));
-  $$('.ebay-photos',content).forEach(bindEbayPhotoStrip);
+  $$('.ebay-photos',content).forEach(bindEbayPhotoStrip);   // drafts and listings
   $$('.ebay-listing',content).forEach(row=>bindEbayListingRow(row));
   const runAll=async(button,action,label)=>{
     const ids=open.map(draft=>draft.id);let ok=0;
@@ -378,8 +378,10 @@ function ebayListingRow(item){
     <div class="ebay-listing-main"><a href="${escapeHtml(item.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.title)}</b></a>
       <small><em class="ebay-chip ${item.status==='active'?'is-live':item.status==='sold'?'is-sold':'is-ended'}">${statusLabel}</em> ${item.quantity_sold?`${item.quantity_sold} verkauft · `:''}${item.status==='active'?`${Math.max(0,item.quantity-item.quantity_sold)} verfügbar · `:''}seit ${date(item.started_at)}</small>
       <div class="ebay-listing-stats">${ebayListingStats(item)}</div>
-      <small>${item.variant_id?`Karte: ${escapeHtml(item.canonical_name||item.variant_id)}${item.set_code?` (${escapeHtml(item.set_code)} ${escapeHtml(item.collector_number)})`:''}${item.market_price!=null?` · Marktpreis ${money(item.market_price)}`:''} <button type="button" class="link-button" data-ebay-unlink>lösen</button>`
+      <small>${item.variant_id?`Karte: ${escapeHtml(item.canonical_name||item.variant_id)}${item.set_code?` (${escapeHtml(item.set_code)} ${escapeHtml(item.collector_number)})`:''}${item.market_price!=null?` · Marktpreis ${money(item.market_price)}`:''} <button type="button" class="link-button" data-ebay-unlink>lösen</button>${item.status==='active'?` · <button type="button" class="link-button" data-ebay-photos-toggle data-photo-count="${escapeHtml(item.variant_id)}">${item.photos?.length?`Fotos (${item.photos.length})`:'Fotos'}</button>`:''}`
         :'<button type="button" class="link-button" data-ebay-link>Karte zuordnen</button>'}</small>
+      ${item.variant_id&&item.status==='active'?`<div class="ebay-listing-photos hidden">${ebayPhotoStrip(item,'listing')}
+        <div class="ebay-listing-photo-actions"><button type="button" class="secondary-button" data-ebay-photos-import title="Die Bilder, die das Angebot jetzt bei eBay hat, als Fotos dieser Karte holen">Bilder von eBay holen</button><button type="button" class="primary-button" data-ebay-photos-push>Bei eBay ersetzen</button></div></div>`:''}
       <div class="ebay-link-search hidden"><b class="ebay-link-heading">Vorschläge aus deiner Sammlung</b><div class="ebay-link-suggestions"><small class="muted">Wird gesucht …</small></div>
         <input class="select-control" placeholder="Oder in deiner Sammlung suchen: Name, Nummer, Set …"><div class="ebay-link-results"></div></div>
     </div>
@@ -408,6 +410,28 @@ function bindEbayListingRow(row){
   const itemId=row.dataset.item;
   const link=async variantId=>{try{await api(`/api/ebay/listings/${encodeURIComponent(itemId)}`,{method:'PATCH',body:JSON.stringify({variant_id:variantId})});renderEbay()}catch(error){toast(error.message)}};
   $('[data-ebay-unlink]',row)?.addEventListener('click',()=>link(null));
+  // Photos of a running listing: fetch what it has on eBay, edit, and put them back on this listing.
+  const panel=$('.ebay-listing-photos',row);
+  $('[data-ebay-photos-toggle]',row)?.addEventListener('click',()=>panel.classList.toggle('hidden'));
+  $('[data-ebay-photos-import]',row)?.addEventListener('click',async event=>{
+    const button=event.currentTarget,variantId=$('.ebay-photos',panel).dataset.photoVariant;
+    button.disabled=true;button.textContent='Wird geholt …';
+    try{
+      const result=await post(`/api/ebay/listings/${encodeURIComponent(itemId)}/photos/import`,{});
+      await refreshEbayPhotos(variantId,result.photos);
+      toast(!result.found?'Das Angebot hat bei eBay keine Bilder.':result.added?`${result.added} ${result.added===1?'Bild':'Bilder'} von eBay geholt${result.errors.length?` – ${result.errors[0]}`:''}`:result.errors[0]||'Alle Bilder des Angebots sind schon da.');
+    }catch(error){toast(error.message)}
+    button.disabled=false;button.textContent='Bilder von eBay holen';
+  });
+  $('[data-ebay-photos-push]',row)?.addEventListener('click',async event=>{
+    const count=$$('.ebay-photo',panel).length;
+    if(!count){toast('Erst Fotos holen oder hochladen.');return}
+    if(!confirm(`Die Bilder dieses Angebots bei eBay durch ${count===1?'dieses Foto':`diese ${count} Fotos`} ersetzen?`))return;
+    const button=event.currentTarget;button.disabled=true;button.textContent='Wird ersetzt …';
+    try{await post(`/api/ebay/listings/${encodeURIComponent(itemId)}/revise`,{parts:['pictures']});toast('Bilder bei eBay ersetzt')}
+    catch(error){toast(error.message)}
+    button.disabled=false;button.textContent='Bei eBay ersetzen';
+  });
   $('[data-ebay-link]',row)?.addEventListener('click',()=>{
     const box=$('.ebay-link-search',row),input=$('input',box),results=$('.ebay-link-results',box),suggestions=$('.ebay-link-suggestions',box);
     box.classList.toggle('hidden');
@@ -433,7 +457,7 @@ const EBAY_REVISE_PARTS=[['title','Titel'],['description','Beschreibung'],['aspe
 
 async function openEbayRevise(){
   const modal=openSettingsModal({id:'ebay-revise-modal',eyebrow:'EBAY',title:'Vorlage auf Angebote anwenden',
-    intro:'Setzt die gewählten Teile deiner aktiven Angebote neu aus der Angebotsvorlage des jeweiligen TCGs. Preis, Menge und Bilder bleiben, wie sie sind.',
+    intro:'Setzt die gewählten Teile deiner aktiven Angebote neu aus der Angebotsvorlage des jeweiligen TCGs. Preis und Menge bleiben, wie sie sind; die Bilder nur ohne „Eigene Fotos“. Bilder eines einzelnen Angebots bearbeitest du unter „Fotos“ in der Liste.',
     body:'<div id="ebay-revise-body"><div class="page-loader compact"><span></span></div></div>'});
   const body=$('#ebay-revise-body',modal);
   let rows;

@@ -41,6 +41,8 @@ class FakeEbay:
         self.groups = set()
         self.traffic = {}
         self.traffic_params = None
+        self.item_pictures = []      # what GetItem names as the listing's pictures
+        self.picture_files = {}      # url -> bytes on eBay's picture server
 
     def __call__(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
@@ -78,6 +80,8 @@ class FakeEbay:
                     content=f'<{call}Response xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><SeverityCode>Error</SeverityCode><LongMessage>{self.fail[call]}</LongMessage></Errors></{call}Response>'.encode())
             if call == "UploadSiteHostedPictures":
                 return trading(call, "<SiteHostedPictureDetails><FullURL>https://i.ebayimg.com/card.jpg</FullURL></SiteHostedPictureDetails>")
+            if call == "GetItem":
+                return trading(call, "<Item><PictureDetails>" + "".join(f"<PictureURL>{url}</PictureURL>" for url in self.item_pictures) + "</PictureDetails></Item>")
             if call == "ReviseFixedPriceItem":
                 return trading(call, "<ItemID>111</ItemID>")
             if call in ("AddFixedPriceItem", "VerifyAddFixedPriceItem"):
@@ -86,6 +90,8 @@ class FakeEbay:
                 body = kwargs["data"].decode()
                 name = next(name for name in self.selling if f"<{name}><Include>true" in body)
                 return trading(call, self.selling[name])
+        if method == "GET" and url in self.picture_files:
+            return Response(content=self.picture_files[url])
         raise AssertionError(f"unexpected request {method} {url}")
 
 
@@ -782,3 +788,28 @@ def test_active_listings_take_over_the_own_photos(client, configured, photo_dir)
     assert client.post("/api/ebay/listings/111/revise", json={"parts": ["pictures"]}).get_json()["revised"] is True
     document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "ReviseFixedPriceItem"][0][2]["data"].decode()
     assert "<PictureURL>https://i.ebayimg.com/card.jpg</PictureURL>" in document and "<Title>" not in document
+
+
+def test_pictures_of_a_running_listing_can_be_fetched_edited_and_put_back(client, configured, photo_dir):
+    connect()
+    own_listing("111", variant_id=EMBER8, title="Ember")
+    first, second = "https://i.ebayimg.com/images/g/abc/s-l500.jpg", "https://i.ebayimg.com/00/s/x/z/def/$_1.JPG"
+    configured.item_pictures = [first, second, "https://evil.example.com/x.jpg"]
+    configured.picture_files = {"https://i.ebayimg.com/images/g/abc/s-l1600.jpg": photo_bytes(),
+                                "https://i.ebayimg.com/00/s/x/z/def/$_57.JPG": photo_bytes(900, 1200)}
+    fetched = client.post("/api/ebay/listings/111/photos/import").get_json()
+    assert (fetched["found"], fetched["added"], len(fetched["photos"])) == (2, 2, 2), "only eBay's own picture server, in the largest size"
+    assert client.post("/api/ebay/listings/111/photos/import").get_json()["added"] == 0, "nothing twice"
+    listing = next(item for item in client.get("/api/ebay/listings").get_json()["listings"] if item["item_id"] == "111")
+    assert [photo["id"] for photo in listing["photos"]] == [photo["id"] for photo in fetched["photos"]]
+    # The second one is cropped, then both go back: the unchanged one without a new upload.
+    second_id = fetched["photos"][1]["id"]
+    client.patch(f"/api/ebay/photos/{second_id}", json={"crop": {"x": 0, "y": 0, "w": 1, "h": 0.6}})
+    assert client.post("/api/ebay/listings/111/revise", json={"parts": ["pictures"]}).get_json()["revised"] is True
+    calls = lambda name: [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == name]
+    assert len(calls("UploadSiteHostedPictures")) == 1
+    document = calls("ReviseFixedPriceItem")[0][2]["data"].decode()
+    assert document.index(f"<PictureURL>{first}</PictureURL>") < document.index("<PictureURL>https://i.ebayimg.com/card.jpg</PictureURL>")
+    assert query("SELECT image_url FROM ebay_listings WHERE item_id='111'")[0]["image_url"] == first
+    own_listing("222", title="Ohne Karte")
+    assert client.post("/api/ebay/listings/222/photos/import").status_code == 400
