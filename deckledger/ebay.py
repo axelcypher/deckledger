@@ -45,6 +45,7 @@ from .config import jload, now_iso
 from .web import admin_required, app, db, login_required, user_id
 from .prices import latest_price_sql
 from .images import card_image
+from .ebay_photos import card_photos, listing_pictures
 
 
 PRICE_PROVIDER = "ebay"
@@ -798,8 +799,10 @@ def description_html(text, title=""):
 def build_draft(connection, uid, card, preset, quantity, label=None, sheet_id=None, currency="EUR"):
     condition = card_condition(connection, uid, card["variant_id"], preset)
     values = card_values(card, condition, quantity, preset)
-    # eBay allows 80 characters; "1st Edition" spelled out pushed long names over.
-    title = re.sub(r"\s+", " ", FIRST_EDITION.sub("1st Ed", fill(preset["title_template"], values))).strip()[:TITLE_LIMIT].strip()
+    # eBay allows 80 characters; "1st Edition" spelled out pushed long names over. Brackets in a
+    # card's name ("Ember (PL8)") go, their content stays: they only cost characters in a title.
+    title = FIRST_EDITION.sub("1st Ed", fill(preset["title_template"], values)).replace("(", " ").replace(")", " ")
+    title = re.sub(r"\s+([,.;:!?])", r"\1", re.sub(r"\s+", " ", title)).strip()[:TITLE_LIMIT].strip()
     # In an HTML description the card's own text must not turn into markup.
     template = preset["description_template"]
     escaped = {key: html.escape(str(value), quote=False) for key, value in values.items()} if is_html(template) else values
@@ -834,6 +837,9 @@ def draft_rows(connection, uid, where="", args=()):
         item["aspects"] = jload(item["aspects"], [])
         item["item_url"] = f'https://{domain}/itm/{item["item_id"]}' if item["item_id"] else None
         result.append(item)
+    photos = card_photos(connection, uid, [item["variant_id"] for item in result])
+    for item in result:
+        item["photos"] = photos[item["variant_id"]]
     return result
 
 
@@ -935,7 +941,7 @@ def ebay_draft(draft_id):
     return jsonify(draft_rows(db(), user_id(), "AND d.id=?", (draft_id,))[0])
 
 
-def item_xml(connection, uid, draft, preset, picture_url=None):
+def item_xml(connection, uid, draft, preset, pictures=()):
     """The <Item> of AddFixedPriceItem / VerifyAddFixedPriceItem for a draft."""
     config = ebay_config(connection)
     site = marketplace(config)
@@ -971,7 +977,7 @@ def item_xml(connection, uid, draft, preset, picture_url=None):
 <ListingDuration>GTC</ListingDuration><ListingType>FixedPriceItem</ListingType>
 <Quantity>{int(draft["quantity"])}</Quantity>
 {f'<SKU>{xml_escape(sku)}</SKU>' if len(sku) <= 50 else ''}
-{f'<PictureDetails><PictureURL>{xml_escape(picture_url)}</PictureURL></PictureDetails>' if picture_url else ''}
+{f'<PictureDetails>{"".join(f"<PictureURL>{xml_escape(url)}</PictureURL>" for url in pictures)}</PictureDetails>' if pictures else ''}
 {f'<ItemSpecifics>{aspects}</ItemSpecifics>' if aspects else ''}
 {'<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>' if preset["best_offer"] else ''}
 {seller_profiles(preset) if policies else direct_shipping(preset, site["currency"])}
@@ -1048,7 +1054,10 @@ def verify_ebay_draft(draft_id):
         return jsonify({"error": "Entwurf nicht gefunden."}), 404
     preset = load_preset(db(), user_id(), draft["game_id"])
     try:
-        root, warnings = trading_call(db(), user_id(), "VerifyAddFixedPriceItem", item_xml(db(), user_id(), draft, preset))
+        item_xml(db(), user_id(), draft, preset)   # cheap checks first: no picture upload for a draft that cannot go out
+        user_token(db(), user_id())
+        pictures = listing_pictures(db(), user_id(), draft["variant_id"], upload_card_picture)
+        root, warnings = trading_call(db(), user_id(), "VerifyAddFixedPriceItem", item_xml(db(), user_id(), draft, preset, pictures))
     except EbayError as error:
         db().execute("UPDATE ebay_drafts SET error=? WHERE id=?", (str(error), draft_id))
         db().commit()
@@ -1071,8 +1080,9 @@ def publish_ebay_draft(draft_id):
     preset = load_preset(db(), uid, draft["game_id"])
     try:
         item_xml(db(), uid, draft, preset)   # cheap checks first: no picture upload for a draft that cannot go out
-        picture = upload_card_picture(db(), uid, draft["variant_id"])
-        root, warnings = trading_call(db(), uid, "AddFixedPriceItem", item_xml(db(), uid, draft, preset, picture))
+        user_token(db(), uid)
+        pictures = listing_pictures(db(), uid, draft["variant_id"], upload_card_picture)
+        root, warnings = trading_call(db(), uid, "AddFixedPriceItem", item_xml(db(), uid, draft, preset, pictures))
     except EbayError as error:
         db().execute("UPDATE ebay_drafts SET status='failed',error=?,updated_at=? WHERE id=?", (str(error), now_iso(), draft_id))
         db().commit()
@@ -1086,7 +1096,7 @@ def publish_ebay_draft(draft_id):
         """INSERT INTO ebay_listings(user_id,item_id,variant_id,title,sku,price,currency,quantity,status,url,image_url,started_at,synced_at)
            VALUES(?,?,?,?,?,?,?,?,'active',?,?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET variant_id=excluded.variant_id""",
         (uid, item_id, draft["variant_id"], draft["title"], f'DL-{draft["variant_id"]}'[:50], draft["price"], marketplace(config)["currency"],
-         draft["quantity"], f'https://{marketplace(config)["domain"]}/itm/{item_id}', picture, stamp, stamp),
+         draft["quantity"], f'https://{marketplace(config)["domain"]}/itm/{item_id}', pictures[0], stamp, stamp),
     )
     db().commit()
     return jsonify({"published": True, "item_id": item_id, "url": f'https://{marketplace(config)["domain"]}/itm/{item_id}', "warnings": warnings})
@@ -1095,8 +1105,8 @@ def publish_ebay_draft(draft_id):
 # ---- Revising listings with the preset ----------------------------------------------------------
 # A listing made elsewhere (or from an older preset) can be brought in line with the current one:
 # ReviseFixedPriceItem replaces the parts chosen -- title, description, item specifics, shipping
-# and returns -- and leaves price, quantity and pictures as they are.
-REVISE_PARTS = ("title", "description", "aspects", "shipping")
+# and returns, the card's own photos -- and leaves price and quantity as they are.
+REVISE_PARTS = ("title", "description", "aspects", "shipping", "pictures")
 
 
 def revision(connection, uid, listing):
@@ -1109,9 +1119,11 @@ def revision(connection, uid, listing):
     return build_draft(connection, uid, dict(card), preset, available), preset
 
 
-def revise_xml(connection, listing, draft, preset, parts):
+def revise_xml(connection, listing, draft, preset, parts, pictures=()):
     config = ebay_config(connection)
     pieces = [f'<ItemID>{xml_escape(listing["item_id"])}</ItemID>']
+    if pictures:
+        pieces.append(f'<PictureDetails>{"".join(f"<PictureURL>{xml_escape(url)}</PictureURL>" for url in pictures)}</PictureDetails>')
     if "title" in parts:
         if not draft["title"]:
             raise EbayError("Die Vorlage ergibt keinen Titel.")
@@ -1147,7 +1159,8 @@ def ebay_listing_revisions():
     """The active listings with a card, each with the title the preset would give it."""
     uid, result = user_id(), []
     for listing in db().execute("SELECT * FROM ebay_listings WHERE user_id=? AND status='active' ORDER BY started_at DESC", (uid,)).fetchall():
-        entry = {"item_id": listing["item_id"], "title": listing["title"], "variant_id": listing["variant_id"], "url": listing["url"]}
+        entry = {"item_id": listing["item_id"], "title": listing["title"], "variant_id": listing["variant_id"], "url": listing["url"],
+                 "photos": db().execute("SELECT COUNT(*) FROM ebay_photos WHERE user_id=? AND variant_id=?", (uid, listing["variant_id"])).fetchone()[0]}
         if listing["variant_id"]:
             try:
                 entry["new_title"] = revision(db(), uid, listing)[0]["title"]
@@ -1171,7 +1184,15 @@ def revise_ebay_listing(item_id):
     if not parts:
         return jsonify({"error": "Nichts zum Ändern gewählt."}), 400
     draft, preset = revision(db(), user_id(), listing)
-    _, warnings = trading_call(db(), user_id(), "ReviseFixedPriceItem", revise_xml(db(), listing, draft, preset, parts))
+    pictures = []
+    if "pictures" in parts:
+        # Only the user's own photos: a listing's pictures are never swapped for the catalogue image.
+        if not db().execute("SELECT 1 FROM ebay_photos WHERE user_id=? AND variant_id=?", (user_id(), listing["variant_id"])).fetchone():
+            if parts == ["pictures"]:
+                return jsonify({"error": "Für diese Karte gibt es keine eigenen Fotos."}), 400
+        else:
+            pictures = listing_pictures(db(), user_id(), listing["variant_id"], upload_card_picture)
+    _, warnings = trading_call(db(), user_id(), "ReviseFixedPriceItem", revise_xml(db(), listing, draft, preset, parts, pictures))
     if "title" in parts:
         db().execute("UPDATE ebay_listings SET title=? WHERE user_id=? AND item_id=?", (draft["title"], user_id(), item_id))
         db().commit()

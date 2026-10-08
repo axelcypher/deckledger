@@ -250,7 +250,7 @@ def test_drafts_follow_the_preset(client):
     assert created.status_code == 201 and created.get_json()["created"] == 2
     drafts = {draft["variant_id"]: draft for draft in client.get("/api/ebay/drafts?game_id=vcard").get_json()["drafts"]}
     ember = drafts[EMBER8]
-    assert ember["title"] == "Ember (PL8) 1-001 [EN]"
+    assert ember["title"] == "Ember PL8 1-001 [EN]", "brackets of the name go, their content stays"
     assert (ember["price"], ember["quantity"], ember["condition"]) == (3.99, 3, "400011")
     assert ember["aspects"] == [["Spiel", "VCard"]]
     assert (drafts[EMBER9]["price"], drafts[EMBER9]["quantity"], drafts[EMBER9]["condition"]) == (None, 1, "400010")
@@ -654,15 +654,15 @@ def test_active_listings_take_over_the_preset(client, configured):
     own_listing("222", title="Nicht zugeordnet")
     own_listing("333", variant_id=TIDE8, title="Tide alt", status="sold")
     revisions = {row["item_id"]: row for row in client.get("/api/ebay/listings/revisions").get_json()}
-    assert set(revisions) == {"111", "222"} and revisions["111"]["new_title"] == "Ember (PL8) 1 VCard" and "new_title" not in revisions["222"]
+    assert set(revisions) == {"111", "222"} and revisions["111"]["new_title"] == "Ember PL8 1 VCard" and "new_title" not in revisions["222"]
     response = client.post("/api/ebay/listings/111/revise", json={"parts": ["title", "aspects", "shipping"]})
     assert response.get_json()["revised"] is True
     document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "ReviseFixedPriceItem"][0][2]["data"].decode()
-    for part in ("<ItemID>111</ItemID>", "<Title>Ember (PL8) 1 VCard</Title>", "<Name>Kartenname</Name>", "<ShippingService>DE_DeutschePostBrief</ShippingService>",
+    for part in ("<ItemID>111</ItemID>", "<Title>Ember PL8 1 VCard</Title>", "<Name>Kartenname</Name>", "<ShippingService>DE_DeutschePostBrief</ShippingService>",
                  "<BestOfferEnabled>true</BestOfferEnabled>"):
         assert part in document
     assert "<Description>" not in document and "<StartPrice" not in document and "<Quantity>" not in document, "only what was chosen; price and quantity stay"
-    assert query("SELECT title FROM ebay_listings WHERE item_id='111'")[0]["title"] == "Ember (PL8) 1 VCard"
+    assert query("SELECT title FROM ebay_listings WHERE item_id='111'")[0]["title"] == "Ember PL8 1 VCard"
     assert client.post("/api/ebay/listings/222/revise", json={"parts": ["title"]}).status_code == 400
     assert client.post("/api/ebay/listings/333/revise", json={"parts": ["title"]}).status_code == 400
     assert client.post("/api/ebay/listings/111/revise", json={"parts": []}).status_code == 400
@@ -695,3 +695,90 @@ def test_cards_already_on_ebay_get_no_draft(client):
     assert {draft["variant_id"] for draft in client.get("/api/ebay/drafts").get_json()["drafts"]} == {EMBER9, TIDE8}
     assert client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["listed"] == 1
 
+
+
+# ---- Own photos of a card -----------------------------------------------------------------------
+
+def photo_bytes(width=1200, height=900, colour=(200, 40, 40)):
+    import io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), colour).save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+def upload_photo(client, variant_id=EMBER8, crop=None, payload=None):
+    import io
+    data = {"variant_id": variant_id, "file": (io.BytesIO(payload or photo_bytes()), "photo.jpg")}
+    if crop is not None:
+        data["crop"] = json.dumps(crop)
+    return client.post("/api/ebay/photos", data=data, content_type="multipart/form-data")
+
+
+@pytest.fixture
+def photo_dir(monkeypatch, tmp_path):
+    monkeypatch.setattr(deckledger.ebay_photos, "EBAY_PHOTO_DIR", tmp_path / "ebay-photos")
+    return tmp_path / "ebay-photos"
+
+
+def test_photos_are_cropped_and_turned_on_the_server(client, photo_dir):
+    from PIL import Image
+    created = upload_photo(client, crop={"x": 0.25, "y": 0, "w": 0.5, "h": 1, "rotate": 90})
+    assert created.status_code == 201
+    photo = created.get_json()
+    assert photo["crop"] == {"x": 0.25, "y": 0.0, "w": 0.5, "h": 1.0, "rotate": 90}
+    with Image.open(photo_dir / f'{photo["id"]}.jpg') as listed:
+        assert listed.size == (450, 1200), "turned to 900x1200, then the middle half of its width"
+    with Image.open(photo_dir / f'{photo["id"]}-original.jpg') as original:
+        assert original.size == (1200, 900), "the original stays as uploaded"
+    recropped = client.patch(f'/api/ebay/photos/{photo["id"]}', json={"crop": {"x": 0, "y": 0, "w": 1, "h": 1, "rotate": 0}}).get_json()
+    with Image.open(photo_dir / f'{photo["id"]}.jpg') as listed:
+        assert listed.size == (1200, 900) and recropped["url"] != photo["url"], "a new crop is a new address, even within a second"
+    assert client.get(photo["url"]).status_code == 200 and client.get(photo["original_url"]).status_code == 200
+    assert login(ADMIN).get(photo["url"]).status_code == 404, "only for its owner"
+
+
+def test_photos_eBay_would_refuse_are_not_kept(client, photo_dir):
+    small = upload_photo(client, crop={"x": 0, "y": 0, "w": 0.3, "h": 0.3})
+    assert small.status_code == 400 and "mindestens 500 Pixel" in small.get_json()["error"]
+    broken = upload_photo(client, payload=b"no picture at all")
+    assert broken.status_code == 400 and "kein Bild" in broken.get_json()["error"]
+    assert query("SELECT COUNT(*) n FROM ebay_photos")[0]["n"] == 0 and not list(photo_dir.glob("*.jpg"))
+
+
+def test_photos_order_and_deleting(client, photo_dir):
+    first, second, third = (upload_photo(client).get_json()["id"] for _ in range(3))
+    ordered = client.post("/api/ebay/photos/order", json={"variant_id": EMBER8, "ids": [third, first]}).get_json()
+    assert [photo["id"] for photo in ordered] == [third, first, second]
+    assert client.delete(f"/api/ebay/photos/{first}").get_json() == {"deleted": True}
+    assert [photo["id"] for photo in client.get(f"/api/ebay/photos?variant_id={EMBER8}").get_json()] == [third, second]
+    assert not (photo_dir / f"{first}.jpg").exists() and not (photo_dir / f"{first}-original.jpg").exists()
+    assert login(ADMIN).delete(f"/api/ebay/photos/{second}").status_code == 404
+
+
+def test_listings_go_out_with_the_own_photos(client, configured, monkeypatch, tmp_path, photo_dir):
+    draft_id = ready_draft(client, monkeypatch, tmp_path)
+    upload_photo(client), upload_photo(client)
+    draft = client.get("/api/ebay/drafts").get_json()["drafts"][0]
+    assert len(draft["photos"]) == 2, "drafts show the card's photos"
+    uploads = lambda: [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "UploadSiteHostedPictures"]
+    assert client.post(f"/api/ebay/drafts/{draft_id}/verify").get_json()["ok"] is True
+    assert len(uploads()) == 2 and all(call[2]["files"]["image"][2] == "image/jpeg" for call in uploads())
+    verified = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "VerifyAddFixedPriceItem"][0][2]["data"].decode()
+    assert verified.count("<PictureURL>") == 2, "eBay checks the listing with its pictures"
+    client.post(f"/api/ebay/drafts/{draft_id}/publish")
+    assert len(uploads()) == 2, "photos already on eBay are not uploaded again"
+    published = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "AddFixedPriceItem"][0][2]["data"].decode()
+    assert published.count("<PictureURL>") == 2
+
+
+def test_active_listings_take_over_the_own_photos(client, configured, photo_dir):
+    connect()
+    own_listing("111", variant_id=EMBER8, title="Ember")
+    own_listing("222", variant_id=TIDE8, title="Tide")
+    assert client.post("/api/ebay/listings/222/revise", json={"parts": ["pictures"]}).status_code == 400, "no own photos: the listing keeps its pictures"
+    upload_photo(client)
+    assert {row["item_id"]: row["photos"] for row in client.get("/api/ebay/listings/revisions").get_json()} == {"111": 1, "222": 0}
+    assert client.post("/api/ebay/listings/111/revise", json={"parts": ["pictures"]}).get_json()["revised"] is True
+    document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "ReviseFixedPriceItem"][0][2]["data"].decode()
+    assert "<PictureURL>https://i.ebayimg.com/card.jpg</PictureURL>" in document and "<Title>" not in document

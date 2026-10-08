@@ -17,6 +17,7 @@ from .web import admin_required, app, db, user_id
 from .schema import default_provider_code, ensure_user_lists
 from .auth import resolve_oauth_config
 from .sheets import remove_user_backgrounds
+from .ebay_photos import remove_user_photos
 
 
 # ---- User management (admin) -------------------------------------------------------------------
@@ -139,6 +140,7 @@ def admin_delete_user(target_id):
     db().execute("DELETE FROM deals WHERE user_id=?", (target_id,))  # their cards and events go with them (ON DELETE CASCADE)
     db().execute("DELETE FROM trade_sheet_cards WHERE sheet_id IN (SELECT id FROM trade_sheets WHERE user_id=?)", (target_id,))
     remove_user_backgrounds(target_id)
+    remove_user_photos(target_id)
     for table in ("decks", "named_watchlists", "trade_sheets", "watchlist_entries", "collection_entries", "import_operations", "user_settings", "applied_requests",
                   "ebay_accounts", "ebay_listings", "ebay_sales", "ebay_drafts"):
         db().execute(f"DELETE FROM {table} WHERE user_id=?", (target_id,))

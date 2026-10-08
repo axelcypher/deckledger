@@ -298,6 +298,7 @@ async function renderEbay(){
   });
   $$('[data-ebay-filter]',content).forEach(button=>button.onclick=()=>{ebayView.listingFilter=button.dataset.ebayFilter;renderEbay()});
   $$('.ebay-draft',content).forEach(row=>bindEbayDraftRow(row,drafts.drafts.find(draft=>draft.id===Number(row.dataset.draft))));
+  $$('.ebay-photos',content).forEach(bindEbayPhotoStrip);
   $$('.ebay-listing',content).forEach(row=>bindEbayListingRow(row));
   const runAll=async(button,action,label)=>{
     const ids=open.map(draft=>draft.id);let ok=0;
@@ -324,6 +325,7 @@ function ebayDraftRow(draft,status){
       <small>${detail}${draft.market_price!=null?` · Marktpreis ${money(draft.market_price)}`:''} · ${draft.owned}× in der Sammlung${draft.fees!=null?` · Gebühr ${money(draft.fees)}`:''}</small>
     </div>
     ${draft.error?`<p class="sheet-warning ebay-draft-error">${escapeHtml(draft.error)}</p>`:''}
+    ${published?'':ebayPhotoStrip(draft)}
     ${published?'':`<details class="ebay-draft-more"><summary>Beschreibung &amp; Merkmale</summary><textarea class="ebay-draft-description" rows="5">${escapeHtml(draft.description)}</textarea><span class="ebay-draft-aspects">${draft.aspects.map(([name,value])=>`${escapeHtml(name)}: ${escapeHtml(value)}`).join(' · ')||'Keine Merkmale'}</span></details>`}
     ${published
       ?`<div class="ebay-draft-controls"><div class="ebay-draft-actions"><span class="ebay-chip is-live">eingestellt ${ebayDate(draft.published_at)}</span><a class="secondary-button" href="${escapeHtml(draft.item_url||'#')}" target="_blank" rel="noopener noreferrer">Ansehen</a><button type="button" class="icon-button" data-ebay-draft-delete title="Aus der Liste entfernen" aria-label="Aus der Liste entfernen">×</button></div></div>`
@@ -426,7 +428,8 @@ function bindEbayListingRow(row){
 }
 
 // ---- Bringing active listings in line with the preset -------------------------------------------
-const EBAY_REVISE_PARTS=[['title','Titel'],['description','Beschreibung'],['aspects','Artikelmerkmale'],['shipping','Versand, Rücknahme & Preisvorschläge']];
+// Pictures are off unless chosen: they replace every picture the listing has on eBay.
+const EBAY_REVISE_PARTS=[['title','Titel'],['description','Beschreibung'],['aspects','Artikelmerkmale'],['shipping','Versand, Rücknahme & Preisvorschläge'],['pictures','Eigene Fotos','ersetzen die Bilder des Angebots; ohne eigene Fotos bleiben sie']];
 
 async function openEbayRevise(){
   const modal=openSettingsModal({id:'ebay-revise-modal',eyebrow:'EBAY',title:'Vorlage auf Angebote anwenden',
@@ -437,12 +440,12 @@ async function openEbayRevise(){
   try{rows=await api('/api/ebay/listings/revisions')}catch(error){body.innerHTML=`<p class="dl-hint">${escapeHtml(error.message)}</p>`;return}
   if(!body.isConnected)return;
   const ready=rows.filter(row=>row.variant_id&&!row.error),skipped=rows.length-ready.length;
-  body.innerHTML=`<section class="dl-modal-section"><h3>Was wird übernommen</h3><div class="ebay-revise-parts">${EBAY_REVISE_PARTS.map(([id,label])=>`<label class="dl-check"><input type="checkbox" data-revise-part="${id}" checked><span><b>${label}</b></span></label>`).join('')}</div></section>
+  body.innerHTML=`<section class="dl-modal-section"><h3>Was wird übernommen</h3><div class="ebay-revise-parts">${EBAY_REVISE_PARTS.map(([id,label,hint])=>`<label class="dl-check"><input type="checkbox" data-revise-part="${id}" ${id==='pictures'?'':'checked'}><span><b>${label}</b>${hint?`<small>${hint}</small>`:''}</span></label>`).join('')}</div></section>
     <section class="dl-modal-section"><h3>Angebote <small>${ready.length} von ${rows.length}${skipped?` · ohne zugeordnete Karte wird übersprungen`:''}</small></h3>
       <label class="dl-check"><input type="checkbox" id="ebay-revise-all" checked><span><b>Alle auswählen</b></span></label>
       <div class="ebay-revise-list">${rows.map(row=>`<label class="ebay-revise-row ${row.variant_id&&!row.error?'':'is-skipped'}" data-revise-item="${escapeHtml(row.item_id)}">
         <input type="checkbox" ${row.variant_id&&!row.error?'checked':'disabled'}>
-        <span><b>${escapeHtml(row.new_title||row.title)}</b><small>${row.error?escapeHtml(row.error):!row.variant_id?'Keine Karte zugeordnet':row.new_title!==row.title?`bisher: ${escapeHtml(row.title)}`:'Titel bleibt gleich'}</small></span>
+        <span><b>${escapeHtml(row.new_title||row.title)}</b><small>${row.error?escapeHtml(row.error):!row.variant_id?'Keine Karte zugeordnet':row.new_title!==row.title?`bisher: ${escapeHtml(row.title)}`:'Titel bleibt gleich'}${row.photos?` · ${row.photos} ${row.photos===1?'eigenes Foto':'eigene Fotos'}`:''}</small></span>
         <em class="ebay-revise-state"></em></label>`).join('')}</div></section>
     <div class="dl-modal-actions"><span class="spacer"></span><button class="primary-button" id="ebay-revise-run" ${ready.length?'':'disabled'}>Angebote aktualisieren</button></div>`;
   const boxes=()=>$$('.ebay-revise-row:not(.is-skipped) input',body);

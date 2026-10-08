@@ -49,3 +49,4 @@ def jload(value, default=None):
 
 CARD_BACK_UPLOAD_DIR = Path(os.path.dirname(DB_PATH)) / "card-backs"
 SHEET_BACKGROUND_DIR = Path(os.path.dirname(DB_PATH)) / "sheet-backgrounds"
+EBAY_PHOTO_DIR = Path(os.path.dirname(DB_PATH)) / "ebay-photos"
