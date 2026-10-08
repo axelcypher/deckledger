@@ -473,6 +473,8 @@ describe('app in the browser', { skip }, () => {
   test('saving for offline use makes the collection available without the server', async () => {
     await page.waitFor(`navigator.serviceWorker.controller`, { message: 'the service worker to control the page' });
     await page.route('settings');
+    // The offline section is filled in after the view; clicking before that hit nothing now and then.
+    await page.waitFor(`document.querySelector('#offline-save-start')`, { message: 'the offline section to render' });
     await page.evaluate(`document.querySelector('#offline-save-start').click()`);
     const info = await page.waitFor(`offlineSaveInfo()`, { message: 'the save to finish' });
     assert.equal(info.cards, 1);
