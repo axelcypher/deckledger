@@ -331,6 +331,7 @@ def test_without_business_policies_shipping_goes_into_the_listing(client, config
     document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "AddFixedPriceItem"][0][2]["data"].decode()
     for part in ("<ShippingService>DE_DeutschePostBrief</ShippingService>", '<ShippingServiceCost currencyID="EUR">1.60</ShippingServiceCost>',
                  '<ShippingServiceAdditionalCost currencyID="EUR">0.20</ShippingServiceAdditionalCost>', "<DispatchTimeMax>1</DispatchTimeMax>",
+                 "<FreeShipping>false</FreeShipping>",
                  "<ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption>"):
         assert part in document
     assert "SellerProfiles" not in document
@@ -665,6 +666,20 @@ def test_active_listings_take_over_the_preset(client, configured):
     assert client.post("/api/ebay/listings/222/revise", json={"parts": ["title"]}).status_code == 400
     assert client.post("/api/ebay/listings/333/revise", json={"parts": ["title"]}).status_code == 400
     assert client.post("/api/ebay/listings/111/revise", json={"parts": []}).status_code == 400
+
+
+def test_free_shipping_charges_the_buyer_nothing(client, configured):
+    connect()
+    preset = client.put("/api/ebay/preset", json={"game_id": "vcard", "shipping_paid_by": "Seller", "shipping_service": "DE_DeutschePostBrief",
+                                                  "shipping_cost": "1,60", "shipping_additional_cost": "0,20"}).get_json()
+    assert preset["shipping_paid_by"] == "Seller" and preset["shipping_cost"] == 1.6, "the costs stay for switching back"
+    assert client.get("/api/ebay/preset?game_id=lorcana").get_json()["shipping_paid_by"] == "Seller", "shipping holds for every game"
+    own_listing("111", variant_id=EMBER8, title="Ember")
+    client.post("/api/ebay/listings/111/revise", json={"parts": ["shipping"]})
+    document = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "ReviseFixedPriceItem"][0][2]["data"].decode()
+    for part in ("<FreeShipping>true</FreeShipping>", '<ShippingServiceCost currencyID="EUR">0.00</ShippingServiceCost>',
+                 '<ShippingServiceAdditionalCost currencyID="EUR">0.00</ShippingServiceAdditionalCost>'):
+        assert part in document
 
 
 

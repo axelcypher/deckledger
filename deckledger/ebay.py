@@ -115,11 +115,12 @@ PRESET_DEFAULTS = {
     "postal_code": "", "location": "",
     # Shipping and returns: through the seller's business policies, or -- for accounts without
     # them, as private sellers usually are -- written into every listing ("direct").
-    "shipping_mode": "direct", "shipping_service": "", "shipping_cost": 0.0, "shipping_additional_cost": 0.0,
+    # shipping_paid_by "Seller" is free shipping: the costs below are then not charged.
+    "shipping_mode": "direct", "shipping_paid_by": "Buyer", "shipping_service": "", "shipping_cost": 0.0, "shipping_additional_cost": 0.0,
     "dispatch_days": 2, "returns_accepted": False, "returns_days": 30, "return_shipping_paid_by": "Buyer",
 }
 SHARED_PRESET_KEYS = ("fulfillment_policy_id", "payment_policy_id", "return_policy_id", "postal_code", "location", "best_offer",
-                      "shipping_mode", "shipping_service", "shipping_cost", "shipping_additional_cost", "dispatch_days",
+                      "shipping_mode", "shipping_paid_by", "shipping_service", "shipping_cost", "shipping_additional_cost", "dispatch_days",
                       "returns_accepted", "returns_days", "return_shipping_paid_by")
 SHIPPING_MODES = ("direct", "policies")
 DISPATCH_DAYS = (0, 1, 2, 3, 4, 5, 10)
@@ -604,6 +605,8 @@ def clean_preset(raw, defaults):
         except (TypeError, ValueError):
             pass
     preset["returns_accepted"] = bool(raw.get("returns_accepted", preset["returns_accepted"]))
+    if raw.get("shipping_paid_by") in ("Buyer", "Seller"):
+        preset["shipping_paid_by"] = raw["shipping_paid_by"]
     if raw.get("return_shipping_paid_by") in ("Buyer", "Seller"):
         preset["return_shipping_paid_by"] = raw["return_shipping_paid_by"]
     for key, low, high in (("price_factor", 1, 1000), ("price_min", 0, 100000)):
@@ -991,11 +994,14 @@ def direct_shipping(preset, currency):
                    f'<ShippingCostPaidByOption>{preset["return_shipping_paid_by"]}</ShippingCostPaidByOption></ReturnPolicy>')
     else:
         returns = "<ReturnPolicy><ReturnsAcceptedOption>ReturnsNotAccepted</ReturnsAcceptedOption></ReturnPolicy>"
+    free = preset["shipping_paid_by"] == "Seller"
+    cost, additional = (0.0, 0.0) if free else (preset["shipping_cost"], preset["shipping_additional_cost"])
     return f"""<DispatchTimeMax>{int(preset["dispatch_days"])}</DispatchTimeMax>
 <ShippingDetails><ShippingType>Flat</ShippingType><ShippingServiceOptions><ShippingServicePriority>1</ShippingServicePriority>
 <ShippingService>{xml_escape(preset["shipping_service"])}</ShippingService>
-<ShippingServiceCost currencyID="{currency}">{preset["shipping_cost"]:.2f}</ShippingServiceCost>
-<ShippingServiceAdditionalCost currencyID="{currency}">{preset["shipping_additional_cost"]:.2f}</ShippingServiceAdditionalCost>
+<FreeShipping>{"true" if free else "false"}</FreeShipping>
+<ShippingServiceCost currencyID="{currency}">{cost:.2f}</ShippingServiceCost>
+<ShippingServiceAdditionalCost currencyID="{currency}">{additional:.2f}</ShippingServiceAdditionalCost>
 </ShippingServiceOptions></ShippingDetails>
 {returns}"""
 

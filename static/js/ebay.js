@@ -138,6 +138,7 @@ async function renderEbayPreset(modal){
       <div class="dl-grid" data-ebay-mode="policies">${policy('fulfillment_policy_id','Versand-Richtlinie')}${policy('payment_policy_id','Zahlungs-Richtlinie')}${policy('return_policy_id','Rücknahme-Richtlinie')}</div>
       <div class="dl-grid" data-ebay-mode="direct">
         <label class="dl-field"><span>Versandart</span><select class="dl-control" id="ebay-shipping-service"><option value="${escapeHtml(preset.shipping_service)}">${preset.shipping_service?escapeHtml(preset.shipping_service):status.connected?'Wird geladen …':'Erst eBay-Konto verbinden'}</option></select></label>
+        ${select('ebay-shipping-paid-by','Versand zahlt',[['Buyer','Käufer'],['Seller','Ich (kostenloser Versand)']],preset.shipping_paid_by)}
         ${field('ebay-shipping-cost','Versandkosten €',money2(preset.shipping_cost),'inputmode="decimal"')}${field('ebay-shipping-additional','Je weiteres Exemplar €',money2(preset.shipping_additional_cost),'inputmode="decimal"')}
         ${select('ebay-dispatch-days','Bearbeitungszeit',EBAY_DISPATCH_DAYS,preset.dispatch_days)}
         <label class="dl-check"><input type="checkbox" id="ebay-returns-accepted" ${preset.returns_accepted?'checked':''}><span><b>Rücknahme anbieten</b><small>Privatverkäufer müssen keine Rücknahme anbieten.</small></span></label>
@@ -176,6 +177,10 @@ async function renderEbayPreset(modal){
     $$('[data-ebay-mode]',body).forEach(group=>group.classList.toggle('hidden',group.dataset.ebayMode!==mode));
   };
   showMode(shippingMode);
+  // With free shipping the buyer pays nothing, so there are no costs to enter.
+  const paidBy=$('#ebay-shipping-paid-by',body);
+  const showCosts=()=>['#ebay-shipping-cost','#ebay-shipping-additional'].forEach(id=>$(id,body).closest('.dl-field').classList.toggle('hidden',paidBy.value==='Seller'));
+  paidBy.addEventListener('change',showCosts);showCosts();
   $$('[data-ebay-shipping-mode]',body).forEach(button=>button.onclick=()=>{showMode(button.dataset.ebayShippingMode);ebaySettingsState.dirty=true});
   const aspects=$('#ebay-aspects',body);
   const bindAspects=()=>$$('[data-aspect-remove]',aspects).forEach(button=>button.onclick=()=>{button.closest('.ebay-aspect-row').remove();ebaySettingsState.dirty=true});
@@ -189,7 +194,7 @@ async function renderEbayPreset(modal){
     category_id:$('#ebay-category',body).value,condition:$('#ebay-condition',body).value,quantity:$('#ebay-quantity',body).value,
     price_factor:$('#ebay-price-factor',body).value,price_min:$('#ebay-price-min',body).value,price_rounding:$('#ebay-price-rounding',body).value,price_fallback:$('#ebay-price-fallback',body).value,
     postal_code:$('#ebay-postal-code',body).value,location:$('#ebay-location',body).value,best_offer:$('#ebay-best-offer',body).checked,
-    shipping_mode:shippingMode,shipping_service:$('#ebay-shipping-service',body).value,shipping_cost:$('#ebay-shipping-cost',body).value,
+    shipping_mode:shippingMode,shipping_paid_by:paidBy.value,shipping_service:$('#ebay-shipping-service',body).value,shipping_cost:$('#ebay-shipping-cost',body).value,
     shipping_additional_cost:$('#ebay-shipping-additional',body).value,dispatch_days:$('#ebay-dispatch-days',body).value,
     returns_accepted:$('#ebay-returns-accepted',body).checked,returns_days:$('#ebay-returns-days',body).value,return_shipping_paid_by:$('#ebay-return-paid-by',body).value,
     ...Object.fromEntries($$('[data-ebay-policy]',body).map(control=>[control.dataset.ebayPolicy,control.value])),
