@@ -497,7 +497,8 @@ def test_deletions_of_unknown_accounts_are_only_acknowledged(configured):
 
 def test_a_deleted_account_is_forgotten(ebay_key):
     connect()
-    query("INSERT INTO ebay_sales(user_id,item_id,transaction_id,buyer) VALUES(1,'1','t1','kartenhai'),(1,'2','t2','other')")
+    query("INSERT INTO deals(id,user_id,game_id,partner,platform,status,created_at,updated_at) VALUES(41,1,'vcard','kartenhai','eBay','done','t','t'),(42,1,'vcard','kartenhai','Reddit','done','t','t')")
+    query("INSERT INTO ebay_sales(user_id,item_id,transaction_id,buyer,deal_id) VALUES(1,'1','t1','kartenhai',41),(1,'2','t2','other',NULL)")
     body = deletion_notice("kartenhai")
     anonymous = deckledger.app.test_client()
     forged = anonymous.post("/ebay/account-deletion", data=body, content_type="application/json", headers={"X-EBAY-SIGNATURE": signed(b"{}", ebay_key)})
@@ -506,6 +507,7 @@ def test_a_deleted_account_is_forgotten(ebay_key):
     assert response.status_code == 204
     assert query("SELECT COUNT(*) AS n FROM ebay_accounts")[0]["n"] == 0
     assert [row["buyer"] for row in query("SELECT buyer FROM ebay_sales ORDER BY item_id")] == ["", "other"]
+    assert [row["partner"] for row in query("SELECT partner FROM deals ORDER BY id")] == ["", "kartenhai"], "only the deal made from the eBay sale"
 
 
 def test_a_listing_with_variations_needs_the_chosen_one(client, configured):
@@ -813,3 +815,58 @@ def test_pictures_of_a_running_listing_can_be_fetched_edited_and_put_back(client
     assert query("SELECT image_url FROM ebay_listings WHERE item_id='111'")[0]["image_url"] == first
     own_listing("222", title="Ohne Karte")
     assert client.post("/api/ebay/listings/222/photos/import").status_code == 400
+
+
+def sold(item_id, title, price, quantity, transaction, buyer, sku=""):
+    return (f"<Transaction>{item_xml(item_id, title, price, sku=sku)}<QuantityPurchased>{quantity}</QuantityPurchased><TransactionID>{transaction}</TransactionID>"
+            f'<TotalTransactionPrice currencyID="EUR">{price}</TotalTransactionPrice><CreatedDate>2026-10-01T12:00:00.000Z</CreatedDate>'
+            f"<Buyer><UserID>{buyer}</UserID></Buyer></Transaction>")
+
+
+def test_sales_become_finished_deals_that_book_the_cards_out(client, configured):
+    connect()
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 3})
+    client.post("/api/collection", json={"variant_id": TIDE8, "delta": 1})
+    configured.selling = {"ActiveList": "<ActiveList/>", "UnsoldList": "<UnsoldList/>",
+                          "SoldList": "<SoldList><OrderTransactionArray><OrderTransaction>"
+                                      + sold("333", "Ember PL8", "9.00", 2, "t-1", "sammlerin", sku=f"DL-{EMBER8}")
+                                      + sold("444", "Irgendwas", "3.00", 1, "t-2", "kaeufer")
+                                      + "</OrderTransaction></OrderTransactionArray></SoldList>"}
+    client.post("/api/ebay/listings/sync")
+    deals = client.get("/api/deals").get_json()["deals"]
+    assert len(deals) == 1, "the sale of a listing without a card waits for one"
+    deal = deals[0]
+    assert (deal["status"], deal["partner"], deal["platform"], deal["money_in"], deal["kind"]) == ("done", "sammlerin", "eBay", 9.0, "sale")
+    assert (deal["cards"][0]["variant_id"], deal["cards"][0]["quantity"], deal["cards"][0]["unit_price"]) == (EMBER8, 2, 4.5)
+    assert deal["completed_at"].startswith("2026-10-01") and deal["url"] == "https://www.ebay.de/itm/333"
+    owned = lambda variant_id: query("SELECT COALESCE(SUM(quantity),0) n FROM collection_entries WHERE variant_id=?", (variant_id,))[0]["n"]
+    assert owned(EMBER8) == 1, "the two sold copies left the collection"
+    client.post("/api/ebay/listings/sync")
+    assert len(client.get("/api/deals").get_json()["deals"]) == 1 and owned(EMBER8) == 1, "a sale is booked once"
+    # Linking a card books the sale that waited for it.
+    client.patch("/api/ebay/listings/444", json={"variant_id": TIDE8})
+    assert len(client.get("/api/deals").get_json()["deals"]) == 2 and owned(TIDE8) == 0
+    # A deal the user cancels (the copies come back) and deletes does not come back with the next sync.
+    assert client.post(f'/api/deals/{deal["id"]}/status', json={"status": "cancelled"}).get_json()["status"] == "cancelled"
+    assert owned(EMBER8) == 3
+    assert client.delete(f'/api/deals/{deal["id"]}').get_json() == {"deleted": True}
+    client.post("/api/ebay/listings/sync")
+    assert len(client.get("/api/deals").get_json()["deals"]) == 1
+
+
+def test_the_background_sync_books_sales_too(client, configured):
+    import sqlite3
+    connect()
+    client.post("/api/collection", json={"variant_id": EMBER8, "delta": 1})
+    configured.selling = {"ActiveList": "<ActiveList/>", "UnsoldList": "<UnsoldList/>",
+                          "SoldList": f"<SoldList><OrderTransactionArray><OrderTransaction>{sold('333', 'Ember PL8', '4.00', 1, 't-1', 'sammlerin', sku=f'DL-{EMBER8}')}"
+                                      "</OrderTransaction></OrderTransactionArray></SoldList>"}
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection.row_factory = sqlite3.Row
+    try:
+        deckledger.ebay.sync_listings(connection, 1)
+        assert connection.execute("SELECT 1").fetchone(), "the sync's connection stays open"
+    finally:
+        connection.close()
+    assert query("SELECT status FROM deals")[0]["status"] == "done"
+    assert query("SELECT COALESCE(SUM(quantity),0) n FROM collection_entries WHERE variant_id=?", (EMBER8,))[0]["n"] == 0

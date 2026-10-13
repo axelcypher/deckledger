@@ -31,12 +31,13 @@ import re
 import secrets
 import statistics
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape as xml_escape
 
 import requests
-from flask import jsonify, redirect, request, session, url_for
+from flask import g, jsonify, redirect, request, session, url_for
 
 import sheet_render
 
@@ -558,6 +559,7 @@ def ebay_account_deletion():
     if not signed_by_ebay(connection, request.get_data(), request.headers.get("X-EBAY-SIGNATURE")):
         return "", 412
     connection.execute("DELETE FROM ebay_accounts WHERE username=?", (username,))
+    connection.execute("UPDATE deals SET partner='' WHERE partner=? AND id IN (SELECT deal_id FROM ebay_sales WHERE buyer=?)", (username, username))
     connection.execute("UPDATE ebay_sales SET buyer='' WHERE buyer=?", (username,))
     connection.commit()
     app.logger.info("eBay account deletion: removed what DeckLedger stored about an eBay account")
@@ -1303,6 +1305,7 @@ def sync_listings(connection, uid):
     except EbayError as error:
         # Views are a bonus; the listings themselves are up to date.
         app.logger.warning("eBay traffic report for user %s failed: %s", uid, error)
+    deals_from_sales(connection, uid)
     update_sheets_from_listings(connection, uid)
     connection.commit()
     return counts
@@ -1310,6 +1313,66 @@ def sync_listings(connection, uid):
 
 def price_label(price, currency):
     return (f"{price:.2f} €".replace(".", ",") if currency in ("EUR", "") else f"{price:.2f} {currency}") if price is not None else ""
+
+
+@contextmanager
+def on_connection(connection):
+    """deals.py works on db(); the background sync (ebay_sync.py) has its own connection and no
+    request. The connection is lent, not handed over: the app context must not close it."""
+    with app.app_context():
+        g.db = connection
+        try:
+            yield
+        finally:
+            g.pop("db", None)
+
+
+def deals_from_sales(connection, uid):
+    """Every sale of a listing whose card is known becomes a finished deal ("Vorgang"), once:
+    the buyer as partner, eBay as platform, the sold copies going out at their price, the money
+    coming in. Finishing it books as finishing any deal does (deals.book_done): the copies leave
+    the collection and the sheets offering them. A sale whose listing has no card waits until
+    one is linked. Returns how many deals were made."""
+    from .deals import book_done, log_event, set_card, touch_sheets
+
+    sales = connection.execute(
+        """SELECT sa.*,l.variant_id,l.url,v.game_id FROM ebay_sales sa
+             JOIN ebay_listings l ON l.user_id=sa.user_id AND l.item_id=sa.item_id JOIN variants v ON v.id=l.variant_id
+           WHERE sa.user_id=? AND sa.deal_id IS NULL ORDER BY sa.sold_at,sa.id""", (uid,)).fetchall()
+    if not sales:
+        return 0
+    made = 0
+    with on_connection(connection):
+        for sale in sales:
+            sold_at = sale["sold_at"] or now_iso()
+            quantity = max(1, int(sale["quantity"] or 1))
+            total = round(sale["price"], 2) if sale["price"] is not None else 0.0
+            note = f'eBay-Verkauf: {sale["title"]}' + (f' ({sale["currency"]})' if sale["currency"] not in ("", "EUR") else "")
+            deal_id = connection.execute(
+                """INSERT INTO deals(user_id,game_id,partner,platform,url,note,money_in,created_at,updated_at)
+                   VALUES(?,?,?,'eBay',?,?,?,?,?)""",
+                (uid, sale["game_id"], sale["buyer"][:80], sale["url"] if sale["url"].startswith("https://") else "", note[:2000], total, sold_at, now_iso()),
+            ).lastrowid
+            deal = own_deal_of(connection, deal_id)
+            error = set_card(deal, {"side": "give", "variant_id": sale["variant_id"], "quantity": quantity,
+                                    "unit_price": round(total / quantity, 2) if sale["price"] is not None else None})
+            if error:   # the card left the catalogue: no deal, and not again next time
+                connection.execute("DELETE FROM deals WHERE id=?", (deal_id,))
+                connection.execute("UPDATE ebay_sales SET deal_id=0 WHERE id=?", (sale["id"],))
+                continue
+            log_event(deal_id, "created", "aus einem eBay-Verkauf")
+            detail = book_done(deal)
+            connection.execute("UPDATE deals SET status='done',completed_at=? WHERE id=?", (sold_at, deal_id))
+            log_event(deal_id, "done", detail)
+            touch_sheets(uid, [sale["variant_id"]])
+            connection.execute("UPDATE ebay_sales SET deal_id=? WHERE id=?", (deal_id, sale["id"]))
+            made += 1
+    connection.commit()
+    return made
+
+
+def own_deal_of(connection, deal_id):
+    return connection.execute("SELECT * FROM deals WHERE id=?", (deal_id,)).fetchone()
 
 
 def update_sheets_from_listings(connection, uid):
@@ -1478,6 +1541,8 @@ def link_ebay_listing(item_id):
     cursor = db().execute("UPDATE ebay_listings SET variant_id=? WHERE user_id=? AND item_id=?", (variant_id or None, user_id(), item_id))
     if not cursor.rowcount:
         return jsonify({"error": "Angebot nicht gefunden."}), 404
+    if variant_id:
+        deals_from_sales(db(), user_id())
     update_sheets_from_listings(db(), user_id())
     db().commit()
     return jsonify({"linked": bool(variant_id)})
