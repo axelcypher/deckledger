@@ -18,9 +18,9 @@
   <link rel="stylesheet" href="{{ asset_url('dark-appearance.css') }}">
   <link rel="stylesheet" href="{{ asset_url('public.css') }}">
 </head>
-<body class="dark mobile-modern public-page">
-  {# The visitor's own choice from the app if there is one, else what their system asks for. #}
-  <script>(function(){var m=document.cookie.match(/(?:^|; )deckledger_theme=(light|dark)(?:;|$)/);var light=m?m[1]==='light':!(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);if(light)document.body.classList.add('mobile-light')})();</script>
+<body class="dark mobile-modern public-page{% if theme == 'light' %} mobile-light{% endif %}" data-theme="{{ theme }}">
+  {# The owner's choice (Settings); with "auto" what the visitor's system asks for, and it follows a change. #}
+  {% if theme == 'auto' %}<script>(function(){var query=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)');var apply=function(){document.body.classList.toggle('mobile-light',!(query&&query.matches))};apply();if(query&&query.addEventListener)query.addEventListener('change',apply)})();</script>{% endif %}
   <header class="public-topbar">
     <span class="public-brand"><svg class="brand-symbol" viewBox="0 0 44 44" aria-hidden="true"><rect x="10.5" y="6.5" width="23" height="31" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 26.5h12M16 31h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><b>DECK</b>LEDGER</span>
   </header>

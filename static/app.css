@@ -143,6 +143,7 @@ body.editing .edit-indicator { display:block; }
 .checkbox-row input { width:16px;height:16px;accent-color:var(--brand-2); }
 .settings-subhead { margin-top:22px; }
 .settings-hint { margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:10px;line-height:1.5; }
+.settings-card-public .public-profile-theme { display:inline-flex;margin-top:10px; }
 .user-settings-layout { display:flex;flex-direction:column;gap:16px;max-width:1120px; }
 .user-settings-layout .user-settings-card { max-width:none;margin:0;padding:24px 26px; }
 .user-settings-card-head { display:flex;align-items:center;gap:14px;margin-bottom:18px; }

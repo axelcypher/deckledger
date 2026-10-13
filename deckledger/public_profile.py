@@ -21,6 +21,7 @@ from .config import jload
 from .web import app, db, login_required, user_id
 
 PROFILE_KEY = "publicProfile"
+THEMES = ("auto", "light", "dark")   # auto: as the visitor's system asks
 SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])")
 NAME_LIMIT = 60
 # Where profiles are shared from, e.g. https://deckledger.example.org -- the app itself may run
@@ -33,7 +34,8 @@ def load_profile(connection, uid):
     stored = jload(row["value"], {}) if row else {}
     stored = stored if isinstance(stored, dict) else {}
     return {"enabled": bool(stored.get("enabled")), "slug": str(stored.get("slug") or ""), "name": str(stored.get("name") or ""),
-            "games": [str(game) for game in stored.get("games") or []]}
+            "games": [str(game) for game in stored.get("games") or []],
+            "theme": stored.get("theme") if stored.get("theme") in THEMES else "auto"}
 
 
 def profile_url(slug):
@@ -101,6 +103,8 @@ def save_public_profile():
     if "games" in payload:
         known = {row["id"] for row in db().execute("SELECT id FROM games")}
         profile["games"] = [game for game in dict.fromkeys(str(game) for game in payload["games"] or []) if game in known]
+    if payload.get("theme") in THEMES:
+        profile["theme"] = payload["theme"]
     if "enabled" in payload:
         profile["enabled"] = bool(payload["enabled"])
     if profile["enabled"] and not profile["slug"]:
@@ -119,8 +123,8 @@ def save_public_profile():
 def public_profile_page(slug):
     owner = public_owner(slug)
     if not owner:
-        return render_template("public.html", slug=slug, name="", missing=True), 404
-    return render_template("public.html", slug=slug.lower(), name=owner[2], missing=False)
+        return render_template("public.html", slug=slug, name="", missing=True, theme="auto"), 404
+    return render_template("public.html", slug=slug.lower(), name=owner[2], missing=False, theme=owner[1]["theme"])
 
 
 @app.get("/api/public/<slug>")

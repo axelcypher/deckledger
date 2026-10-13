@@ -83,6 +83,19 @@ def test_a_game_not_shared_stays_private(client, visitor):
     assert visitor.get(f"/art/{EMBER8}.svg").status_code == 302, "the app's own image route still asks for a sign-in"
 
 
+def test_the_owner_sets_how_the_profile_looks(client, visitor):
+    share(client)
+    assert client.get("/api/account/public-profile").get_json()["theme"] == "auto"
+    assert b"prefers-color-scheme" in visitor.get("/u/alex").data, "auto: as the visitor's system asks"
+    share(client, theme="light")
+    page = visitor.get("/u/alex").data.decode()
+    assert "public-page mobile-light" in page and "prefers-color-scheme" not in page
+    share(client, theme="dark")
+    page = visitor.get("/u/alex").data.decode()
+    assert "mobile-light" not in page and "prefers-color-scheme" not in page
+    assert share(client, theme="purple").get_json()["theme"] == "dark", "an unknown theme changes nothing"
+
+
 def test_the_shown_counts_follow_the_collection(client, visitor):
     share(client)
     set_id = set_of(TIDE8)
