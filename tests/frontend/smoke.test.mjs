@@ -549,6 +549,25 @@ describe('app in the browser', { skip }, () => {
     } finally { await admin.close(); }
   });
 
+  test('a shared collection opens for a visitor without signing in', async () => {
+    await page.route('settings');
+    await page.waitFor(`document.querySelector('#public-save')`, { message: 'the public profile settings to render' });
+    await page.evaluate(`(()=>{document.querySelector('#public-enabled').checked=true;document.querySelector('#public-slug').value='alex';document.querySelector('[data-public-game="vcard"]').checked=true;document.querySelector('#public-save').click()})()`);
+    await page.waitFor(`document.querySelector('#public-profile-body a')?.href.endsWith('/u/alex')`, { message: 'the profile link to show' });
+    const visitor = await startBrowser({ width: 390, height: 844, mobile: true });
+    try {
+      await visitor.goto(`${server.base}/u/alex`);
+      await visitor.waitFor(`document.querySelector('.set-card')`, { message: 'the shared sets to render' });
+      await visitor.evaluate(`document.querySelector('.set-card').click()`);
+      await visitor.waitFor(`document.querySelectorAll('.card-tile').length>0`, { message: 'the cards of the set to render' });
+      assert.ok(await visitor.evaluate(`document.querySelectorAll('.card-tile.missing').length>0`), 'cards not owned are shown greyed out');
+      assert.equal(await visitor.evaluate(`/€/.test(document.querySelector('#content').innerText)`), false, 'no prices');
+      assert.equal(await visitor.evaluate(`document.documentElement.scrollWidth<=innerWidth`), true, 'no sideways scrolling on a phone');
+      assert.deepEqual(visitor.problems, []);
+    } finally { await visitor.close(); }
+    noProblems();
+  });
+
   test('a normal account has no admin view', async () => {
     assert.equal(await page.evaluate(`fetch('/api/admin/users').then(response=>response.status)`), 403);
     await sleep(50);

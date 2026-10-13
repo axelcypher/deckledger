@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090909">
+  {# Shared by link, not meant to be found: search engines are asked to leave it out. #}
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% if name %}{{ name }} · Sammlung{% else %}Profil nicht gefunden{% endif %} · DeckLedger</title>
+  <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="{{ asset_url('app.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('mobile-theme.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('mobile-pages.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('responsive-theme.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('dark-appearance.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('public.css') }}">
+</head>
+<body class="dark mobile-modern public-page">
+  {# The visitor's own choice from the app if there is one, else what their system asks for. #}
+  <script>(function(){var m=document.cookie.match(/(?:^|; )deckledger_theme=(light|dark)(?:;|$)/);var light=m?m[1]==='light':!(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);if(light)document.body.classList.add('mobile-light')})();</script>
+  <header class="public-topbar">
+    <span class="public-brand"><svg class="brand-symbol" viewBox="0 0 44 44" aria-hidden="true"><rect x="10.5" y="6.5" width="23" height="31" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 26.5h12M16 31h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><b>DECK</b>LEDGER</span>
+  </header>
+  <main class="content public-content" id="content" data-slug="{{ slug }}">
+    {% if missing %}
+    <div class="empty-state public-missing"><b>Dieses Profil gibt es nicht</b><span>Vielleicht ist der Link falsch oder die Sammlung wird nicht mehr geteilt.</span></div>
+    {% else %}
+    <div class="page-loader"><span></span><p>Sammlung wird geladen …</p></div>
+    {% endif %}
+  </main>
+  {% if not missing %}<script src="{{ asset_url('public.js') }}"></script>{% endif %}
+</body>
+</html>

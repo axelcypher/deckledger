@@ -16,6 +16,8 @@ def save_settings():
     if not isinstance(payload, dict):
         return jsonify({"error": "Ungültige Anfrage."}), 400
     for key,value in payload.items():
+        if key == "publicProfile":
+            continue  # only through /api/account/public-profile, which checks the address (public_profile.py)
         db().execute("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value", (user_id(),key,json.dumps(value)))
     db().commit(); return jsonify({"saved":True})
 

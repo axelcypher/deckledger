@@ -16,7 +16,12 @@ from .assets import set_visual_version
 @app.get("/api/games/<game_id>/sets")
 @login_required
 def game_sets(game_id):
-    uid = user_id()
+    return jsonify(sets_of_game(game_id, user_id()))
+
+
+def sets_of_game(game_id, uid):
+    """The sets of a game with that user's ownership, completion and value, newest first. Also
+    what a public profile shows (deckledger/public_profile.py, without the value)."""
     rows = []
     for s in db().execute("SELECT * FROM sets WHERE game_id=? ORDER BY release_date DESC", (game_id,)):
         # Ownership and value start from the user's own rows: the price lookup is a correlated
@@ -77,7 +82,7 @@ def game_sets(game_id):
             item["code"] = f"{number_match.group(1)} {item['code']}"
         rows.append(item)
     rows.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, "desc")))
-    return jsonify(rows)
+    return rows
 
 
 def release_dates_for_set(set_id, fallback=None):

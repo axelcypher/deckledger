@@ -121,12 +121,17 @@ function renderSettings(){
         <div class="segmented mobile-appearance-toggle">${[['light','Hell'],['dark','Dunkel'],['auto','Auto']].map(([value,label])=>`<button type="button" data-mobile-appearance="${value}" class="${appearance===value?'active':''}">${label}</button>`).join('')}</div>
       </div>
     </section>
+    <section class="settings-section user-settings-card settings-card-public settings-card-wide" id="public-profile-card">
+      <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><div><span class="eyebrow">TEILEN</span><h2>Öffentliches Profil</h2><p>Ein Link, über den andere deine Sammlung ohne Anmeldung ansehen: alle Karten der freigegebenen TCGs, fehlende ausgegraut, mit Anzahl – ohne Preise und Werte.</p></div></div>
+      <div id="public-profile-body"><div class="page-loader compact"><span></span></div></div>
+    </section>
     <section class="settings-section user-settings-card settings-card-offline settings-card-wide" id="offline-save-card">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg></span><div><span class="eyebrow">UNTERWEGS</span><h2>Offline verfügbar machen</h2><p>Speichert Sammlung, Watchlists, Kartendetails und Kartenbilder auf diesem Gerät, damit sie auch ohne Verbindung zum Server da sind.</p></div></div>
       <div id="offline-save-body"></div>
     </section>
     </div>`;
   renderOfflineSave();
+  renderPublicProfileSettings();
   $('#account-save',content).onclick=async()=>{
     const payload={display_name:$('#account-display-name').value.trim(),username:$('#account-username').value.trim(),email:$('#account-email').value.trim()};
     try{
@@ -221,4 +226,37 @@ async function startOfflineSave(){
   }catch(error){
     renderOfflineSave(error.name==='AbortError'?'Abgebrochen. Was schon gespeichert war, bleibt erhalten.':`Speichern fehlgeschlagen: ${error.message}`);
   }
+}
+
+// The public profile (deckledger/public_profile.py): on/off, its address, the name shown and the
+// games it shares. Saved on its own, as the address has to be checked for being free.
+async function renderPublicProfileSettings(){
+  const body=$('#public-profile-body',content);if(!body)return;
+  let profile;
+  try{profile=await api('/api/account/public-profile')}catch(error){body.innerHTML=`<p class="muted settings-hint">${escapeHtml(error.message)}</p>`;return}
+  if(!body.isConnected)return;
+  const user=state.boot.user,games=state.boot.games;
+  const draw=()=>{
+    body.innerHTML=`<div class="settings-checklist">
+        <label class="checkbox-row"><span><b>Profil öffentlich</b><small>${profile.enabled&&profile.url?`Erreichbar unter <a href="${escapeHtml(profile.url)}" target="_blank" rel="noopener">${escapeHtml(profile.url)}</a>`:'Aus: niemand ohne Anmeldung sieht etwas.'}</small></span><input type="checkbox" id="public-enabled" ${profile.enabled?'checked':''}><i aria-hidden="true"></i></label>
+      </div>
+      <div class="settings-grid settings-grid-account">
+        <label class="settings-field"><span>Adresse</span><input id="public-slug" placeholder="z. B. ${escapeHtml((user.username||'sammlung').toLowerCase().replace(/[^a-z0-9-]/g,''))}" value="${escapeHtml(profile.slug)}" autocomplete="off" spellcheck="false"></label>
+        <label class="settings-field"><span>Angezeigter Name</span><input id="public-name" placeholder="${escapeHtml(user.display_name)}" value="${escapeHtml(profile.name)}" maxlength="60"></label>
+      </div>
+      <p class="muted settings-hint">Freigegebene TCGs</p>
+      <div class="settings-checklist public-profile-games">${games.map(game=>`<label class="checkbox-row"><span class="settings-language-game"><i><img src="/game-logo/${game.id}" alt=""></i><b>${escapeHtml(game.name)}</b></span><input type="checkbox" data-public-game="${game.id}" ${profile.games.includes(game.id)?'checked':''}><i aria-hidden="true"></i></label>`).join('')}</div>
+      <div class="user-settings-actions">${profile.url?`<button class="secondary-button" type="button" id="public-copy">Link kopieren</button>`:''}<span class="spacer"></span><button class="primary-button" type="button" id="public-save">Profil speichern</button></div>`;
+    $('#public-save',body).onclick=async()=>{
+      try{
+        profile=await api('/api/account/public-profile',{method:'PUT',body:JSON.stringify({enabled:$('#public-enabled',body).checked,slug:$('#public-slug',body).value,name:$('#public-name',body).value,
+          games:$$('[data-public-game]',body).filter(box=>box.checked).map(box=>box.dataset.publicGame)})});
+        toast(profile.enabled?'Profil ist öffentlich':'Profil gespeichert – nicht öffentlich');draw();
+      }catch(error){toast(error.message)}
+    };
+    $('#public-copy',body)?.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(profile.url);toast('Link kopiert')}catch{toast(profile.url)}
+    });
+  };
+  draw();
 }
