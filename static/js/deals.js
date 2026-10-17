@@ -42,7 +42,7 @@ async function renderDeals(){
     ${sheetTabsHtml('deals')}
     <div class="deal-filters"><div class="deal-filter-chips">${DEAL_FILTERS.map(([id,label])=>`<button type="button" class="community-chip ${dealView.status===id?'active':''}" data-deal-filter="${id}">${label}</button>`).join('')}</div>
       <div class="filter-search"><span>⌕</span><input id="deal-q" value="${escapeHtml(dealView.q)}" placeholder="Partner, Plattform oder Karte"></div></div>
-    ${totals.done?`<div class="deal-totals"><span>Abgeschlossen: <b>${totals.done}</b></span><span>Einnahmen <b>${money(totals.money_in)}</b></span><span>Ausgaben <b>${money(totals.money_out)}</b></span><span>Versand <b>${money(totals.shipping)}</b></span><span>Saldo <b class="${totals.balance<0?'is-out':'is-in'}">${totals.balance<0?'−':'+'}${money(Math.abs(totals.balance))}</b></span></div>`:''}
+    ${totals.done?`<div class="deal-totals"><span>Abgeschlossen <b>${totals.done}</b></span><span>Einnahmen <b>${money(totals.money_in)}</b></span><span>Ausgaben <b>${money(totals.money_out)}</b></span><span>Versand <b>${money(totals.shipping)}</b></span><span>Saldo <b class="${totals.balance<0?'is-out':'is-in'}">${totals.balance<0?'−':'+'}${money(Math.abs(totals.balance))}</b></span></div>`:''}
     ${data.deals.length?`<div class="deal-list">${data.deals.map(deal=>{
       const gives=dealCardsLine(deal,'give'),gets=dealCardsLine(deal,'get');
       return `<button type="button" class="deal-row" data-deal="${deal.id}">

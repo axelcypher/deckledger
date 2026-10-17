@@ -109,7 +109,7 @@
     </aside>
 
     <header class="topbar">
-      <h1 class="mobile-topbar-title">Collection</h1>
+      <h1 class="mobile-topbar-title">Übersicht</h1>
       <div id="global-game-picker" class="global-game-picker" title="TCG auswählen">
         <span id="global-game-icon" class="global-game-icon" style="--tcg-icon:url('/static/tcg-icons/generic.svg?v=3')" aria-hidden="true"></span>
         <select id="global-game-filter" class="global-game-filter" aria-label="Aktives TCG"></select>
@@ -129,9 +129,11 @@
   <nav id="mobile-tabbar" class="mobile-tabbar" aria-label="Hauptnavigation">
     <button class="mt-tab active" data-route="dashboard" aria-label="Start"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg></button>
     <button class="mt-tab" data-route="collection" aria-label="Sammlung"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="12" height="16" rx="2"/><path d="M9 20h9a2 2 0 0 0 2-2V7"/></svg></button>
+    <button class="mt-tab" data-route="game" aria-label="Sets"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg></button>
     <button id="mobile-edit-toggle" class="mt-tab mt-tab-add" type="button" aria-label="Edit Mode aktivieren" aria-pressed="false" title="Edit Mode aktivieren"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.4-10.4a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.7 3 3"/></svg></button>
     <button class="mt-tab" data-route="watchlist" aria-label="Watchlist"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.8-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.8 5.5c-2.3 4.4-9.8 9-9.8 9Z"/></svg><span id="mt-watch-count" class="mt-badge hidden">0</span></button>
     <button class="mt-tab" data-route="decks" aria-label="Deckbuilder"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="13" height="16" rx="2"/><path d="M9 2h9a2 2 0 0 1 2 2v13M8.5 8h6M8.5 12h6"/></svg></button>
+    <button class="mt-tab" data-route="sheets" aria-label="Verkauf &amp; Tausch"><svg viewBox="0 0 24 24"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg></button>
   </nav>
 
   <div id="search-overlay" class="overlay hidden">

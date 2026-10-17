@@ -74,7 +74,7 @@ async function renderAdmin(){
         <div class="oauth-admin-head">
           <div class="oauth-admin-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.2c0 4.8-3.2 8.3-8 10-4.8-1.7-8-5.2-8-10V6l8-3.2Z"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2v4"/></svg></div>
           <div class="oauth-admin-title"><span>AUTHENTIFIZIERUNG</span><h2>Single Sign-On</h2><p>OAuth 2.0 und OpenID Connect für einen externen Identity Provider.</p></div>
-          <div class="oauth-admin-state"><span class="oauth-status ${oauth.enabled?'is-active':'is-inactive'}"><i></i>${oauth.enabled?'Aktiv':'Inaktiv'}</span><span class="oauth-source-badge">${oauthLocked?'Config-Datei':'Admin UI'}</span></div>
+          <div class="oauth-admin-state"><span class="oauth-status ${oauth.enabled?'is-active':'is-inactive'}"><i></i>${oauth.enabled?'Aktiv':'Inaktiv'}</span><span class="oauth-source-badge">${oauthLocked?'Config-Datei':'In der App'}</span></div>
           <span class="oauth-collapse-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5"/></svg></span>
         </div>
       </summary>
@@ -161,7 +161,7 @@ async function renderAdmin(){
       <div class="user-settings-card-head admin-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 11 8 4 8-4M4 15l8 4 8-4"/></svg></span><div><span class="eyebrow">KATALOG</span><h2>TCGs</h2><p>Spiele, Cardbacks und Preisquellen verwalten.</p></div><button class="primary-button admin-price-source-button" type="button" id="admin-price-source-open"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M10.5 9.5 13.5 14.5M15.5 5.5l3 3M5.5 15.5l3 3"/></svg>Preisquellen</button></div>
       <div class="admin-table">${games.map(g=>`<div class="admin-row admin-game-row" data-game-row="${g.id}">
         <div class="admin-row-head"><b>${escapeHtml(g.name)}</b><span class="muted">${g.id} · ${g.languages.join('/')}</span></div>
-        <label>Card-Back<input type="file" accept="image/jpeg" data-card-back="${g.id}"></label>
+        <label>Kartenrückseite<input type="file" accept="image/jpeg" data-card-back="${g.id}"></label>
       </div>`).join('')}</div>
       <details class="admin-add"><summary>+ Neues TCG anlegen</summary>
         <div class="admin-form">
@@ -261,7 +261,7 @@ def fetch_catalog() -&gt; dict:
     const file=e.target.files[0]; if(!file)return;
     const form=new FormData(); form.append('file',file);
     const response=await fetch(`/api/admin/games/${input.dataset.cardBack}/card-back`,{method:'POST',body:form});
-    if(response.ok)toast('Card-Back hochgeladen'); else toast('Upload fehlgeschlagen');
+    if(response.ok)toast('Kartenrückseite hochgeladen'); else toast('Upload fehlgeschlagen');
   });
   $$('[data-edit-user]',content).forEach(button=>button.onclick=()=>$(`[data-user-editor="${button.dataset.editUser}"]`,content).classList.toggle('hidden'));
   $$('[data-save-user]',content).forEach(button=>button.onclick=async()=>{
@@ -357,18 +357,21 @@ def fetch_catalog() -&gt; dict:
   loadManualCardsSection(games[0]?.id);
 }
 
+// Both load after the view is drawn: whoever has left the admin view by then gets nothing drawn.
 async function loadManualCardsSection(gameId){
-  if(!gameId)return;
+  if(!gameId||!$('#admin-manual-game'))return;
   $('#admin-manual-game').value=gameId;
-  const setSelect=$('#admin-manual-set');
   const sets=await api(`/api/games/${gameId}/sets`);
+  const setSelect=$('#admin-manual-set');
+  if(!setSelect)return;
   setSelect.innerHTML=`<option value="">– neues Set unten anlegen –</option>${sets.map(s=>`<option value="${s.id}">${escapeHtml(s.code)} · ${escapeHtml(s.name)}</option>`).join('')}`;
   await renderManualCards(gameId);
 }
 
 async function renderManualCards(gameId){
-  const list=$('#admin-manual-cards-list');
   const cards=await api(`/api/admin/games/${gameId}/manual-cards`);
+  const list=$('#admin-manual-cards-list');
+  if(!list)return;
   list.innerHTML=cards.length?cards.map(c=>`<div class="admin-row" data-manual-card="${c.id}">
       <div class="admin-row-head"><b>${escapeHtml(c.canonical_name)}</b><span class="muted">${escapeHtml(c.id)}</span></div>
       <div class="muted">${c.printings.map(p=>`${escapeHtml(p.collector_number)} · ${escapeHtml(p.language)} · ${escapeHtml(p.rarity)} (${p.variants.map(v=>escapeHtml(gameId==='lorcana'?lorcanaFinishLabel(v.finish,p.rarity):v.finish)).join(', ')})`).join(' / ')||'keine Printings'}</div>

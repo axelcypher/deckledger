@@ -217,7 +217,7 @@ function wireGlobalEvents(){
   // do not depend on the game and are left as they are (a redraw would drop unsaved input).
   $('#global-game-filter').onchange=e=>{
     const gameId=e.target.value,route=state.route;
-    setActiveGame(gameId);refreshWatchCount();
+    setActiveGame(gameId);
     if(route==='settings'||route==='admin')return;
     if(route==='set'||route==='game')routeTo('game',gameId);
     else if(route==='game-cards')routeTo('game-cards',gameId);

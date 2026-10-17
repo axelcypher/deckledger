@@ -53,7 +53,7 @@ async function renderGame(gameId){
   const groups=groupedSets(sets), flatSets=sortedSets(sets), availableGroups=[...new Set(sets.map(setGroup))].sort((a,b)=>{const ai=SET_GROUP_ORDER.indexOf(a),bi=SET_GROUP_ORDER.indexOf(b);return (ai<0?99:ai)-(bi<0?99:bi)||a.localeCompare(b,'de')});
   content.innerHTML=`
     <div class="breadcrumbs"><button data-route-back>Übersicht</button><span>›</span><b>${escapeHtml(game.short_name)}</b></div>
-    <section class="game-banner" style="--accent:${game.accent}"><span class="game-banner-symbol"><img src="/game-logo/${game.id}" alt=""></span><div><h1>${escapeHtml(game.name)}</h1><p>${sets.length} Sets und Produkte · ${game.languages.join(' & ')}</p></div><div class="banner-value"><b>${money(game.value)}</b><span>SAMMLUNGSWERT · ${completion}% Ø FORTSCHRITT</span></div></section>
+    <section class="game-banner" style="--accent:${game.accent}"><span class="game-banner-symbol"><img src="/game-logo/${game.id}" alt=""></span><div><h1>${escapeHtml(game.name)}</h1><p>${sets.length} Sets und Produkte · ${game.languages.join(' & ')}</p></div><div class="banner-value"><b>${money(game.value)}</b><span>SAMMLUNGSWERT · Ø ${completion} % KOMPLETT</span></div></section>
     <div class="toolbar set-overview-toolbar"><h2>Sets & Veröffentlichungen</h2><div class="toolbar-spacer"></div><button class="secondary-button all-cards-button" id="show-all-cards">Alle Karten</button><select id="set-type-filter" class="select-control" aria-label="Nach Set-Art filtern"><option value="all">Alle Set-Arten</option>${availableGroups.map(group=>`<option value="${escapeHtml(group)}" ${state.setType===group?'selected':''}>${escapeHtml(group)}</option>`).join('')}</select><select id="set-sort" class="select-control" aria-label="Sets sortieren"><option value="type">Art · gruppiert</option><option value="date">Erscheinungsdatum</option><option value="code">Setcode</option><option value="name">Name</option><option value="value">Sammlungswert</option><option value="completion">Fortschritt</option></select><select id="set-direction" class="select-control" aria-label="Sortierreihenfolge"><option value="desc">Neu → Alt · Nr. ↓</option><option value="asc">Alt → Neu · Nr. ↑</option></select><div class="zoom-control"><span>−</span><input id="set-zoom" type="range" min="2" max="4" value="${state.setZoom}"><span>＋</span></div></div>
     <div class="set-overview-groups">${state.setSort==='type'?(groups.length?groups.map(([group,items])=>setGroupSection(gameId,group,items)).join(''):'<div class="empty-state"><b>Keine Sets dieser Art</b><span>Wähle eine andere Set-Art.</span></div>'):(flatSets.length?`<div class="set-grid" style="--set-cols:${state.setZoom}">${flatSets.map(s=>setTile(s)).join('')}</div>`:'<div class="empty-state"><b>Keine Sets dieser Art</b><span>Wähle eine andere Set-Art.</span></div>')}</div>`;
   mountFilterPanel('sets',['.set-overview-toolbar'],'Sets filtern & sortieren');
@@ -84,7 +84,7 @@ function setGroupSection(gameId,group,items){
 }
 
 function setTile(s){
- return `<article class="set-card" data-set="${s.id}" style="--accent:${s.accent}"><div class="set-art"><img class="set-brand-logo set-brand-logo-${s.game_id}" loading="lazy" src="/set-logo/${encodeURIComponent(s.id)}?v=${encodeURIComponent(s.visual_version||'provider-v1')}" alt="${escapeHtml(s.name)} Logo"><span class="set-code">${escapeHtml(s.code)}</span><span class="set-kind">${escapeHtml(s.set_type)}</span></div><div class="set-card-info"><h3>${escapeHtml(s.name)}</h3><div class="set-meta">${releaseDate(s)} · ${s.printed_card_count ?? '–'} nummeriert</div><div class="badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div><div class="set-completion"><span>BASE<b>${s.base_completion}%</b></span><span>FOIL / PARALLEL<b>${s.foil_completion}%</b></span><span>MASTER<b>${s.master_completion}%</b></span><span>PLAYSET<b>${s.playset_completion}%</b></span><span style="margin-left:auto">WERT<b>${money(s.value)}</b></span></div></div></article>`;
+ return `<article class="set-card" data-set="${s.id}" style="--accent:${s.accent}"><div class="set-art"><img class="set-brand-logo set-brand-logo-${s.game_id}" loading="lazy" src="/set-logo/${encodeURIComponent(s.id)}?v=${encodeURIComponent(s.visual_version||'provider-v1')}" alt="${escapeHtml(s.name)} Logo"><span class="set-code">${escapeHtml(s.code)}</span><span class="set-kind">${escapeHtml(s.set_type)}</span></div><div class="set-card-info"><h3>${escapeHtml(s.name)}</h3><div class="set-meta">${releaseDate(s)} · ${s.printed_card_count ?? '–'} nummeriert</div><div class="badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div><div class="set-completion"><span>BASE<b>${s.base_completion}%</b></span><span>FOIL<b>${s.foil_completion}%</b></span><span>MASTER<b>${s.master_completion}%</b></span><span>PLAYSET<b>${s.playset_completion}%</b></span><span style="margin-left:auto">WERT<b>${money(s.value)}</b></span></div></div></article>`;
 }
 
 async function renderSet(setId, preserve=false){
@@ -111,23 +111,24 @@ async function renderSet(setId, preserve=false){
   ],{className:'compact-stats',columns:6,mobileColumns:3});
   content.innerHTML=`
     <section class="set-compact-head">
-      <div class="set-compact-title"><div class="breadcrumbs"><button class="breadcrumb-back" id="cards-back" title="Zurück zur Setübersicht" aria-label="Zurück zur Setübersicht">←</button><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1><span>${escapeHtml(s.code)}</span>${escapeHtml(s.name)} <small>${releaseDate(s)} · ${s.printed_card_count} Karten</small></h1></div>
+      <div class="set-compact-title"><div class="breadcrumbs"><button class="breadcrumb-back" id="cards-back" title="Zurück zur Setübersicht" aria-label="Zurück zur Setübersicht">←</button><button data-dashboard>Übersicht</button><span>›</span><button data-game-back>${escapeHtml(game.short_name)}</button></div><h1><span>${/^\d+$/.test(String(s.code))?`Set ${escapeHtml(s.code)}`:escapeHtml(s.code)}</span>${escapeHtml(s.name)} <small>${releaseDate(s)} · ${s.printed_card_count} Karten</small></h1></div>
       <div class="compact-badges">${s.classifications.map(c=>`<span class="badge">${escapeHtml(c)}</span>`).join('')}</div>
       ${setStats}
     </section>
     <div class="card-toolbar-sticky">
       <div class="op-catalog-filterbar catalog-filter-mobile">
+        <div class="filter-search"><span>⌕</span><input id="set-card-search" value="${escapeHtml(state.query)}" placeholder="In diesem Set suchen"></div>
         ${setSwitcherPopup('set',setOptions,s.id,setFilterLabel(s))}
         ${catalogGameFilterBar(game,f,'set',data.rarities)}
+        ${sortControl('sort-filter',CARD_SORTS,state.sort)}
         <div class="toolbar-filter-anchor catalog-settings-control">
-          <button type="button" class="icon-button" data-filter-toggle="set-view-popup" aria-expanded="false" aria-label="Ansicht" title="Ansicht">⚙</button>
+          ${filterMoreButton('set-view-popup','Weitere Filter')}
           <div class="toolbar-filter-popup hidden" id="set-view-popup">
             <label>Sprache<select id="language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${s.languages.map(l=>`<option value="${l}" ${state.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
-            <label>Sortierung<select id="sort-filter" class="select-control"><option value="number">Nr. · Modulsortierung</option><option value="name">Name A–Z</option><option value="rarity">Seltenheit</option><option value="value">Marktwert</option><option value="quantity">Menge</option><option value="missing">Fehlend zuerst</option></select></label>
             ${isLorcana?lorcanaAnsichtExtras(f):''}
           </div>
         </div>
-        <div class="zoom-control card-filter-end"><span>−</span><input id="card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
+        ${zoomControl('card-zoom')}
       </div>
     </div>
     ${tileEditionSwitch(game.id)}
@@ -149,6 +150,7 @@ async function renderSet(setId, preserve=false){
   $$('[data-card-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardMode,value=b.dataset.value;f[key]=value;renderSet(setId,true)});
   bindTileEditionSwitch(game.id,()=>renderSet(setId,true));
   $('#card-zoom').oninput=e=>{state.zoom=e.target.value;$('.card-grid').style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
+  let searchTimer;$('#set-card-search').oninput=event=>{clearTimeout(searchTimer);state.query=event.target.value;searchTimer=setTimeout(()=>reRenderPreservingFocus('#set-card-search',()=>renderSet(setId,true)),280)};
 }
 
 async function renderAllCards(gameId,preserve=false){
@@ -182,16 +184,16 @@ async function renderAllCards(gameId,preserve=false){
         <div class="filter-search"><span>⌕</span><input id="all-card-search" value="${escapeHtml(state.query)}" placeholder="Alle Sets durchsuchen"></div>
         ${setSwitcherPopup('all',setOptions,'__all__','Alle Karten')}
         ${catalogGameFilterBar(game,f,'all',data.rarities)}
+        ${sortControl('all-sort-filter',CARD_SORTS,state.sort)}
         <div class="toolbar-filter-anchor catalog-settings-control">
-          <button type="button" class="icon-button" data-filter-toggle="all-view-popup" aria-expanded="false" aria-label="Ansicht" title="Ansicht">⚙</button>
+          ${filterMoreButton('all-view-popup','Weitere Filter')}
           <div class="toolbar-filter-popup hidden" id="all-view-popup">
             <label>Sprache<select id="all-language-filter" class="select-control"><option value="combined">Sprachen kombiniert</option>${game.languages.map(language=>`<option value="${language}" ${state.language===language?'selected':''}>${language}</option>`).join('')}</select></label>
-            <label>Sortierung<select id="all-sort-filter" class="select-control"><option value="number">Nr. · Modulsortierung</option><option value="name">Name A–Z</option><option value="rarity">Seltenheit</option><option value="value">Marktwert</option><option value="quantity">Menge</option><option value="missing">Fehlend zuerst</option></select></label>
             <label>Setreihenfolge<select id="all-set-order" class="select-control"><option value="desc">Sets: Neu → Alt · Nr. ↓</option><option value="asc">Sets: Alt → Neu · Nr. ↑</option></select></label>
             ${isLorcana?lorcanaAnsichtExtras(f):''}
           </div>
         </div>
-        <div class="zoom-control card-filter-end"><span>−</span><input id="all-card-zoom" type="range" min="110" max="320" value="${state.zoom}"><span>＋</span></div>
+        ${zoomControl('all-card-zoom')}
       </div>
     </div>
     ${tileEditionSwitch(game.id)}
@@ -311,7 +313,7 @@ function cardTile(card,foilDisplayActive=false){
   return `<article class="card-tile ${card.quantity?'owned':'missing'}" data-identity="${card.identity_id}" data-variant="${v.variant_id}">
     <div class="card-image-wrap card-finish-frame ${visual.effect}" style="--foil-mask:url('${foilMaskUrl(v.variant_id)}')">${imageHtml}<div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div><button class="watchlist-action watchlist-action-icon watch-button ${card.watchlisted?'active':''}" title="Watchlist" aria-label="${card.watchlisted?'Von der Watchlist entfernen':'Zur Watchlist hinzufügen'}" aria-pressed="${Boolean(card.watchlisted)}">${watchlistIcon(card.watchlisted)}</button><div class="variant-badges">${badgesHtml}</div>${quantityHtml}</div>
     ${playsetHtml}
-    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${escapeHtml(card.collector_number)} · ${escapeHtml(card.rarity)} · ${v.language}${editions.length>1&&pair&&pair.edition.id!=='base'?` · ${escapeHtml(pair.edition.label)}`:''}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${tileChipVariants(languageVariants,v.game_id||state.activeGameId).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
+    <div class="card-info"><b>${escapeHtml(card.canonical_name)}</b><div class="card-subline"><span>${[card.collector_number,card.rarity,v.language].filter(Boolean).map(escapeHtml).join(' · ')}${editions.length>1&&pair&&pair.edition.id!=='base'?` · ${escapeHtml(pair.edition.label)}`:''}</span><span class="card-price">${price(v.price)}</span></div>${state.zoom>175?`<div class="variant-chips">${tileChipVariants(languageVariants,v.game_id||state.activeGameId).map(x=>`<span class="variant-chip">${escapeHtml(isLorcana?lorcanaFinishLabel(x.finish,x.rarity):x.finish)}</span>`).join('')}</div>`:''}</div></article>`;
 }
 
 // Keeps the heart icon in sync everywhere a card can be watchlist-toggled from. The card modal

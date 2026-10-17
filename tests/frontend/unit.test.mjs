@@ -104,10 +104,10 @@ describe('sets', () => {
     assert.equal(run(`latestRelease({})`), null);
   });
 
-  test('filter labels abbreviate set names', () => {
-    assert.equal(run(`setAbbreviation("Ursula's Return")`), 'UR');
-    assert.equal(run(`setFilterLabel({id:'lorcana-4',code:'4',name:"Ursula's Return"})`), '4 UR');
-    assert.equal(run(`setFilterLabel({id:'one-piece-op-01',code:'OP-01',name:'Romance Dawn'})`), 'OP-01 RD');
+  test('filter labels name the set', () => {
+    assert.equal(run(`setFilterLabel({id:'lorcana-4',code:'4',name:"Ursula's Return"})`), "4 · Ursula's Return");
+    assert.equal(run(`setFilterLabel({id:'one-piece-op-01',code:'OP-01',name:'Romance Dawn'})`), 'OP-01 · Romance Dawn');
+    assert.equal(run(`setFilterLabel({code:'Promo',name:'Promo'})`), 'Promo', 'no repeat when code and name are the same');
   });
 });
 

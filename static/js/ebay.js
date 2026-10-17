@@ -269,7 +269,7 @@ async function renderEbay(){
   const status=ebayView.status=listings.status;
   const open=drafts.drafts.filter(draft=>draft.status!=='published'),done=drafts.drafts.filter(draft=>draft.status==='published');
   const shown=listings.listings.filter(item=>ebayView.listingFilter==='all'||item.status===ebayView.listingFilter||(ebayView.listingFilter==='ended'&&['ended','unsold'].includes(item.status)));
-  const filters=[['active','Aktiv'],['sold','Verkauft'],['ended','Beendet'],['all','Alle']];
+  const filters=[['all','Alle'],['active','Aktiv'],['sold','Verkauft'],['ended','Beendet']];
   content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · VERKAUF &amp; TAUSCH</span><h1>eBay</h1><p>Entwürfe aus deinen Sheets und deiner Sammlung prüfen und einstellen, deine Angebote und Verkäufe im Blick.</p></div></div>
     ${sheetTabsHtml('ebay')}
     <div class="ebay-status-bar">${status.connected
@@ -547,7 +547,7 @@ async function renderAdminEbay(){
     <summary class="oauth-admin-summary"><div class="oauth-admin-head">
       <div class="oauth-admin-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16l-1.4 11.2a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8L4 7Z"/><path d="M8.5 7V6a3.5 3.5 0 0 1 7 0v1"/></svg></div>
       <div class="oauth-admin-title"><span>VERKAUF</span><h2>eBay</h2><p>Schlüssel der eBay-Anwendung für Kontoverbindung, Angebote und Preisbeobachtung.</p></div>
-      <div class="oauth-admin-state"><span class="oauth-status ${config.client_id&&config.client_secret_set?'is-active':'is-inactive'}"><i></i>${config.client_id&&config.client_secret_set?'Eingerichtet':'Nicht eingerichtet'}</span><span class="oauth-source-badge">${locked?'Umgebung':'Admin UI'}</span></div>
+      <div class="oauth-admin-state"><span class="oauth-status ${config.client_id&&config.client_secret_set?'is-active':'is-inactive'}"><i></i>${config.client_id&&config.client_secret_set?'Eingerichtet':'Nicht eingerichtet'}</span><span class="oauth-source-badge">${locked?'Umgebung':'In der App'}</span></div>
       <span class="oauth-collapse-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5"/></svg></span>
     </div></summary>
     <div class="oauth-admin-body"><div class="admin-form oauth-admin-form">

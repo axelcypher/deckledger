@@ -8,6 +8,7 @@ const base=`/u/${encodeURIComponent(slug)}`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>Number(value||0).toLocaleString('de-DE');
 const percent=(part,whole)=>whole?Math.round(part/whole*100):0;
+const releaseDate=value=>value?new Intl.DateTimeFormat('de-DE',{day:'numeric',month:'short',year:'numeric'}).format(new Date(`${value}T12:00:00`)):'';
 const cache=new Map();
 let profile=null,cardMode='all';
 
@@ -27,7 +28,7 @@ function head(activeGame){
       <div><span class="eyebrow">ÖFFENTLICHE SAMMLUNG</span><h1>${esc(profile.name)}</h1>
         ${game?`<p>${number(game.owned)} von ${number(game.total)} Karten aus ${esc(game.name)} · ${number(game.copies)} Exemplare</p>`:''}</div>
     </section>
-    ${profile.games.length>1?`<nav class="segmented public-games" aria-label="TCG">${profile.games.map(item=>`<button type="button" data-game="${esc(item.id)}" class="${item.id===activeGame?'active':''}"><img src="${base}/game-logo/${encodeURIComponent(item.id)}" alt="">${esc(item.short_name)}</button>`).join('')}</nav>`:''}`;
+    ${profile.games.length>1?`<nav class="segmented public-games" aria-label="TCG">${profile.games.map(item=>`<button type="button" data-game="${esc(item.id)}" class="${item.id===activeGame?'active':''}"><i class="public-game-logo"><img src="${base}/game-logo/${encodeURIComponent(item.id)}" alt=""></i>${esc(item.short_name)}</button>`).join('')}</nav>`:''}`;
 }
 
 function bindHead(){
@@ -40,7 +41,7 @@ async function renderGame(gameId){
     <div class="toolbar public-toolbar"><h2>Sets</h2></div>
     ${sets.length?`<div class="set-grid public-set-grid">${sets.map(set=>`<article class="set-card" tabindex="0" role="button" data-set="${esc(set.id)}" style="--accent:${esc(set.accent)}">
       <div class="set-art"><img class="set-brand-logo set-brand-logo-${esc(set.game_id)}" loading="lazy" src="${base}/set-logo/${encodeURIComponent(set.id)}?v=${encodeURIComponent(set.visual_version||'')}" alt="${esc(set.name)} Logo"><span class="set-code">${esc(set.code)}</span><span class="set-kind">${esc(set.set_type)}</span></div>
-      <div class="set-card-info"><h3>${esc(set.name)}</h3><div class="set-meta">${esc((set.release_dates||[set.release_date]).filter(Boolean).at(-1)||'')}${set.printed_card_count?` · ${set.printed_card_count} nummeriert`:''}</div>
+      <div class="set-card-info"><h3>${esc(set.name)}</h3><div class="set-meta">${[releaseDate((set.release_dates||[set.release_date]).filter(Boolean).at(-1)),set.printed_card_count?`${set.printed_card_count} nummeriert`:''].filter(Boolean).map(esc).join(' · ')}</div>
         <div class="public-progress" style="--done:${set.base_completion}%"><i></i></div>
         <div class="set-completion"><span>KARTEN<b>${number(set.owned)} / ${number(set.total)}</b></span><span>BASE<b>${set.base_completion}%</b></span><span>MASTER<b>${set.master_completion}%</b></span></div></div></article>`).join('')}</div>`
       :'<div class="empty-state"><b>Keine Sets</b></div>'}`;

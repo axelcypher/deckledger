@@ -78,7 +78,7 @@ def sets_of_game(game_id, uid):
         # second stored column. Promo/quest/challenge sets (ids like "lorcana-p1") don't match
         # and are left with their existing code untouched.
         number_match = re.match(r"^lorcana-(\d+)$", s["id"])
-        if number_match:
+        if number_match and item["code"] != number_match.group(1):
             item["code"] = f"{number_match.group(1)} {item['code']}"
         rows.append(item)
     rows.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, "desc")))

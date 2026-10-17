@@ -238,7 +238,7 @@ async function renderPublicProfileSettings(){
   const user=state.boot.user,games=state.boot.games;
   const draw=()=>{
     body.innerHTML=`<div class="settings-checklist">
-        <label class="checkbox-row"><span><b>Profil öffentlich</b><small>${profile.enabled&&profile.url?`Erreichbar unter <a href="${escapeHtml(profile.url)}" target="_blank" rel="noopener">${escapeHtml(profile.url)}</a>`:'Aus: niemand ohne Anmeldung sieht etwas.'}</small></span><input type="checkbox" id="public-enabled" ${profile.enabled?'checked':''}><i aria-hidden="true"></i></label>
+        <label class="checkbox-row highlight-setting public-profile-switch"><span><b>Profil öffentlich</b><small>${profile.enabled&&profile.url?`Erreichbar unter <a href="${escapeHtml(profile.url)}" target="_blank" rel="noopener">${escapeHtml(profile.url)}</a>`:'Aus: niemand ohne Anmeldung sieht etwas.'}</small></span><input type="checkbox" id="public-enabled" ${profile.enabled?'checked':''}><i aria-hidden="true"></i></label>
       </div>
       <div class="settings-grid settings-grid-account">
         <label class="settings-field"><span>Adresse</span><input id="public-slug" placeholder="z. B. ${escapeHtml((user.username||'sammlung').toLowerCase().replace(/[^a-z0-9-]/g,''))}" value="${escapeHtml(profile.slug)}" autocomplete="off" spellcheck="false"></label>
@@ -247,7 +247,7 @@ async function renderPublicProfileSettings(){
       <p class="muted settings-hint">Darstellung für Besucher</p>
       <div class="segmented public-profile-theme">${[['auto','Automatisch'],['light','Hell'],['dark','Dunkel']].map(([value,label])=>`<button type="button" data-public-theme="${value}" class="${profile.theme===value?'active':''}" aria-pressed="${profile.theme===value}">${label}</button>`).join('')}</div>
       <p class="muted settings-hint">Freigegebene TCGs</p>
-      <div class="settings-checklist public-profile-games">${games.map(game=>`<label class="checkbox-row"><span class="settings-language-game"><i><img src="/game-logo/${game.id}" alt=""></i><b>${escapeHtml(game.name)}</b></span><input type="checkbox" data-public-game="${game.id}" ${profile.games.includes(game.id)?'checked':''}><i aria-hidden="true"></i></label>`).join('')}</div>
+      <div class="settings-checklist public-profile-games">${games.map(game=>`<label class="checkbox-row highlight-setting"><span class="settings-language-game"><i><img src="/game-logo/${game.id}" alt=""></i><b>${escapeHtml(game.name)}</b></span><input type="checkbox" data-public-game="${game.id}" ${profile.games.includes(game.id)?'checked':''}><i aria-hidden="true"></i></label>`).join('')}</div>
       <div class="user-settings-actions">${profile.url?`<button class="secondary-button" type="button" id="public-copy">Link kopieren</button>`:''}<span class="spacer"></span><button class="primary-button" type="button" id="public-save">Profil speichern</button></div>`;
     $('#public-save',body).onclick=async()=>{
       try{

@@ -34,16 +34,18 @@ async function renderWatchlist(preserve=false){
       ${setSwitcherPopup('watch',sets,f.set_id||'__all__',currentSet?setFilterLabel(currentSet):'Alle Sets')}
       ${catalogGameFilterBar(game,f,'watch',rarityOptions)}
       <div class="toolbar-filter-anchor catalog-settings-control">
-        <button type="button" class="icon-button" data-filter-toggle="watch-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
+        ${filterMoreButton('watch-view-popup','Weitere Filter')}
         <div class="toolbar-filter-popup hidden" id="watch-view-popup">
           <label>Sprache<select id="watch-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
           <label>Ausführung<select id="watch-finish" class="select-control"><option value="">Alle Varianten</option>${finishFilterOptions(game.id).map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
-          <label>Sortierung<select id="watch-sort" class="select-control"><option value="added">Zuletzt hinzugefügt</option><option value="name">Name</option><option value="number">Nummer</option><option value="price_high">Preis absteigend</option><option value="price_low">Preis aufsteigend</option></select></label>
         </div>
       </div>
+      ${sortControl('watch-sort',[['added','Zuletzt hinzugefügt'],['name','Name A–Z'],['number','Nummer'],['price_high','Preis absteigend'],['price_low','Preis aufsteigend']],f.sort)}
+      ${zoomControl('watch-zoom')}
     </div></div>
     <section class="card-grid ${state.watchSelectionMode?'watch-selection-mode':''}" style="--card-size:${state.zoom}px">${state.cards.length?state.cards.map(cardTile).join(''):'<div class="empty-state"><b>Keine Karten in dieser Ansicht</b><span>Passe die Filter an oder füge Karten hinzu.</span></div>'}</section>`;
   mountFilterPanel('watchlist',['.watch-filter-shell'],'Watchlist filtern & sortieren');
+  bindZoomControl('watch-zoom',$('.card-grid',content),state.activeGameId);
   $('#watch-sort').value=f.sort;bindCardEvents(state.watchlistId);
   $$('.list-tabs button').forEach(b=>b.onclick=()=>{state.watchlistId=Number(b.dataset.list);state.watchSelection.clear();state.watchSelectionMode=false;renderWatchlist(true)});
   $$('[data-set-switch]',content).forEach(button=>button.onclick=()=>{f.set_id=button.dataset.setSwitch==='__all__'?'':button.dataset.setSwitch;renderWatchlist(true)});

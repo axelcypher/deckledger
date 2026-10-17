@@ -107,9 +107,11 @@ function toast(message, actionLabel, action, key) {
   $('#toast-stack').append(node); setTimeout(()=>node.remove(),5000);
 }
 
+// A set and "all cards" belong to the game's sets: the phone's "Sets" tab stays lit there.
+const NAV_FAMILY={set:'game','game-cards':'game'};
 function setNav(route) {
   $$('.nav-item[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
-  $$('.mt-tab[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
+  $$('.mt-tab[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===(NAV_FAMILY[route]||route)));
   $$('.mobile-profile-button[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
 }
 
@@ -161,6 +163,9 @@ function setActiveGame(gameId, persist=true) {
     state.deckFilters={q:'',set_id:'',language:defaultLang,rarity:'',rarities:[],type:'',color:'',sort:'number',colors:[],types:[],costs:[],attributes:[],kinds:[],bloomLevels:[],inkwell:''};
     state.deckZone='main';
   }
+  // The sidebar's watchlist count is per game: every way of switching games (the picker, a game
+  // tile on the dashboard, a search result) has to show the new game's count.
+  if(changed)refreshWatchCount().catch(()=>{});
   if(persist) post('/api/settings',{activeGameId:gameId});
 }
 

@@ -72,7 +72,7 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>span
   overflow:hidden;
   max-width:100%;
   color:var(--muted);
-  font:700 7px/1.15 var(--font-ui,"Inter",sans-serif);
+  font:700 9px/1.15 var(--font-ui,"Inter",sans-serif);
   letter-spacing:.09em;
   text-overflow:ellipsis;
   text-transform:uppercase;
@@ -109,7 +109,7 @@ body.dark.mobile-modern .content .browser-summary-row>.browser-summary-actions {
     margin-bottom:13px;
   }
   body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat] { min-height:56px;padding:9px 5px; }
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>span { font-size:6px; }
+  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>span { font-size:8.5px; }
   body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>b { font-size:15px; }
 
   body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="2"]>[data-stat]:nth-child(2n+1),

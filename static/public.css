@@ -10,7 +10,8 @@ body.public-page .public-content { max-width:1280px;margin:0 auto;padding:22px 2
 .public-head { display:flex;align-items:flex-end;gap:16px;margin-bottom:16px; }
 .public-head h1 { margin:4px 0 6px;font-size:38px;font-weight:600; }
 .public-head p { margin:0;color:var(--muted);font-size:13px; }
-.public-games { display:inline-flex;flex-wrap:wrap;gap:4px;margin-bottom:22px;padding:4px; }
+/* The theme stretches every .segmented across the page; the game switch only needs its buttons. */
+body.public-page .content .public-games { display:inline-flex;flex-wrap:wrap;gap:4px;width:auto;max-width:100%;margin-bottom:22px;padding:4px; }
 .public-games button { display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 14px;font-weight:700; }
 .public-games img { width:18px;height:18px;object-fit:contain; }
 .public-toolbar { margin:0 0 12px; }
@@ -36,3 +37,19 @@ body.public-page .public-content { max-width:1280px;margin:0 auto;padding:22px 2
   .public-set-head .public-filter { flex-basis:100%;margin-left:0; }
   .public-card-grid { --card-size:110px; }
 }
+
+/* The app's type: display face for headings and the brand, as in the sidebar. */
+body.public-page .public-head h1,body.public-page .public-set-head h2,body.public-page .public-toolbar h2 { font-family:var(--font-display,"Cormorant Garamond",serif);font-weight:600;letter-spacing:-.01em; }
+body.public-page .public-brand { font-family:var(--font-display,"Cormorant Garamond",serif);font-weight:600;letter-spacing:.14em; }
+body.public-page .public-brand b { font-weight:700; }
+@media (max-width:760px) {
+  body.public-page .public-content { padding-top:8px; }
+  body.public-page .public-head h1 { font-size:32px; }
+}
+
+body.public-page .public-game-logo { display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#22261f; }
+body.public-page .public-games .public-game-logo img { width:20px;height:20px; }
+
+/* Game logos big enough to recognise, on a tile that stands out in both themes. */
+body.public-page .public-game-logo { width:30px;height:30px;border-radius:8px;background:#22261f;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); }
+body.public-page .public-games .public-game-logo img { width:24px;height:24px; }

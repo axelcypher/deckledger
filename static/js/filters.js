@@ -28,7 +28,7 @@ function opFilterPanel(filters){
   const selected=(key,value)=>(filters[key]||[]).includes(String(value));
   const pills=(items,key)=>items.map(([value,label])=>`<button type="button" class="op-filter-chip ${selected(key,value)?'active':''}" data-op-filter="${key}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('');
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${pills(OP_TYPE_FILTERS,'types')}</div></div>
-    <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,index)=>index+1).map(cost=>`<button type="button" class="op-image-filter ${selected('costs',cost)?'active':''}" style="--op-cost-icon:url('/op-filter-icon/cost-${cost}.png?v=3')" data-op-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=3" alt="${cost}"></button>`).join('')}</div></div>
+    <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,index)=>index+1).map(cost=>`<button type="button" class="op-filter-chip op-cost-chip ${selected('costs',cost)?'active':''}" data-op-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}">${cost}</button>`).join('')}</div></div>
     <div class="op-filter-group op-colors"><span>Farbe</span><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${selected('colors',name)?'active':''}" data-op-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>
     <div class="op-filter-group op-attributes"><span>Attribut</span><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${selected('attributes',value)?'active':''}" data-op-filter="attributes" data-value="${value}" aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`;
 }
@@ -92,7 +92,7 @@ function gameRarityPopup(rarityOptions,filters,prefix,scope='card'){
 function opCardFilterGroups(filters,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
-    <div class="op-filter-group op-costs"><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-image-filter ${active('costs',cost)?'active':''}" style="--op-cost-icon:url('/op-filter-icon/cost-${cost}.png?v=3')" ${filterData(scope,'costs',cost)} aria-label="Kosten ${cost}" title="Kosten ${cost}"><img src="/op-filter-icon/cost-${cost}.png?v=3" alt="${cost}"></button>`).join('')}</div></div>
+    <div class="op-filter-group op-costs"><div>${Array.from({length:10},(_,i)=>i+1).map(cost=>`<button type="button" class="op-filter-chip op-cost-chip ${active('costs',cost)?'active':''}" ${filterData(scope,'costs',cost)} aria-label="Kosten ${cost}" title="Kosten ${cost}">${cost}</button>`).join('')}</div></div>
     <div class="op-filter-group op-colors"><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" ${filterData(scope,'colors',name)} aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>`;
 }
 function opCardFilterBar(filters,prefix,rarityOptions,scope='card'){
@@ -126,14 +126,11 @@ function catalogGameFilterBar(game,filters,prefix,rarityOptions,scope='card'){
   if(game.id==='vcard')return vcardCardFilterBar(filters,prefix,rarityOptions,scope);
   return gameRarityPopup(rarityOptions,filters,prefix,scope);
 }
-function setAbbreviation(name){
-  return name.replace(/[^\p{L}\s]/gu,'').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').toUpperCase();
-}
+// The set switcher names the set ("4 · Fractured Paradox"); an abbreviation alone ("4 FP") said
+// nothing to anyone who does not know it already.
 function setFilterLabel(set){
-  const abbreviation=/^\d+$/.test(String(set.code||''))?setAbbreviation(set.name||''):String(set.code||'');
-  const lorcanaNumber=String(set.id||'').match(/^lorcana-(\d+)$/)?.[1];
-  if(lorcanaNumber)return `${lorcanaNumber} ${abbreviation}`.trim();
-  return `${set.code||''} ${setAbbreviation(set.name||'')}`.trim();
+  const code=String(set.code||'').trim(),name=String(set.name||'').trim();
+  return code&&name&&code!==name?`${code} · ${name}`:name||code;
 }
 function setSwitcherPopup(prefix,setOptions,currentSetId,currentLabel){
   const popupId=`${prefix}-set-popup`;
@@ -161,4 +158,23 @@ function lorcanaFilterPanel(filters){
 function hololiveFilterPanel(filters){
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${deckFilterPills(HOLOLIVE_KIND_FILTERS,'kinds',filters)}</div></div>
     <div class="op-filter-group"><span>Bloom-Level</span><div>${deckFilterPills(HOLOLIVE_BLOOM_FILTERS,'bloomLevels',filters)}</div></div>`;
+}
+
+// ---- The parts every card filter bar shares, in one order: search · set · rarity · the game's own
+// filters · sort · more (a popup) · zoom. Sorting is a visible control, not hidden behind a cog.
+const CARD_SORTS=[['number','Nummer'],['name','Name A–Z'],['rarity','Seltenheit'],['value','Marktwert'],['quantity','Menge'],['missing','Fehlend zuerst']];
+function sortControl(id,options,value){
+  return `<label class="filter-sort"><span>Sortieren</span><select id="${id}" class="select-control">${options.map(([key,label])=>`<option value="${escapeHtml(key)}" ${String(value)===String(key)?'selected':''}>${escapeHtml(label)}</option>`).join('')}</select></label>`;
+}
+const FILTER_MORE_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>';
+function filterMoreButton(popupId,label){
+  return `<button type="button" class="secondary-button filter-more-button" data-filter-toggle="${popupId}" aria-expanded="false" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${FILTER_MORE_ICON}<span>${escapeHtml(label)}</span></button>`;
+}
+function zoomControl(id){
+  return `<div class="zoom-control card-filter-end" title="Kartengröße"><span aria-hidden="true">−</span><input id="${id}" type="range" min="110" max="320" value="${state.zoom}" aria-label="Kartengröße"><span aria-hidden="true">＋</span></div>`;
+}
+// The zoom of a card grid: one size for every view of a game, kept in the settings.
+function bindZoomControl(id,grid,gameId){
+  const input=$(`#${id}`,content);if(!input)return;
+  input.oninput=event=>{state.zoom=event.target.value;grid?.style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${gameId}`]:Number(state.zoom)})};
 }

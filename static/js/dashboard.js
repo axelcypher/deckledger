@@ -27,7 +27,7 @@ function renderDashboard(){
         <div class="home-banner-viewport"><div class="home-banner-track" id="home-banner-track"></div></div>
       </section>
       <section id="dashboard-recent" class="dashboard-recent hidden">
-        <h2>Recent Additions</h2>
+        <h2>Zuletzt hinzugefügt</h2>
         <div id="dashboard-recent-list" class="dashboard-recent-list"></div>
       </section>
     </section>
@@ -40,7 +40,7 @@ function renderDashboard(){
           <div class="game-stats"><span><b>${g.copies}</b> Karten</span><span><b>${g.unique_cards}</b> Varianten · ${g.completion}%</span></div>
         </div>
       </button>`).join('')}</section>
-    <button type="button" class="dashboard-account-button" data-dashboard-route="settings">Settings</button>
+    <button type="button" class="dashboard-account-button" data-dashboard-route="settings">Einstellungen</button>
   </div>`;
   $$('[data-game]',content).forEach(el=>el.onclick=()=>{setActiveGame(el.dataset.game);routeTo('game',el.dataset.game)});
   $$('[data-dashboard-route]',content).forEach(el=>el.onclick=()=>{const route=el.dataset.dashboardRoute;routeTo(route,route==='game'?state.activeGameId:undefined)});

@@ -21,7 +21,7 @@
 .deck-transfer-option>svg { flex:0 0 34px;width:34px;height:34px;padding:7px;border-radius:50%;background:var(--surface); }
 .deck-transfer-option>span { display:flex;flex:1;min-width:0;flex-direction:column;gap:3px; }
 .deck-transfer-option b { font-size:11px; }
-.deck-transfer-option small { color:var(--muted);font-size:8px; }
+.deck-transfer-option small { color:var(--muted);font-size:9.5px; }
 .deck-transfer-option>i { color:var(--muted);font:500 22px/1 var(--font-display);font-style:normal; }
 .deck-transfer-option.danger { color:#b3625b; }
 
@@ -144,7 +144,7 @@
   body.dark.mobile-modern .content :is(.page-head h1,.dashboard-hero h1,.game-banner h1,.set-compact-title h1,.toolbar h2,.deck-overview-head h1,.deck-editor-head input,.deck-catalog-title b,.op-section-head h2) {
     font-family:var(--font-display);font-weight:600;letter-spacing:-.018em;color:var(--ink);
   }
-  body.dark.mobile-modern .content .eyebrow { color:var(--mt-gold);font-size:8px;font-weight:750;letter-spacing:.14em;text-transform:uppercase; }
+  body.dark.mobile-modern .content .eyebrow { color:var(--mt-gold);font-size:9.5px;font-weight:750;letter-spacing:.14em;text-transform:uppercase; }
   body.dark.mobile-modern .content .muted,
   body.dark.mobile-modern .content :is(p,small) { color:var(--muted); }
   body.dark.mobile-modern .content .page-head { display:flex;align-items:flex-start;flex-direction:row;gap:12px;margin:4px 0 22px; }
@@ -203,7 +203,7 @@
   }
   body.dark.mobile-modern .content .segmented button { height:34px;border-radius:var(--mt-radius-full); }
   body.dark.mobile-modern .content .segmented button.active { background:var(--mp-card);color:var(--ink);box-shadow:var(--mp-shadow-soft); }
-  body.dark.mobile-modern .content .badge { border:0;border-radius:var(--mt-radius-full);background:var(--mp-gold-soft);color:var(--mt-gold);font-size:8px; }
+  body.dark.mobile-modern .content .badge { border:0;border-radius:var(--mt-radius-full);background:var(--mp-gold-soft);color:var(--mt-gold);font-size:9.5px; }
   body.dark.mobile-modern .content .empty-state {
     min-height:210px;padding:58px 24px;border:1px dashed var(--mp-line);border-radius:var(--mt-radius-lg);background:var(--mp-soft);
   }
@@ -242,7 +242,7 @@
   body.dark.mobile-modern .content .hero-summary div { position:relative;z-index:1;min-width:0;padding:0 10px;text-align:center; }
   body.dark.mobile-modern .content .hero-summary div+div { border-left:1px solid var(--mp-line); }
   body.dark.mobile-modern .content .hero-summary b { font:600 17px/1.1 var(--font-display);color:var(--ink); }
-  body.dark.mobile-modern .content .hero-summary span { margin-top:5px;color:var(--muted);font-size:7px;letter-spacing:.09em; }
+  body.dark.mobile-modern .content .hero-summary span { margin-top:5px;color:var(--muted);font-size:9px;letter-spacing:.09em; }
   body.dark.mobile-modern .content .dashboard-quick-nav {
     display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;
   }
@@ -254,7 +254,7 @@
   body.dark.mobile-modern .content .dashboard-quick-nav svg {
     width:21px;height:21px;fill:none;stroke:var(--brand);stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round;
   }
-  body.dark.mobile-modern .content .dashboard-quick-nav span { overflow:hidden;width:100%;font-size:8px;font-weight:650;text-align:center;text-overflow:ellipsis; }
+  body.dark.mobile-modern .content .dashboard-quick-nav span { overflow:hidden;width:100%;font-size:9.5px;font-weight:650;text-align:center;text-overflow:ellipsis; }
   body.dark.mobile-modern .content .dashboard-quick-nav strong {
     color:var(--muted);font:600 10px/1 var(--font-ui);font-variant-numeric:tabular-nums;
   }
@@ -276,8 +276,8 @@
   body.dark.mobile-modern .content .banner-card-meta { display:block;min-width:0;padding:7px 2px 0; }
   body.dark.mobile-modern .content .banner-card-meta b,
   body.dark.mobile-modern .content .banner-card-meta span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-  body.dark.mobile-modern .content .banner-card-meta b { color:var(--ink);font-size:7.5px;font-weight:600; }
-  body.dark.mobile-modern .content .banner-card-meta span { margin-top:3px;color:var(--muted);font-size:7px;font-variant-numeric:tabular-nums; }
+  body.dark.mobile-modern .content .banner-card-meta b { color:var(--ink);font-size:9.5px;font-weight:600; }
+  body.dark.mobile-modern .content .banner-card-meta span { margin-top:3px;color:var(--muted);font-size:9px;font-variant-numeric:tabular-nums; }
   body.dark.mobile-modern .content .dashboard-recent {
     width:calc(100% + 32px);margin:-2px 0 0 -16px;padding:0 16px 4px;background:transparent;
   }
@@ -300,7 +300,7 @@
   body.dark.mobile-modern .content .dashboard-recent-copy b,
   body.dark.mobile-modern .content .dashboard-recent-copy small { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   body.dark.mobile-modern .content .dashboard-recent-copy b { font-size:10px;font-weight:600; }
-  body.dark.mobile-modern .content .dashboard-recent-copy small { margin-top:4px;font-size:8px; }
+  body.dark.mobile-modern .content .dashboard-recent-copy small { margin-top:4px;font-size:9.5px; }
   body.dark.mobile-modern .content .dashboard-recent-price { padding-left:8px;font:600 11px/1 var(--font-ui);white-space:nowrap; }
   body[data-route="dashboard"].dark.mobile-modern .topbar {
     display:grid;grid-template-columns:1fr auto auto;grid-template-rows:42px 39px;gap:12px 10px;
@@ -337,7 +337,7 @@
   body.dark.mobile-modern .content .game-info { padding:13px 18px 17px;border-top:1px solid var(--mp-line);background:transparent; }
   body.dark.mobile-modern .content .game-main-stat { margin-bottom:10px; }
   body.dark.mobile-modern .content .game-main-stat b { font:600 19px var(--font-display); }
-  body.dark.mobile-modern .content .game-main-stat span { color:var(--muted);font-size:8px;letter-spacing:.08em;text-transform:uppercase; }
+  body.dark.mobile-modern .content .game-main-stat span { color:var(--muted);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase; }
   body.dark.mobile-modern .content .game-stats { font-size:9px; }
   body.dark.mobile-modern .content .game-stats b { color:var(--ink); }
   body.dark.mobile-modern .content .progress-track { height:3px;margin-bottom:9px;background:var(--mt-accent-soft); }
@@ -351,12 +351,12 @@
   }
   body.dark.mobile-modern .content .game-banner-symbol { width:72px;height:50px;border:0;background:transparent; }
   body.dark.mobile-modern .content .game-banner h1 { margin:0 0 3px;font-size:23px; }
-  body.dark.mobile-modern .content .game-banner p { color:var(--muted);font-size:8px; }
+  body.dark.mobile-modern .content .game-banner p { color:var(--muted);font-size:9.5px; }
   body.dark.mobile-modern .content .game-banner .banner-value {
     display:flex;grid-column:1/-1;align-items:end;justify-content:space-between;margin:0;padding-top:12px;border-top:1px solid var(--mp-line);text-align:left;
   }
   body.dark.mobile-modern .content .banner-value b { font:600 19px var(--font-display); }
-  body.dark.mobile-modern .content .banner-value span { max-width:150px;color:var(--muted);font-size:7px;text-align:right; }
+  body.dark.mobile-modern .content .banner-value span { max-width:150px;color:var(--muted);font-size:9px;text-align:right; }
   body.dark.mobile-modern .content .set-overview-toolbar { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:0;padding:10px;border-radius:var(--mt-radius-lg);background:var(--mp-soft); }
   body.dark.mobile-modern .content .set-overview-toolbar h2 { display:none; }
   body.dark.mobile-modern .content .set-overview-toolbar :is(.all-cards-button,#set-type-filter,#set-sort,#set-direction) { width:100%;max-width:none; }
@@ -372,12 +372,12 @@
   body.dark.mobile-modern.mobile-light .content .set-art::after { background:linear-gradient(transparent,rgba(245,240,230,.94)); }
   body.dark.mobile-modern .content .set-brand-logo { padding:10px 18px 24px; }
   body.dark.mobile-modern .content .set-code { color:var(--ink);font-size:9px; }
-  body.dark.mobile-modern .content .set-kind { color:var(--muted);font-size:8px; }
+  body.dark.mobile-modern .content .set-kind { color:var(--muted);font-size:9.5px; }
   body.dark.mobile-modern .content .set-card-info { padding:15px 16px 13px;background:transparent; }
   body.dark.mobile-modern .content .set-card h3 { margin-bottom:4px;font:600 19px var(--font-display); }
-  body.dark.mobile-modern .content .set-meta { color:var(--muted);font-size:8px; }
+  body.dark.mobile-modern .content .set-meta { color:var(--muted);font-size:9.5px; }
   body.dark.mobile-modern .content .set-completion { gap:0;margin-top:12px;padding-top:11px;border-color:var(--mp-line); }
-  body.dark.mobile-modern .content .set-completion span { flex:1;min-width:0;font-size:6px; }
+  body.dark.mobile-modern .content .set-completion span { flex:1;min-width:0;font-size:8.5px; }
   body.dark.mobile-modern .content .set-completion b { margin-top:2px;font-size:10px; }
   body.dark.mobile-modern.mobile-light .content :is(.game-logo,.game-banner-symbol img) {
     filter:brightness(0) saturate(100%) invert(17%) sepia(11%) saturate(1125%) hue-rotate(101deg) brightness(88%) contrast(94%);
@@ -389,14 +389,14 @@
     border-radius:var(--mt-radius-lg);background:var(--mp-soft);box-shadow:none;
   }
   body.dark.mobile-modern .content .set-compact-title h1 { display:block;font-size:25px;line-height:1.05;white-space:normal; }
-  body.dark.mobile-modern .content .set-compact-title h1>span { display:block;margin-bottom:5px;color:var(--mt-gold);font:750 8px var(--font-ui);letter-spacing:.12em; }
-  body.dark.mobile-modern .content .set-compact-title h1 small { display:block;margin-top:6px;color:var(--muted);font:500 8px var(--font-ui); }
+  body.dark.mobile-modern .content .set-compact-title h1>span { display:block;margin-bottom:5px;color:var(--mt-gold);font:750 9.5px var(--font-ui);letter-spacing:.12em; }
+  body.dark.mobile-modern .content .set-compact-title h1 small { display:block;margin-top:6px;color:var(--muted);font:500 9.5px var(--font-ui); }
   body.dark.mobile-modern .content .compact-badges { display:flex;margin-top:10px; }
   body.dark.mobile-modern .content .compact-stats { display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:13px 0 0;padding-top:12px;border-top:1px solid var(--mp-line); }
   body.dark.mobile-modern .content .compact-stat,
   body.dark.mobile-modern .content .compact-stat:not(:first-child):not(.value) { display:block;min-width:0;padding:8px;border-radius:12px;background:var(--mp-soft);text-align:center; }
   body.dark.mobile-modern .content .compact-stat.value { min-width:0; }
-  body.dark.mobile-modern .content .compact-stat span { font-size:6px; }
+  body.dark.mobile-modern .content .compact-stat span { font-size:8.5px; }
   body.dark.mobile-modern .content .compact-stat b { font:600 13px var(--font-display); }
   body.dark.mobile-modern .content .card-toolbar-sticky { position:static;z-index:auto;margin-bottom:16px;background:transparent;box-shadow:none;backdrop-filter:none; }
   body.dark.mobile-modern .content :is(.op-catalog-filterbar,.op-catalog-controls) {
@@ -409,7 +409,7 @@
     max-width:calc(100vw - 32px);border:1px solid var(--mp-line);border-radius:var(--mt-radius-md);background:var(--surface);box-shadow:0 18px 42px rgba(0,0,0,.28);
   }
   body.dark.mobile-modern .content .op-filter-group { min-width:0; }
-  body.dark.mobile-modern .content .op-filter-group>span { color:var(--muted);font-size:7px;letter-spacing:.09em; }
+  body.dark.mobile-modern .content .op-filter-group>span { color:var(--muted);font-size:9px;letter-spacing:.09em; }
   body.dark.mobile-modern .content .op-filter-group>div { max-width:100%;overflow-x:auto;scrollbar-width:none; }
   body.dark.mobile-modern .content .op-filter-chip { border-color:var(--mp-line);background:var(--mp-soft);color:var(--muted); }
   body.dark.mobile-modern .content .op-filter-chip.active { border-color:transparent;background:var(--mt-accent-soft);color:var(--brand); }
@@ -448,7 +448,7 @@
   body.dark.mobile-modern.mobile-light .content .card-image-wrap { box-shadow:0 8px 18px rgba(52,42,24,.11); }
   body.dark.mobile-modern .content .card-info { padding:9px 2px 0; }
   body.dark.mobile-modern .content .card-info b { font-size:10px;font-weight:650; }
-  body.dark.mobile-modern .content .card-subline { gap:4px;font-size:7px; }
+  body.dark.mobile-modern .content .card-subline { gap:4px;font-size:9px; }
   body.dark.mobile-modern .content .card-price { color:var(--ink);font-weight:700; }
   body.dark.mobile-modern .content .watch-button { border:1px solid rgba(255,255,255,.08);background:rgba(20,31,24,.82);color:#f0e8d8; }
 }
@@ -468,7 +468,7 @@
   }
   body.dark.mobile-modern .content .browser-summary>div:not(.browser-summary-actions) { min-width:0;padding:10px 6px;border:0;text-align:center; }
   body.dark.mobile-modern .content .browser-summary>div:not(.browser-summary-actions)+div:not(.browser-summary-actions) { border-left:1px solid var(--mp-line); }
-  body.dark.mobile-modern .content .browser-summary span { font-size:6px; }
+  body.dark.mobile-modern .content .browser-summary span { font-size:8.5px; }
   body.dark.mobile-modern .content .browser-summary b { overflow:hidden;margin-top:4px;font:600 14px var(--font-display);text-overflow:ellipsis; }
   body.dark.mobile-modern .content .browser-summary-actions {
     grid-column:1/-1;justify-content:flex-end;margin:6px 0 0;padding:9px 2px 1px;border-top:1px solid var(--mp-line);
@@ -494,9 +494,9 @@
     border:0;border-radius:var(--mt-radius-lg);background:var(--mp-soft);box-shadow:none;
   }
   body.dark.mobile-modern .content .watch-bulkbar-all { align-self:center;color:var(--ink);font-size:9px; }
-  body.dark.mobile-modern .content .watch-bulkbar-count { align-self:center;margin:0;color:var(--muted);font-size:8px;text-align:right; }
+  body.dark.mobile-modern .content .watch-bulkbar-count { align-self:center;margin:0;color:var(--muted);font-size:9.5px;text-align:right; }
   body.dark.mobile-modern .content .watch-bulkbar .select-control { grid-column:1/-1;width:100%;max-width:none;height:38px; }
-  body.dark.mobile-modern .content .watch-bulkbar :is(.secondary-button,.danger-button) { width:100%;min-height:36px;padding-inline:10px;font-size:8px; }
+  body.dark.mobile-modern .content .watch-bulkbar :is(.secondary-button,.danger-button) { width:100%;min-height:36px;padding-inline:10px;font-size:9.5px; }
   body.dark.mobile-modern .content .watch-bulkbar :is(button,select):disabled { opacity:.38; }
   body.dark.mobile-modern .content .watch-selection-toggle.active { border-color:var(--mt-gold);background:var(--mp-gold-soft);color:var(--ink); }
   body.dark.mobile-modern .content .watch-selection-mode .card-tile:hover::after { border-color:color-mix(in srgb,var(--mt-gold) 42%,transparent);background:color-mix(in srgb,var(--mt-gold) 4%,transparent); }
@@ -513,7 +513,7 @@
   body.dark.mobile-modern .content .watch-desired {
     gap:2px;margin-top:7px;padding:3px;border:0;border-radius:var(--mt-radius-full);background:var(--mp-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mp-line) 70%,transparent);
   }
-  body.dark.mobile-modern .content .watch-desired span { padding-left:7px;color:var(--muted);font-size:6px;letter-spacing:.08em; }
+  body.dark.mobile-modern .content .watch-desired span { padding-left:7px;color:var(--muted);font-size:8.5px;letter-spacing:.08em; }
   body.dark.mobile-modern .content .watch-desired button { width:27px;height:27px;border-radius:50%;background:var(--surface);color:var(--ink);font-size:13px; }
   body.dark.mobile-modern .content .watch-desired button:hover { background:var(--surface-2); }
   body.dark.mobile-modern .content .watch-desired b { min-width:20px;color:var(--ink);font-size:10px; }
@@ -534,8 +534,8 @@
   }
   body.dark.mobile-modern .content .set-card-divider img { width:58px;height:32px; }
   body.dark.mobile-modern .content .set-card-divider h2 { font:600 18px var(--font-display); }
-  body.dark.mobile-modern .content .set-card-divider span { color:var(--mt-gold);font-size:7px; }
-  body.dark.mobile-modern .content .set-card-divider small { width:auto;margin-left:auto;font-size:7px; }
+  body.dark.mobile-modern .content .set-card-divider span { color:var(--mt-gold);font-size:9px; }
+  body.dark.mobile-modern .content .set-card-divider small { width:auto;margin-left:auto;font-size:9px; }
   body.dark.mobile-modern .content :is(.owned-pill,.variant-badge) {
     background:color-mix(in srgb,#102019 86%,transparent);color:#f6f0e5;box-shadow:0 3px 10px rgba(0,0,0,.15);
   }
@@ -565,10 +565,10 @@
   body.dark.mobile-modern .content .user-settings-card-head { align-items:flex-start;gap:11px;margin-bottom:14px; }
   body.dark.mobile-modern .content .user-settings-card-icon { width:39px;height:39px;border-radius:12px;background:var(--mt-accent-soft);color:var(--brand); }
   body.dark.mobile-modern .content .user-settings-card-icon svg { width:20px;height:20px; }
-  body.dark.mobile-modern .content .user-settings-card-head .eyebrow { color:var(--mt-gold);font-size:6px; }
+  body.dark.mobile-modern .content .user-settings-card-head .eyebrow { color:var(--mt-gold);font-size:8.5px; }
   body.dark.mobile-modern .content .user-settings-card-head h2 { margin-bottom:2px;font-size:19px; }
-  body.dark.mobile-modern .content .user-settings-card-head p { font-size:8px; }
-  body.dark.mobile-modern .content .user-settings-status { align-self:center;padding:6px 8px;font-size:6px; }
+  body.dark.mobile-modern .content .user-settings-card-head p { font-size:9.5px; }
+  body.dark.mobile-modern .content .user-settings-status { align-self:center;padding:6px 8px;font-size:8.5px; }
   body.dark.mobile-modern .content .settings-grid { grid-template-columns:1fr;gap:10px; }
   body.dark.mobile-modern .content .settings-field { padding:11px 12px;border-radius:var(--mt-radius-md);background:var(--mp-soft); }
   body.dark.mobile-modern .content .user-settings-card .settings-field { padding:0;background:transparent; }
@@ -588,7 +588,7 @@
   body.dark.mobile-modern .account-password-overlay .account-password-dialog { width:100%;min-height:0;padding:18px;border:1px solid var(--mp-line);border-radius:24px;background:var(--surface); }
   body.dark.mobile-modern .account-password-dialog .close-button { display:grid;width:34px;height:34px;place-items:center;border:1px solid var(--mp-line);border-radius:50%;background:var(--surface-2);color:var(--ink); }
   body.dark.mobile-modern .account-password-dialog-head h2 { font:600 24px var(--font-display); }
-  body.dark.mobile-modern .account-password-dialog-head p { font-size:8px; }
+  body.dark.mobile-modern .account-password-dialog-head p { font-size:9.5px; }
   body.dark.mobile-modern .account-password-fields label { color:var(--muted); }
   body.dark.mobile-modern .account-password-fields input { height:42px;border-color:var(--mp-line);background:var(--surface);color:var(--ink); }
   body.dark.mobile-modern .account-password-actions { flex-wrap:nowrap; }
@@ -604,12 +604,12 @@
   body.dark.mobile-modern .content .admin-settings-card { border:1px solid var(--mp-line);background:var(--mp-soft);box-shadow:none; }
   body.dark.mobile-modern .content .admin-settings-card-head { align-items:flex-start;margin-bottom:12px; }
   body.dark.mobile-modern .content .admin-settings-card-head .admin-price-source-button { min-width:0;width:auto; }
-  body.dark.mobile-modern .content .admin-price-source-button { min-height:36px;padding-inline:12px;font-size:8px; }
+  body.dark.mobile-modern .content .admin-price-source-button { min-height:36px;padding-inline:12px;font-size:9.5px; }
   body.dark.mobile-modern .admin-price-source-overlay { align-items:flex-end;padding:12px; }
   body.dark.mobile-modern .admin-price-source-overlay .price-source-dialog { width:100%;min-height:0;max-height:calc(100dvh - 24px);padding:18px;overflow:auto;border:1px solid var(--mp-line);border-radius:24px;background:var(--surface); }
   body.dark.mobile-modern .price-source-dialog-head { align-items:flex-start;margin-bottom:16px; }
   body.dark.mobile-modern .price-source-dialog-head h2 { font:600 24px var(--font-display); }
-  body.dark.mobile-modern .price-source-dialog-head p { max-width:250px;font-size:8px;line-height:1.45; }
+  body.dark.mobile-modern .price-source-dialog-head p { max-width:250px;font-size:9.5px;line-height:1.45; }
   body.dark.mobile-modern .price-source-dialog .close-button { display:grid;width:34px;height:34px;place-items:center;border:1px solid var(--mp-line);border-radius:50%;background:var(--surface-2);color:var(--ink); }
   body.dark.mobile-modern .price-source-row { grid-template-columns:1fr;align-items:stretch;gap:10px;padding:12px; }
   body.dark.mobile-modern .price-source-game { margin-bottom:2px; }
@@ -632,26 +632,26 @@
   body.dark.mobile-modern .content .oauth-admin-head { grid-template-columns:42px minmax(0,1fr) auto;gap:11px;padding-bottom:0; }
   body.dark.mobile-modern .content .oauth-admin-icon { width:42px;height:42px;border-radius:13px;background:var(--mt-accent-soft);color:var(--brand); }
   body.dark.mobile-modern .content .oauth-admin-icon svg { width:22px;height:22px; }
-  body.dark.mobile-modern .content .oauth-admin-title>span { color:var(--mt-gold);font-size:6px; }
+  body.dark.mobile-modern .content .oauth-admin-title>span { color:var(--mt-gold);font-size:8.5px; }
   body.dark.mobile-modern .content .oauth-admin-title h2 { margin-bottom:2px;font-size:19px; }
-  body.dark.mobile-modern .content .oauth-admin-title p { font-size:8px; }
+  body.dark.mobile-modern .content .oauth-admin-title p { font-size:9.5px; }
   body.dark.mobile-modern .content .oauth-admin-state { grid-column:1/3;grid-row:2;justify-content:flex-start; }
   body.dark.mobile-modern .content .oauth-collapse-icon { grid-column:3;grid-row:1;width:31px;height:31px; }
   body.dark.mobile-modern .content .oauth-admin-card[open] .oauth-admin-summary { padding-bottom:14px; }
-  body.dark.mobile-modern .content :is(.oauth-status,.oauth-source-badge) { min-height:25px;padding-inline:9px;border-color:var(--mp-line);background:var(--surface);font-size:6px; }
+  body.dark.mobile-modern .content :is(.oauth-status,.oauth-source-badge) { min-height:25px;padding-inline:9px;border-color:var(--mp-line);background:var(--surface);font-size:8.5px; }
   body.dark.mobile-modern .content .oauth-status.is-active { border-color:color-mix(in srgb,var(--brand) 24%,var(--mp-line));background:var(--mt-accent-soft);color:var(--brand); }
   body.dark.mobile-modern .content .oauth-lock-notice { padding:11px;border-color:color-mix(in srgb,var(--mt-gold) 24%,var(--mp-line));background:var(--mp-gold-soft); }
   body.dark.mobile-modern .content .oauth-lock-notice svg { stroke:var(--mt-gold); }
   body.dark.mobile-modern .content .oauth-admin-form { gap:10px;margin-top:12px; }
   body.dark.mobile-modern .content .oauth-toggle-row { min-height:58px;padding:10px 11px;border-color:color-mix(in srgb,var(--mp-line) 70%,transparent);background:var(--mp-soft); }
   body.dark.mobile-modern .content .oauth-toggle-copy b { font-size:9px; }
-  body.dark.mobile-modern .content .oauth-toggle-copy small { max-width:230px;font-size:7px; }
+  body.dark.mobile-modern .content .oauth-toggle-copy small { max-width:230px;font-size:9px; }
   body.dark.mobile-modern .content .oauth-toggle-control input:checked+span { background:var(--brand); }
   body.dark.mobile-modern .content .oauth-form-group { padding:12px 10px;border-color:color-mix(in srgb,var(--mp-line) 62%,transparent);background:var(--mp-soft); }
   body.dark.mobile-modern .content .oauth-form-group-head { align-items:flex-start;margin-bottom:11px; }
-  body.dark.mobile-modern .content .oauth-form-group-head>span { width:24px;height:24px;background:var(--mp-gold-soft);color:var(--mt-gold);box-shadow:none;font-size:6px; }
+  body.dark.mobile-modern .content .oauth-form-group-head>span { width:24px;height:24px;background:var(--mp-gold-soft);color:var(--mt-gold);box-shadow:none;font-size:8.5px; }
   body.dark.mobile-modern .content .oauth-form-group-head b { font-size:9px; }
-  body.dark.mobile-modern .content .oauth-form-group-head small { font-size:7px;line-height:1.35; }
+  body.dark.mobile-modern .content .oauth-form-group-head small { font-size:9px;line-height:1.35; }
   body.dark.mobile-modern .content .admin-form .oauth-provider-grid,
   body.dark.mobile-modern .content .admin-form .oauth-endpoint-grid,
   body.dark.mobile-modern .content .admin-form .oauth-claims-grid { grid-template-columns:1fr;gap:9px; }
@@ -660,7 +660,7 @@
   body.dark.mobile-modern .content .oauth-field input,
   body.dark.mobile-modern .content .oauth-field .select-control { height:39px;border-color:var(--mp-line);background:var(--surface);color:var(--ink);font-size:9px; }
   body.dark.mobile-modern .content .oauth-admin-actions { align-items:stretch;flex-direction:column;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--mp-line) 62%,transparent); }
-  body.dark.mobile-modern .content .oauth-admin-actions>span { margin:0;font-size:7px; }
+  body.dark.mobile-modern .content .oauth-admin-actions>span { margin:0;font-size:9px; }
   body.dark.mobile-modern .content .oauth-admin-actions .primary-button { width:100%; }
 
   /* Deck overview */
@@ -679,11 +679,11 @@
   body.dark.mobile-modern .content .deck-stack-top { transform:rotate(-2deg);box-shadow:0 8px 18px rgba(0,0,0,.25); }
   body.dark.mobile-modern .content .deck-overview-card:hover .deck-stack-top { transform:rotate(-7deg) translate(-2px,-3px) scale(1.03);box-shadow:0 12px 22px rgba(0,0,0,.28); }
   body.dark.mobile-modern .content .deck-overview-badge { gap:5px; }
-  body.dark.mobile-modern .content .deck-overview-badge .deck-overview-format { color:var(--mt-gold);font-size:7px; }
+  body.dark.mobile-modern .content .deck-overview-badge .deck-overview-format { color:var(--mt-gold);font-size:9px; }
   body.dark.mobile-modern .content .deck-overview-badge h3 { font:600 18px var(--font-display); }
   body.dark.mobile-modern .content .deck-overview-stats { align-items:flex-start;flex-direction:column;gap:5px;margin-top:3px; }
   body.dark.mobile-modern .content .deck-overview-stats b { font:600 15px var(--font-display); }
-  body.dark.mobile-modern .content .deck-overview-missing { padding:4px 8px;border-radius:var(--mt-radius-full);font-size:8px; }
+  body.dark.mobile-modern .content .deck-overview-missing { padding:4px 8px;border-radius:var(--mt-radius-full);font-size:9.5px; }
   body.dark.mobile-modern .content .deck-create-card { min-height:106px;border-style:dashed;box-shadow:none; }
   body.dark.mobile-modern .content .deck-create-card>span { width:46px;height:46px;border-radius:50%;background:var(--mp-gold-soft);color:var(--mt-gold); }
   body.dark.mobile-modern .content .deck-empty {
@@ -731,7 +731,7 @@
   body.dark.mobile-modern .content .deck-stat-chips>div {
     flex:1 1 0;width:auto;height:auto;min-width:0;min-height:44px;aspect-ratio:auto;justify-content:center;gap:3px;padding:7px 3px;
   }
-  body.dark.mobile-modern .content :is(.deck-stat-chips,.deck-purchase-summary) span { font-size:6px; }
+  body.dark.mobile-modern .content :is(.deck-stat-chips,.deck-purchase-summary) span { font-size:8.5px; }
   body.dark.mobile-modern .content :is(.deck-stat-chips,.deck-purchase-summary) b { font:600 12px var(--font-display); }
   body.dark.mobile-modern .content .op-deck-section { padding-top:0;border-top:1px solid var(--mp-line); }
   body.dark.mobile-modern .content .op-section-head { padding:14px 14px 10px; }
@@ -749,7 +749,7 @@
   }
   body.dark.mobile-modern .content .deck-catalog-open-button>span { display:flex;flex:1;min-width:0;flex-direction:column;gap:2px; }
   body.dark.mobile-modern .content .deck-catalog-open-button b { font-size:11px; }
-  body.dark.mobile-modern .content .deck-catalog-open-button small { color:var(--muted);font-size:8px; }
+  body.dark.mobile-modern .content .deck-catalog-open-button small { color:var(--muted);font-size:9.5px; }
   body.dark.mobile-modern .content .deck-catalog-open-button>i { color:var(--muted);font:500 24px/1 var(--font-display);font-style:normal; }
   body.dark.mobile-modern .content .deck-catalog-backdrop {
     position:fixed;inset:0;z-index:64;display:block;border:0;background:rgba(12,15,12,.42);opacity:0;pointer-events:none;
@@ -769,7 +769,7 @@
     display:grid;flex:0 0 38px;width:38px;height:38px;padding:0;place-items:center;border:1px solid var(--mp-line);border-radius:50%;background:var(--mp-soft);color:var(--ink);font-size:22px;cursor:pointer;
   }
   body.dark.mobile-modern .content .deck-catalog-title b { font-size:21px; }
-  body.dark.mobile-modern .content .deck-catalog-title span { font-size:8px; }
+  body.dark.mobile-modern .content .deck-catalog-title span { font-size:9.5px; }
   body.dark.mobile-modern .content .op-catalog-controls {
     display:grid;grid-template-columns:1fr 1fr;margin:0 10px 8px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;
   }
@@ -909,4 +909,75 @@
   body.dark.mobile-modern .offline-indicator {
     left:16px;right:16px;padding:10px 14px;border-radius:var(--mt-radius-full);background:#3b321d;color:#e8cb8c;box-shadow:var(--mp-shadow);
   }
+}
+
+/* ---- Design polish (October 2026) ------------------------------------------------------------ */
+@media (max-width:760px) {
+  /* The search field in the top bar speaks German like everything else. */
+  body.dark.mobile-modern .topbar .global-search>span:nth-child(2)::after { content:"Suchen"; }
+  /* Page title and its buttons: the buttons go below when they do not fit beside the title,
+     instead of squeezing it onto two lines. */
+  body.dark.mobile-modern .content .compact-page-head { flex-wrap:wrap;gap:10px; }
+  body.dark.mobile-modern .content .compact-page-head h1 { white-space:nowrap; }
+  /* A row of actions under a summary shares the width -- three buttons ran off the left edge. */
+  body.dark.mobile-modern .content .browser-summary-row>.browser-summary-actions { display:flex;flex-wrap:wrap;gap:6px; }
+  body.dark.mobile-modern .content .browser-summary-row>.browser-summary-actions>* { flex:1 1 auto;min-height:36px;padding-inline:12px;font-size:11px;white-space:nowrap; }
+  /* Filter rows inside the panel: one gap everywhere. */
+  body.dark.mobile-modern .content .mobile-filter-surface .op-filter-group>div { gap:6px; }
+  body.dark.mobile-modern .content .op-costs .op-image-filter { width:28px;height:28px; }
+  body.dark.mobile-modern.mobile-light .content .mobile-filter-surface .op-costs .op-image-filter { opacity:1; }
+  body.dark.mobile-modern.mobile-light .content .mobile-filter-surface .op-costs .op-image-filter::before { background:color-mix(in srgb,var(--muted) 60%,transparent); }
+  body.dark.mobile-modern.mobile-light .content .mobile-filter-surface .op-costs .op-image-filter.active::before { background:var(--mt-gold,#a77d2f); }
+}
+
+/* ---- Design polish, round 2 (phones) ----------------------------------------------------------- */
+@media (max-width:760px) {
+  /* Seven tabs: Start, Sammlung, Sets · Bearbeiten · Watchlist, Decks, Tausch. */
+  body.dark.mobile-modern .mobile-tabbar { grid-template-columns:repeat(7,minmax(0,1fr));padding-inline:8px; }
+  body.dark.mobile-modern .mt-tab:not(.mt-tab-add) { width:42px;height:42px; }
+  body.dark.mobile-modern .mt-tab-add { width:50px;height:50px; }
+  /* The shared filter parts in the panel's grid: "more" stays a compact square, sort takes a row. */
+  body.dark.mobile-modern .content .catalog-filter-mobile>.catalog-settings-control>.filter-more-button { width:42px;height:42px;min-height:42px;padding:0;justify-content:center; }
+  body.dark.mobile-modern .content .catalog-filter-mobile>.catalog-settings-control>.filter-more-button>span { display:none; }
+  body.dark.mobile-modern .content .catalog-filter-mobile>.filter-sort { grid-column:1/-1;justify-self:stretch;justify-content:space-between;padding-top:9px;border-top:1px solid var(--mp-line); }
+  body.dark.mobile-modern .content .catalog-filter-mobile>.filter-sort .select-control { flex:1;min-width:0;max-width:240px; }
+  /* Card tiles: number, rarity and language on one line, the price below it. */
+  body.dark.mobile-modern .content .card-subline { flex-direction:column;align-items:flex-start;gap:2px; }
+  body.dark.mobile-modern .content .card-subline span:last-child { margin-left:0; }
+  /* Buttons: one type size, primary or not -- the colour says which is which. */
+  body.dark.mobile-modern .content :is(.primary-button,.secondary-button,.danger-button) { font-size:13px; }
+  body.dark.mobile-modern .content .primary-button svg { margin-right:6px; }
+  /* Set tiles: the four numbers line up even where a label wraps. */
+  body.dark.mobile-modern .content .set-completion span { display:flex;flex-direction:column;justify-content:flex-end; }
+  /* Deals: the search field across the width. */
+  body.dark.mobile-modern .content .deal-filters { flex-wrap:wrap; }
+  body.dark.mobile-modern .content .deal-filters .filter-search,body.dark.mobile-modern .content .deal-filters input[type="search"] { flex:1 1 100%;width:100%; }
+  /* Settings: the game switches in one column. */
+  body.dark.mobile-modern .content .public-profile-games { grid-template-columns:1fr; }
+}
+
+/* ---- Design polish, round 3 (phones) ----------------------------------------------------------- */
+@media (max-width:760px) {
+  /* Text fields at 16px: smaller text makes iOS zoom into the page on focus. (Selects open the
+     system picker instead and keep their compact size.) */
+  body.dark.mobile-modern .content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),textarea) { font-size:16px; }
+  /* Sheet titles in the display face, as on the desktop. */
+  body.dark.mobile-modern .content .sheet-overview-copy h3 { font-family:var(--font-display);font-weight:600; }
+  /* Admin and other compact buttons keep their label on one line. */
+  body.dark.mobile-modern .content .admin-row :is(.secondary-button,.primary-button),body.dark.mobile-modern .content .oauth-admin-card :is(.secondary-button,.primary-button) { white-space:nowrap; }
+  /* eBay draft title: the counter below the field, the field keeps the width. */
+  body.dark.mobile-modern .content .ebay-draft-titlebar { flex-wrap:wrap;gap:4px; }
+  body.dark.mobile-modern .content .ebay-draft-titlebar .ebay-draft-title { flex:1 1 100%; }
+  body.dark.mobile-modern .content .ebay-draft-titlebar .ebay-draft-count { margin-left:auto; }
+  body.dark.mobile-modern .content .deal-totals { grid-template-columns:1fr 1fr; }
+}
+
+@media (max-width:760px) {
+  /* The set switcher gets the room, rarity only what its label needs. */
+  body.dark.mobile-modern .content .catalog-filter-mobile>.rarity-filter-anchor>.secondary-button { padding-inline:12px; }
+  /* A provider's two actions share the row; its delete button sits in the row's top corner. */
+  body.dark.mobile-modern .content .admin-row:has(>.admin-row-actions>.icon-button) { position:relative;padding-right:52px; }
+  body.dark.mobile-modern .content .admin-row-actions { width:100%; }
+  body.dark.mobile-modern .content .admin-row-actions>.secondary-button { flex:1 1 0;min-width:0;padding-inline:10px;white-space:nowrap; }
+  body.dark.mobile-modern .content .admin-row-actions>.icon-button { position:absolute;top:10px;right:10px; }
 }

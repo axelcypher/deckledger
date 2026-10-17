@@ -118,7 +118,7 @@
   body.dark.mobile-modern .edit-panel-copy { min-width:0;flex:1; }
   body.dark.mobile-modern .edit-panel-copy strong,body.dark.mobile-modern .edit-panel-copy span { display:block;white-space:nowrap; }
   body.dark.mobile-modern .edit-panel-copy strong { color:var(--ink);font-size:11px;line-height:1.2; }
-  body.dark.mobile-modern .edit-panel-copy span { margin-top:3px;color:var(--muted);font-size:8px;line-height:1.2; }
+  body.dark.mobile-modern .edit-panel-copy span { margin-top:3px;color:var(--muted);font-size:9.5px;line-height:1.2; }
   body.dark.mobile-modern .switch { position:relative;inset:auto;width:40px;height:24px;flex:0 0 40px;padding:3px;border:0;background:color-mix(in srgb,var(--muted) 25%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 78%,transparent); }
   body.dark.mobile-modern .switch span { width:18px;height:18px;background:var(--surface);box-shadow:0 2px 6px rgba(0,0,0,.18); }
   body.dark.mobile-modern .switch[aria-checked="true"] { background:var(--brand);box-shadow:none; }
@@ -234,7 +234,7 @@
     width:25px;height:25px;
   }
   body.dark.mobile-modern .deck-catalog-filter-secondary .lorcana-cost-filter img { width:25px;height:25px; }
-  body.dark.mobile-modern .deck-catalog-filter-secondary .lorcana-cost-filter span { font-size:8px; }
+  body.dark.mobile-modern .deck-catalog-filter-secondary .lorcana-cost-filter span { font-size:9.5px; }
   body.dark.mobile-modern .toolbar-filter-popup {
     border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);box-shadow:var(--mt-shadow);
   }
@@ -380,7 +380,7 @@
   body.dark.mobile-modern .watch-desired {
     gap:3px;margin-top:8px;padding:3px;border:0;border-radius:var(--mt-radius-full);background:var(--mp-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 72%,transparent);
   }
-  body.dark.mobile-modern .watch-desired span { padding-left:8px;color:var(--muted);font-size:7px; }
+  body.dark.mobile-modern .watch-desired span { padding-left:8px;color:var(--muted);font-size:9px; }
   body.dark.mobile-modern .watch-desired button { width:28px;height:28px;border-radius:50%;background:var(--surface);color:var(--ink); }
   body.dark.mobile-modern .watch-desired button:hover { background:var(--surface-2); }
   body.dark.mobile-modern .watch-desired b { min-width:22px;color:var(--ink);font-size:10px; }
@@ -670,4 +670,205 @@
 
 @media (prefers-reduced-motion:reduce) {
   body.dark.mobile-modern .hero-summary::before { animation:none; }
+}
+
+/* ---- Design polish (October 2026) ------------------------------------------------------------
+   Filters: on a wide screen the panel is simply open -- a closed toggle in the middle of the page
+   only hid the controls. The bar reads left to right in one rhythm: every control 40px high,
+   groups 14px apart, the zoom pushed to the end. The deckbuilder's catalogue keeps its toggle:
+   it lives in a narrow side panel. */
+@media (min-width:1024px) {
+  body.dark.mobile-modern .content>.mobile-filter-shell { margin:0 0 22px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell>.mobile-filter-toggle { display:none; }
+  body.dark.mobile-modern .content>.mobile-filter-shell>.mobile-filter-body { max-height:none;overflow:visible;opacity:1;pointer-events:auto;transform:none;transition:none; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .mobile-filter-surface { margin-top:0;padding:10px 12px;border:1px solid var(--line);border-radius:20px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar { display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:10px 14px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar>* { flex:0 0 auto;margin:0; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-filter-group>div { display:flex;align-items:center;justify-content:flex-start;gap:6px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .filter-search { flex:1 1 170px;min-width:150px;max-width:260px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .filter-search input { width:100%;height:40px;font-size:13px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell :is(.secondary-button,.icon-button,.set-switch-trigger) { min-height:40px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .icon-button { width:40px;height:40px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .zoom-control { margin-left:auto; }
+  /* A long set name must not push the zoom into its own row: the switcher shows what fits. */
+  body.dark.mobile-modern .content>.mobile-filter-shell .set-switch-trigger { display:inline-block;max-width:230px;height:40px;line-height:38px;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .set-overview-toolbar { display:flex;flex-wrap:wrap;align-items:center;gap:10px; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .set-overview-toolbar>h2 { margin-right:auto; }
+}
+
+@media (min-width:761px) {
+  /* One Piece's costs: as quiet as every other game's chips until chosen, not ten gold coins. */
+  body.dark.mobile-modern .op-costs .op-image-filter { width:30px;height:30px; }
+  body.dark.mobile-modern.mobile-light .mobile-filter-surface .op-costs .op-image-filter { opacity:1; }
+  body.dark.mobile-modern.mobile-light .mobile-filter-surface .op-costs .op-image-filter::before { background:color-mix(in srgb,var(--muted) 60%,transparent); }
+  body.dark.mobile-modern.mobile-light .mobile-filter-surface .op-costs .op-image-filter.active::before { background:var(--mt-gold,#a77d2f); }
+
+  /* The set header: title, date and kind on the left as one block, the numbers beside it. The
+     title wraps instead of running under the numbers. */
+  body.dark.mobile-modern .content .set-compact-head { display:grid;grid-template-columns:minmax(220px,max-content) minmax(0,1fr);grid-template-areas:"title stats" "badges stats";align-items:center;gap:6px 28px; }
+  body.dark.mobile-modern .content .set-compact-head>.set-compact-title { grid-area:title;min-width:0; }
+  body.dark.mobile-modern .content .set-compact-head>.compact-badges { grid-area:badges;display:flex;flex-wrap:wrap;gap:5px;margin:0; }
+  body.dark.mobile-modern .content .set-compact-head>.compact-badges:empty { display:none; }
+  body.dark.mobile-modern .content .set-compact-head>.compact-badges .badge { white-space:nowrap; }
+  body.dark.mobile-modern .content .set-compact-head>deckledger-stat-pill { grid-area:stats;width:100%;margin:0; }
+  body.dark.mobile-modern .content .set-compact-title h1 { display:block;max-width:340px;white-space:normal;line-height:1.1; }
+  body.dark.mobile-modern .content .set-compact-title h1>span { display:block;margin-bottom:4px;color:var(--mt-gold,var(--brand));font:750 10px var(--font-ui);letter-spacing:.12em; }
+  body.dark.mobile-modern .content .set-compact-title h1>small { display:block;margin-top:5px;color:var(--muted);font:500 11px var(--font-ui); }
+}
+
+@media (min-width:761px) and (max-width:1179px) {
+  body.dark.mobile-modern .content .set-compact-head { grid-template-columns:minmax(0,1fr);grid-template-areas:"title" "badges" "stats"; }
+}
+
+/* ---- Design polish, round 2 (every width) ------------------------------------------------------
+   The light palette: muted text, gold, green and red dark enough to read as text on cream (WCAG
+   AA, 4.5:1 for small text). The dark palette's values had been in effect for both. */
+body.dark.mobile-modern.mobile-light { --muted:#6b665a;--mt-gold:#8c6b27;--success:#2b7553;--danger:#b23f37;--mp-danger-soft:rgba(178,63,55,.09); }
+html { background:var(--bg,#f5f0e6); }
+
+/* Notices on a deck: their own colours per theme (the light theme's "b" colour made the title
+   invisible on the dark red). */
+body.dark.mobile-modern .deck-validation b { color:inherit; }
+body.dark.mobile-modern.mobile-light .deck-validation.invalid { background:#f9e5e2;color:#8f2d26;box-shadow:inset 0 0 0 1px #ecc4be; }
+body.dark.mobile-modern.mobile-light .deck-validation.valid { background:#e3f1e9;color:#1f5e41;box-shadow:inset 0 0 0 1px #bcdcc9; }
+body.dark.mobile-modern.mobile-light .deck-validation small { opacity:.9; }
+
+/* Tags and labels on cream: text dark enough to read. */
+body.dark.mobile-modern.mobile-light .set-code { color:var(--ink); }
+body.dark.mobile-modern.mobile-light .set-kind { color:var(--muted); }
+body.dark.mobile-modern.mobile-light .sheet-kind-wts { background:rgba(196,110,22,.13);color:#8a4a0c; }
+body.dark.mobile-modern.mobile-light .sheet-kind-wtt { background:rgba(36,118,170,.12);color:#1c5a85; }
+body.dark.mobile-modern.mobile-light .sheet-kind-wtb { background:rgba(47,125,74,.12);color:#225c37; }
+body.dark.mobile-modern.mobile-light .sheet-kind-wttf { background:rgba(109,74,168,.12);color:#52367f; }
+body.dark.mobile-modern.mobile-light :is(.sheet-kind-wts-wtt,.sheet-kind-wtb-wttf) { color:var(--ink); }
+body.dark.mobile-modern.mobile-light .deck-overview-missing.missing { background:rgba(178,63,55,.1);color:#9a352e; }
+body.dark.mobile-modern.mobile-light .deck-overview-missing.complete { background:rgba(43,117,83,.1);color:#24664a; }
+body.dark.mobile-modern.mobile-light .badge { color:#7a5c1f; }
+/* Game logos (several are white) on a dark tile, in both themes. */
+body.dark.mobile-modern .settings-language-game i { background:#22261f; }
+
+/* Chips of every filter: one shape (a pill), and an unmistakable chosen state. */
+body.dark.mobile-modern .content .op-filter-chip { height:32px;padding:0 12px;border-radius:999px;font-size:11px;letter-spacing:.02em; }
+body.dark.mobile-modern .content .op-filter-chip.active { background:var(--brand);color:var(--bg);box-shadow:none; }
+body.dark.mobile-modern:not(.mobile-light) .content .op-filter-chip.active { background:var(--mt-gold);color:#17140d; }
+/* Lorcana's inkwell icons are pale line art: drawn in the text colour on cream. */
+body.dark.mobile-modern.mobile-light .content :is(.lorcana-icon-filter,.lorcana-cost-filter) img { filter:brightness(.42) contrast(1.4); }
+body.dark.mobile-modern.mobile-light .content :is(.lorcana-icon-filter,.lorcana-cost-filter,.lorcana-color-filter) { opacity:.75; }
+body.dark.mobile-modern.mobile-light .content :is(.lorcana-icon-filter,.lorcana-cost-filter,.lorcana-color-filter).active { opacity:1; }
+
+/* The shared filter parts (js/filters.js). */
+body.dark.mobile-modern .content .filter-sort { display:inline-flex;align-items:center;gap:8px;margin:0;color:var(--muted);font-size:11px;font-weight:700; }
+body.dark.mobile-modern .content .filter-sort>span { white-space:nowrap; }
+body.dark.mobile-modern .content .filter-sort .select-control { width:auto;min-width:132px;min-height:40px;font-size:13px; }
+body.dark.mobile-modern .content .filter-more-button { display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;font-size:13px; }
+body.dark.mobile-modern .content .filter-more-button svg { width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round; }
+body.dark.mobile-modern .content .zoom-control input { width:96px; }
+
+/* Card tiles: chips stay whole (they wrap as a unit), the price gets its own line when narrow. */
+body.dark.mobile-modern .content .variant-chips { flex-wrap:wrap;overflow:visible;row-gap:4px; }
+body.dark.mobile-modern .content .variant-chip { white-space:nowrap; }
+
+/* The deals list: fixed columns, so the cards and the amounts line up from row to row. */
+@media (min-width:761px) {
+  body.dark.mobile-modern .content .deal-row { grid-template-columns:minmax(0,220px) minmax(0,1fr) 230px; }
+  body.dark.mobile-modern .content .deal-row-end { display:grid;grid-template-columns:1fr 124px;align-items:center;gap:12px;width:100%;justify-items:end; }
+  body.dark.mobile-modern .content .deal-row-end .deal-status { justify-self:stretch;text-align:center; }
+}
+
+/* Settings: the profile switch reads like the others, with room before the form below it. */
+body.dark.mobile-modern .content .public-profile-switch { margin-bottom:14px; }
+body.dark.mobile-modern .content .public-profile-switch small a { overflow-wrap:anywhere; }
+body.dark.mobile-modern .content .public-profile-games { display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px; }
+
+/* The filter panel's chevron is an icon, centred, not a text glyph. */
+body.dark.mobile-modern .content .mobile-filter-toggle>i { display:grid;place-items:center;top:50%;width:18px;height:18px;margin-top:-9px;font-size:0;line-height:0; }
+body.dark.mobile-modern .content .mobile-filter-toggle>i::before { content:"";width:7px;height:7px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:translateY(-2px) rotate(45deg); }
+
+@media (min-width:1024px) {
+  /* Cards stepper row of "Auflage" belongs to the bar above it: same left edge, not centred. */
+  body.dark.mobile-modern .content .tile-edition-row { justify-content:flex-start;margin:-10px 0 18px 4px; }
+  /* Deckbuilder catalogue (a narrow side panel): search across the full width, icons at full size. */
+  body.dark.mobile-modern .content .deck-catalog-filter-primary>.filter-search { flex:1 1 100%;order:-1; }
+  body.dark.mobile-modern .content .deck-catalog-filter-primary { flex-wrap:wrap; }
+  body.dark.mobile-modern .deck-catalog-filter-secondary :is(.op-image-filter,.op-color-filter,.op-number-filter,.lorcana-color-filter,.lorcana-icon-filter,.lorcana-cost-filter) { width:30px;height:30px; }
+  body.dark.mobile-modern .deck-catalog-filter-secondary .lorcana-cost-filter img { width:30px;height:30px; }
+}
+
+@media (min-width:1024px) {
+  /* Every card filter bar in two rows: the controls on top (search, set, rarity, sort, more, zoom
+     at the end), the game's own filters below a hairline -- the same on every page, whatever
+     the screen width. */
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar:has(>.op-filter-group)::after { content:"";flex:0 0 100%;order:4;height:0;border-top:1px solid var(--line); }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar>.filter-sort { order:1; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar>.catalog-settings-control { order:2; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar>.zoom-control { order:3; }
+  body.dark.mobile-modern .content>.mobile-filter-shell .op-catalog-filterbar>.op-filter-group { order:5; }
+  /* Dashboard: the shortcuts span the width of the numbers above them. */
+  body.dark.mobile-modern .content .dashboard-quick-nav { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;width:100%; }
+  body.dark.mobile-modern .content .dashboard-quick-nav>button { width:100%; }
+  body.dark.mobile-modern .content .dashboard-quick-nav span { font-size:12px; }
+}
+/* Settings inputs read at the size of the rest of the form; status chips of eBay in the same
+   capitals as the status of a deal. */
+body.dark.mobile-modern .user-settings-card .settings-field :is(input,.select-control) { font-size:13px; }
+body.dark.mobile-modern .content .ebay-chip { text-transform:uppercase;letter-spacing:.05em; }
+
+/* ---- Design polish, round 3 ------------------------------------------------------------------ */
+/* The old classic theme's grey (".dark .card-subline") won on phones: the tile's meta line in the
+   theme's muted colour at every width. */
+body.dark.mobile-modern .card-subline { color:var(--muted); }
+/* The page behind the page: the theme's background, also where the body ends. */
+html:has(body.mobile-modern.mobile-light) { background:#f5f0e6; }
+html:has(body.mobile-modern:not(.mobile-light)) { background:#121210; }
+/* The set switcher shows what fits, with an ellipsis -- at every width (a long One Piece name
+   ran into the next button on a phone). */
+body.dark.mobile-modern .content .set-switch-trigger { display:block;min-width:0;max-width:100%;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap; }
+body.dark.mobile-modern .content .set-switch-control { min-width:0;max-width:100%; }
+/* The count of a card at the bottom right of its picture, for every game: at the top it covered
+   the printed name. In the app it sits in .variant-badges (Lorcana stacks one per finish there),
+   on the public page on its own. While editing, the quantity control shows the count already. */
+body.dark.mobile-modern .content .variant-badges { top:auto;bottom:.7em;flex-direction:column-reverse; }
+body.dark.mobile-modern .content .variant-badges>.owned-pill { position:static; }
+body.dark.mobile-modern .content .card-image-wrap>.owned-pill { top:auto;bottom:.7em; }
+body.editing.dark.mobile-modern .content .variant-badges { display:none; }
+/* One Piece costs as number chips: round, the same height as the others. */
+body.dark.mobile-modern .content .op-cost-chip { width:32px;padding:0;font-variant-numeric:tabular-nums; }
+/* The sets overview: its controls at the height and size of every other filter bar. */
+body.dark.mobile-modern .content .set-overview-toolbar :is(.select-control,.secondary-button) { min-height:40px;font-size:13px; }
+/* Chevrons of collapsible groups as an icon, centred. */
+body.dark.mobile-modern .content .set-group-chevron { display:grid;place-items:center;font-size:0; }
+body.dark.mobile-modern .content .set-group-chevron::before { content:"";width:7px;height:7px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .2s ease; }
+body.dark.mobile-modern .content .set-group.collapsed .set-group-chevron::before { transform:translateX(-1px) rotate(-45deg); }
+/* Game logos in the settings large enough to recognise. */
+body.dark.mobile-modern .settings-language-game i { width:38px;height:38px; }
+body.dark.mobile-modern .settings-language-game img { width:30px;height:30px; }
+/* Deals summary: label and amount as pairs in a grid. */
+body.dark.mobile-modern .content .deal-totals { display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 22px; }
+@media (min-width:761px) {
+  /* The rarity popup stays within the page and wraps its chips. */
+  body.dark.mobile-modern .content .rarity-popup { flex-wrap:wrap!important;width:max-content;max-width:min(520px,calc(100vw - 420px)); }
+}
+
+/* ---- Design polish, round 4 ------------------------------------------------------------------ */
+/* Popovers of the filter bar: one surface and shadow, dark or light. */
+body.dark.mobile-modern .content .toolbar-filter-popup { background:var(--surface);border:1px solid var(--line);box-shadow:0 18px 44px rgba(0,0,0,.28); }
+body.dark.mobile-modern.mobile-light .content .toolbar-filter-popup { box-shadow:0 18px 44px rgba(61,48,28,.14); }
+/* The kind of a set (corner label) in the palette's muted tone, also in the dark. */
+body.dark.mobile-modern .set-kind { color:var(--muted); }
+/* eBay: the buttons in the head of "Meine Angebote" at the height of its filter chips' row. */
+body.dark.mobile-modern .content .ebay-section .sheet-section-head :is(.secondary-button,.primary-button) { min-height:32px;padding:0 14px;font-size:12px; }
+/* Deckbuilder catalogue: the game's icons at the height of its chips. */
+@media (min-width:1024px) {
+  body.dark.mobile-modern .deck-catalog-filter-secondary :is(.op-image-filter,.op-color-filter,.lorcana-color-filter,.lorcana-icon-filter,.lorcana-cost-filter) { width:32px;height:32px; }
+}
+/* Admin: a provider's actions on one line, the delete button at its end. */
+body.dark.mobile-modern .content .admin-row-actions { display:flex;flex-wrap:nowrap;align-items:center;gap:6px; }
+body.dark.mobile-modern .content .admin-row-actions>.icon-button { flex:none;margin-left:auto; }
+
+/* Lorcana's foil count: solid gold with dark text, and a mark -- not told apart by colour alone. */
+body.dark.mobile-modern .content .variant-badge.tier-foil { background:#d6b05a;color:#241905;box-shadow:0 0 0 1px rgba(255,236,180,.55) inset,0 3px 10px rgba(0,0,0,.18); }
+body.dark.mobile-modern .content .variant-badge.tier-foil::before { content:"✦";margin-right:1px;font-size:.85em; }
+body.dark.mobile-modern .content .variant-badge.tier-foil.missing { opacity:.55; }
+@media (min-width:1024px) {
+  body.dark.mobile-modern .deck-catalog-filter-secondary .op-color-filter { padding:1px; }
 }

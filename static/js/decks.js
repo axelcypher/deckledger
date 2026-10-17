@@ -213,11 +213,12 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     <div class="deck-catalog-filter-row deck-catalog-filter-primary">
       <div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="Karten suchen"></div>
       ${deckRarity}
+      ${sortControl('deck-sort',[['number','Nummer'],['name','Name A–Z'],['cost','Kosten'],['rarity','Seltenheit']],f.sort)}
       <div class="toolbar-filter-anchor catalog-settings-control">
-        <button type="button" class="icon-button" data-filter-toggle="deck-view-popup" aria-expanded="false" aria-label="Ansicht und Sortierung" title="Ansicht und Sortierung">⚙</button>
+        ${filterMoreButton('deck-view-popup','Weitere Filter')}
         <div class="toolbar-filter-popup hidden" id="deck-view-popup">
           ${isOnePiece?'':`<label>Sprache<select id="deck-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(language=>`<option value="${language}" ${f.language===language?'selected':''}>${language}</option>`).join('')}</select></label>`}
-          <label>Sortierung<select id="deck-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="cost">Kosten</option><option value="rarity">Seltenheit</option></select></label>
+          
           ${viewTools}
         </div>
       </div>

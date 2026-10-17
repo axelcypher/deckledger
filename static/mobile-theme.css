@@ -710,7 +710,7 @@
   body.dark.mobile-modern .variant-option { padding: 6px; gap: 6px; }
   body.dark.mobile-modern .variant-option .variant-thumb { width: 22px; height: 31px; }
   body.dark.mobile-modern .variant-option b { font-size: 9px; }
-  body.dark.mobile-modern .variant-option small { font-size: 7.5px; }
+  body.dark.mobile-modern .variant-option small { font-size: 9.5px; }
   body.dark.mobile-modern .variant-settings { margin: 0 0 14px; border-top: 0; }
   body.dark.mobile-modern .variant-setting { border-bottom: 1px solid var(--line); }
   body.dark.mobile-modern .variant-setting:last-child { border-bottom: 0; }

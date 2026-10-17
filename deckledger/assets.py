@@ -48,14 +48,13 @@ def remote_set_visual(set_row):
 
 def set_wordmark(set_row):
     name = xml_escape.escape(set_row["name"])
-    code = xml_escape.escape(set_row["code"])
     words = name.split()
     midpoint = max(1, math.ceil(len(words) / 2))
     first, second = " ".join(words[:midpoint]), " ".join(words[midpoint:])
     second_line = f'<text x="400" y="132" text-anchor="middle" class="name">{second}</text>' if second else ""
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="800" height="220" viewBox="0 0 800 220">
-      <style>.name{{font:700 40px Arial,sans-serif;fill:#eef3f9;letter-spacing:-1px}}.code{{font:700 16px Arial,sans-serif;fill:#9cabbc;letter-spacing:4px}}</style>
-      <path d="M170 176h460" stroke="#64758a" stroke-opacity=".42"/><text x="400" y="86" text-anchor="middle" class="name">{first}</text>{second_line}<text x="400" y="202" text-anchor="middle" class="code">{code}</text>
+      <style>.name{{font:700 40px Georgia,serif;fill:#a07a32;letter-spacing:-.5px}}.code{{font:700 16px Arial,sans-serif;fill:#8a8476;letter-spacing:4px}}</style>
+      <path d="M170 176h460" stroke="#a07a32" stroke-opacity=".38"/><text x="400" y="86" text-anchor="middle" class="name">{first}</text>{second_line}
     </svg>'''
 
 
@@ -85,7 +84,7 @@ def set_visual_version(set_row) -> str:
     """Cache-bust set visuals whenever a public override changes in place."""
     visual = public_set_visual(set_row)
     if not visual:
-        return "provider-v1"
+        return "provider-v3"
     stat = visual.stat()
     return f"public-{stat.st_mtime_ns:x}-{stat.st_size:x}"
 

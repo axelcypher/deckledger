@@ -344,7 +344,7 @@ async function renderCollection(preserve=false){
     {label:'Exemplare',value:data.stats.copies},
     {label:'Marktwert',value:money(data.stats.value)},
   ],{className:'browser-summary',columns:3,mobileColumns:3});
-  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · SAMMLUNG</span><h1>Meine Karten</h1><p>Durchsuchbare Variantenansicht mit denselben Werkzeugen wie im Set-Katalog.</p></div><div class="page-head-actions"><button class="secondary-button watch-selection-toggle ${state.collectionSelectionMode?'active':''}" id="collection-selection-toggle" aria-pressed="${state.collectionSelectionMode}"><span aria-hidden="true">${state.collectionSelectionMode?'✓':'⌗'}</span>${state.collectionSelectionMode?'Fertig':'Mehrfachauswahl'}</button><button class="secondary-button" id="collection-export">Exportieren</button></div></div>
+  content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · SAMMLUNG</span><h1>Meine Karten</h1><p>Alle Karten, die du besitzt – jede Ausführung einzeln, mit Anzahl und Wert.</p></div><div class="page-head-actions"><button class="secondary-button watch-selection-toggle ${state.collectionSelectionMode?'active':''}" id="collection-selection-toggle" aria-pressed="${state.collectionSelectionMode}"><span aria-hidden="true">${state.collectionSelectionMode?'✓':'⌗'}</span>${state.collectionSelectionMode?'Fertig':'Mehrfachauswahl'}</button><button class="secondary-button" id="collection-export">Exportieren</button></div></div>
     ${collectionStats}
     ${state.collectionSelectionMode?collectionBulkbarHtml():''}
     <div class="card-toolbar-sticky collection-filter-shell"><div class="op-catalog-filterbar catalog-filter-mobile collection-filter-mobile">
@@ -352,14 +352,15 @@ async function renderCollection(preserve=false){
       ${setSwitcherPopup('collection',data.sets,f.set_id||'__all__',currentSet?setFilterLabel(currentSet):'Alle Sets')}
       ${catalogGameFilterBar(game,f,'collection',rarityOptions)}
       <div class="toolbar-filter-anchor catalog-settings-control">
-        <button type="button" class="icon-button" data-filter-toggle="collection-view-popup" aria-expanded="false" aria-label="Weitere Filter" title="Weitere Filter">⚙</button>
+        ${filterMoreButton('collection-view-popup','Weitere Filter')}
         <div class="toolbar-filter-popup hidden" id="collection-view-popup">
           <label>Sprache<select id="collection-language" class="select-control"><option value="all">Alle Sprachen</option>${game.languages.map(l=>`<option value="${l}" ${f.language===l?'selected':''}>${l}</option>`).join('')}</select></label>
           <label>Ausführung<select id="collection-finish" class="select-control"><option value="">Alle Varianten</option>${finishFilterOptions(game.id).map(x=>`<option ${f.finish===x?'selected':''}>${x}</option>`).join('')}</select></label>
           <label>Bestand<select id="collection-mode" class="select-control"><option value="all">Alle Karten</option><option value="duplicates">Nur Duplikate</option><option value="watchlisted">Auf Watchlist</option></select></label>
-          <label>Sortierung<select id="collection-sort" class="select-control"><option value="number">Nummer</option><option value="name">Name</option><option value="set">Set</option><option value="rarity">Seltenheit</option><option value="value">Wert</option><option value="quantity">Menge</option></select></label>
         </div>
       </div>
+      ${sortControl('collection-sort',[['number','Nummer'],['name','Name A–Z'],['set','Set'],['rarity','Seltenheit'],['value','Marktwert'],['quantity','Menge']],f.sort)}
+      ${zoomControl('collection-zoom')}
     </div></div>
     <section class="card-grid ${state.collectionSelectionMode?'watch-selection-mode':''}" style="--card-size:${state.zoom}px">${data.cards.length?'':'<div class="empty-state"><b>Keine Karten gefunden</b><span>Passe deine Filter an.</span></div>'}</section>`;
   // A selection only keeps cards that are still in view: what a filter hides cannot be edited unseen.
@@ -369,6 +370,7 @@ async function renderCollection(preserve=false){
   state.statsUrl=collectionUrl(state.activeGameId,f);
   state.statsItems=stats=>[['Varianten',stats.variants],['Exemplare',stats.copies],['Marktwert',money(stats.value)]];
   mountFilterPanel('collection',['.collection-filter-shell'],'Sammlung filtern & sortieren');
+  bindZoomControl('collection-zoom',$('.card-grid',content),state.activeGameId);
   $('#collection-mode').value=f.mode;$('#collection-sort').value=f.sort;$('#collection-export').onclick=()=>{setIeMode('export');openOverlay('import-modal')};
   $('#collection-selection-toggle').onclick=()=>{state.collectionSelectionMode=!state.collectionSelectionMode;if(!state.collectionSelectionMode)state.collectionSelection.clear();renderCollection(true)};
   if(state.collectionSelectionMode)bindCollectionBulkbar();
