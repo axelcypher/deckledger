@@ -276,6 +276,7 @@ async function renderEbay(){
     <div class="ebay-status-bar">${status.connected
       ?`<span class="user-settings-status is-connected"><i></i>${escapeHtml(status.username||'Verbunden')}</span><span class="muted">${escapeHtml(status.marketplace_label)} · abgeglichen ${ebayDate(status.listings_synced_at)}</span>${status.last_error?`<span class="sheet-warning">${escapeHtml(status.last_error)}</span>`:''}<button class="secondary-button" id="ebay-sync">Jetzt abgleichen</button>`
       :`<span class="user-settings-status"><i></i>${status.configured?'Kein eBay-Konto verbunden':'eBay nicht eingerichtet'}</span><span class="muted">Entwürfe kannst du trotzdem schon anlegen; zum Einstellen verbinde dein Konto.</span><button class="secondary-button" id="ebay-open-settings">eBay-Einstellungen</button>`}</div>
+    ${ebaySummaryPill(listings.summary)}
     <section class="ebay-section">
       <div class="sheet-section-head ebay-drafts-head"><button type="button" class="ebay-section-toggle" id="ebay-drafts-toggle" aria-expanded="${ebayView.draftsOpen}" aria-controls="ebay-drafts-body"><i aria-hidden="true"></i><b>Entwürfe</b><span>${open.length?`${open.length} offen`:'keine offen'}${done.length?` · ${done.length} eingestellt`:''}</span></button>${open.length?`<button class="secondary-button" id="ebay-verify-all" ${status.connected?'':'disabled'}>Alle prüfen</button><button class="primary-button" id="ebay-publish-all" ${status.connected?'':'disabled'}>Alle einstellen</button>`:''}</div>
       <div class="ebay-drafts-body" id="ebay-drafts-body" ${ebayView.draftsOpen?'':'hidden'}>
@@ -378,23 +379,49 @@ function bindEbayDraftRow(row,draft){
   });
 }
 
+// The numbers of the account in the gold pill of the dashboard (deckledger/ebay.py sales_summary).
+function ebaySummaryPill(summary){
+  if(!summary)return '';
+  const count=value=>Number(value||0).toLocaleString('de-DE');
+  const ratio=summary.market_ratio==null?'–':`${summary.market_ratio} %`;
+  return statPill([
+    {label:'Aktive Angebote',value:`${count(summary.active)}<small> · ${count(summary.offered_copies)} Ex.</small>`},
+    {label:'Angebotswert',value:money(summary.offered_value)},
+    {label:'Verkaufte Karten',value:`${count(summary.sold_copies)}<small> · ${count(summary.sales)} ${summary.sales===1?'Verkauf':'Verkäufe'}</small>`},
+    {label:'Umsatz',value:money(summary.revenue)},
+    {label:'Beobachter',value:count(summary.watchers)},
+    {label:'Ø zum Marktwert',value:ratio,className:summary.market_ratio==null?'':summary.market_ratio<100?'ebay-summary-below':summary.market_ratio>100?'ebay-summary-above':''},
+  ],{className:'ebay-summary',columns:6,mobileColumns:3});
+}
+
+// A listing as a tile of the "Meine Angebote" grid: picture (with its place in the ranking and its
+// status), title, availability, numbers, price against the market, and the card it sells. Its
+// panels (photos, linking a card) open across the whole row (see bindEbayListingRow).
 function ebayListingRow(item){
   const statusLabel={active:'aktiv',sold:'verkauft',unsold:'nicht verkauft',ended:'beendet'}[item.status]||item.status;
   const image=item.variant_id?artUrl(item.variant_id):item.image_url;
-  return `<div class="ebay-listing" data-item="${escapeHtml(item.item_id)}">
-    ${image?`<img class="sheet-thumb" src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="sheet-thumb ebay-tracked-noimg">eBay</span>'}
-    <div class="ebay-listing-main"><a href="${escapeHtml(item.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(item.title)}</b></a>
-      <small><em class="ebay-chip ${item.status==='active'?'is-live':item.status==='sold'?'is-sold':'is-ended'}">${statusLabel}</em> ${item.quantity_sold?`${item.quantity_sold} verkauft · `:''}${item.status==='active'?`${Math.max(0,item.quantity-item.quantity_sold)} verfügbar · `:''}seit ${date(item.started_at)}</small>
+  const url=escapeHtml(item.url||'#');
+  const meta=[item.quantity_sold?`${item.quantity_sold} verkauft`:'',item.status==='active'?`${Math.max(0,item.quantity-item.quantity_sold)} verfügbar`:'',`seit ${date(item.started_at)}`].filter(Boolean).join(' · ');
+  const cardName=item.variant_id?`${item.canonical_name||item.variant_id}${item.set_code?` (${item.set_code} ${item.collector_number})`:''}`:'';
+  return `<article class="ebay-listing ebay-listing-${escapeHtml(item.status)}" data-item="${escapeHtml(item.item_id)}">
+    <a class="ebay-listing-media" href="${url}" target="_blank" rel="noopener noreferrer" aria-label="Angebot bei eBay öffnen">
+      ${image?`<img src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="ebay-tracked-noimg">eBay</span>'}
+      <span class="ebay-listing-badges">${item.rank?`<span class="ebay-listing-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:''}<em class="ebay-chip ${item.status==='active'?'is-live':item.status==='sold'?'is-sold':'is-ended'}">${statusLabel}</em></span>
+    </a>
+    <div class="ebay-listing-main">
+      <a class="ebay-listing-title" href="${url}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item.title)}"><b>${escapeHtml(item.title)}</b></a>
+      <small class="ebay-listing-meta">${meta}</small>
       <div class="ebay-listing-stats">${ebayListingStats(item)}</div>
-      <small>${item.variant_id?`Karte: ${escapeHtml(item.canonical_name||item.variant_id)}${item.set_code?` (${escapeHtml(item.set_code)} ${escapeHtml(item.collector_number)})`:''}${item.market_price!=null?` · Marktpreis ${money(item.market_price)}`:''} <button type="button" class="link-button" data-ebay-unlink>lösen</button>${item.status==='active'?` · <button type="button" class="link-button" data-ebay-photos-toggle data-photo-count="${escapeHtml(item.variant_id)}">${item.photos?.length?`Fotos (${item.photos.length})`:'Fotos'}</button>`:''}`
-        :'<button type="button" class="link-button" data-ebay-link>Karte zuordnen</button>'}</small>
+      <div class="ebay-listing-foot"><strong class="ebay-listing-price">${ebayMoney(item.price,item.currency)}${ebayMarketRatio(item)}</strong>${item.market_price!=null?`<small>Marktwert ${money(item.market_price)}</small>`:''}</div>
+      <div class="ebay-listing-card">${item.variant_id
+        ?`<span class="ebay-listing-card-name" title="${escapeHtml(cardName)}">${escapeHtml(cardName)}</span><span class="ebay-listing-card-actions">${item.status==='active'?`<button type="button" class="link-button" data-ebay-photos-toggle data-photo-count="${escapeHtml(item.variant_id)}">${item.photos?.length?`Fotos (${item.photos.length})`:'Fotos'}</button>`:''}<button type="button" class="link-button" data-ebay-unlink>lösen</button></span>`
+        :'<button type="button" class="link-button" data-ebay-link>Karte zuordnen</button>'}</div>
       ${item.variant_id&&item.status==='active'?`<div class="ebay-listing-photos hidden">${ebayPhotoStrip(item,'listing')}
         <div class="ebay-listing-photo-actions"><button type="button" class="secondary-button" data-ebay-photos-import title="Die Bilder, die das Angebot jetzt bei eBay hat, als Fotos dieser Karte holen">Bilder von eBay holen</button><button type="button" class="primary-button" data-ebay-photos-push>Bei eBay ersetzen</button></div></div>`:''}
       <div class="ebay-link-search hidden"><b class="ebay-link-heading">Vorschläge aus deiner Sammlung</b><div class="ebay-link-suggestions"><small class="muted">Wird gesucht …</small></div>
         <input class="select-control" placeholder="Oder in deiner Sammlung suchen: Name, Nummer, Set …"><div class="ebay-link-results"></div></div>
     </div>
-    <strong class="ebay-listing-price">${ebayMoney(item.price,item.currency)}${ebayMarketRatio(item)}</strong>
-  </div>`;
+  </article>`;
 }
 
 // Price with shipping against the card's market value, from 100 %: green below, red above.
@@ -408,8 +435,7 @@ function ebayMarketRatio(item){
 // Watchers, views, impressions and the place in the popularity ranking of one listing.
 function ebayListingStats(item){
   const stat=(value,label,title)=>value==null?'':`<span class="variant-chip ebay-stat" title="${title}"><b>${Number(value).toLocaleString('de-DE')}</b> ${label}</span>`;
-  return [item.rank?`<span class="variant-chip ebay-stat ebay-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:'',
-    stat(item.watch_count||0,'Beobachter','Wie viele das Angebot beobachten'),stat(item.view_count,'Aufrufe','Seitenaufrufe der letzten 90 Tage'),
+  return [stat(item.watch_count||0,'Beobachter','Wie viele das Angebot beobachten'),stat(item.view_count,'Aufrufe','Seitenaufrufe der letzten 90 Tage'),
     stat(item.impression_count,'Impressionen','Wie oft das Angebot in Suchergebnissen und Listen gezeigt wurde (90 Tage)')].join('');
 }
 const ebayPickButton=card=>`<button type="button" data-ebay-pick="${escapeHtml(card.variant_id)}"><span>${escapeHtml(card.canonical_name)}</span> <small>${escapeHtml(card.game_name||'')} · ${escapeHtml(card.set_name)} · ${escapeHtml(card.collector_number)} · ${escapeHtml(card.finish)} · ${card.language} · ${card.quantity}× in der Sammlung</small></button>`;
@@ -420,7 +446,9 @@ function bindEbayListingRow(row){
   $('[data-ebay-unlink]',row)?.addEventListener('click',()=>link(null));
   // Photos of a running listing: fetch what it has on eBay, edit, and put them back on this listing.
   const panel=$('.ebay-listing-photos',row);
-  $('[data-ebay-photos-toggle]',row)?.addEventListener('click',()=>panel.classList.toggle('hidden'));
+  // A tile with an open panel spans the whole row of the grid, so the panel has room.
+  const syncOpen=()=>row.classList.toggle('is-open',[panel,$('.ebay-link-search',row)].some(element=>element&&!element.classList.contains('hidden')));
+  $('[data-ebay-photos-toggle]',row)?.addEventListener('click',()=>{panel.classList.toggle('hidden');syncOpen()});
   $('[data-ebay-photos-import]',row)?.addEventListener('click',async event=>{
     const button=event.currentTarget,variantId=$('.ebay-photos',panel).dataset.photoVariant;
     button.disabled=true;button.textContent='Wird geholt …';
@@ -442,7 +470,7 @@ function bindEbayListingRow(row){
   });
   $('[data-ebay-link]',row)?.addEventListener('click',()=>{
     const box=$('.ebay-link-search',row),input=$('input',box),results=$('.ebay-link-results',box),suggestions=$('.ebay-link-suggestions',box);
-    box.classList.toggle('hidden');
+    box.classList.toggle('hidden');syncOpen();
     if(box.classList.contains('hidden'))return;
     // Only cards of the collection are offered -- a listing sells something that is owned.
     api(`/api/ebay/listings/${encodeURIComponent(itemId)}/suggestions`).then(cards=>{

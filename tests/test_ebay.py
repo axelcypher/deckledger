@@ -870,3 +870,18 @@ def test_the_background_sync_books_sales_too(client, configured):
         connection.close()
     assert query("SELECT status FROM deals")[0]["status"] == "done"
     assert query("SELECT COALESCE(SUM(quantity),0) n FROM collection_entries WHERE variant_id=?", (EMBER8,))[0]["n"] == 0
+
+
+def test_the_tab_sums_up_what_is_on_offer_and_what_was_sold(client):
+    connect()
+    own_listing("111", variant_id=EMBER8, title="Ember", price=4.0, quantity=3, sold=1, watchers=2)
+    own_listing("222", title="Ohne Karte", price=10.0, quantity=1, watchers=1)
+    own_listing("333", variant_id=TIDE8, title="Tide", price=7.0, status="sold")
+    query("INSERT INTO ebay_sales(user_id,item_id,transaction_id,quantity,price,currency) VALUES(1,'111','t1',1,4.0,'EUR'),(1,'333','t2',2,14.0,'EUR')")
+    for index in range(60):   # more sales than the list shows: the totals count them all
+        query("INSERT INTO ebay_sales(user_id,item_id,transaction_id,quantity,price,currency) VALUES(1,'333',?,1,1.0,'EUR')", (f"x{index}",))
+    summary = client.get("/api/ebay/listings?game_id=vcard").get_json()["summary"]
+    assert (summary["active"], summary["offered_copies"], summary["offered_value"]) == (2, 3, 18.0), "2 of Ember at 4 € and 1 at 10 €"
+    assert (summary["sales"], summary["sold_copies"], summary["revenue"]) == (62, 63, 78.0)
+    assert summary["watchers"] == 3 and summary["market_ratio"] is None
+    assert client.get("/api/ebay/listings?game_id=lorcana").get_json()["summary"]["sold_copies"] == 0, "only the game's own sales"
