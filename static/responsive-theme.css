@@ -678,7 +678,8 @@
    groups 14px apart, the zoom pushed to the end. The deckbuilder's catalogue keeps its toggle:
    it lives in a narrow side panel. */
 @media (min-width:1024px) {
-  body.dark.mobile-modern .content>.mobile-filter-shell { margin:0 0 22px; }
+  /* Only the vertical margins: the column is centred by .content>* (margin-inline:auto, max-width). */
+  body.dark.mobile-modern .content>.mobile-filter-shell { margin-top:0;margin-bottom:22px; }
   body.dark.mobile-modern .content>.mobile-filter-shell>.mobile-filter-toggle { display:none; }
   body.dark.mobile-modern .content>.mobile-filter-shell>.mobile-filter-body { max-height:none;overflow:visible;opacity:1;pointer-events:auto;transform:none;transition:none; }
   body.dark.mobile-modern .content>.mobile-filter-shell .mobile-filter-surface { margin-top:0;padding:10px 12px;border:1px solid var(--line);border-radius:20px; }
@@ -786,7 +787,7 @@ body.dark.mobile-modern .content .mobile-filter-toggle>i::before { content:"";wi
 
 @media (min-width:1024px) {
   /* Cards stepper row of "Auflage" belongs to the bar above it: same left edge, not centred. */
-  body.dark.mobile-modern .content .tile-edition-row { justify-content:flex-start;margin:-10px 0 18px 4px; }
+  body.dark.mobile-modern .content .tile-edition-row { justify-content:flex-start;margin-top:-10px;margin-bottom:18px;padding-left:4px; }
   /* Deckbuilder catalogue (a narrow side panel): search across the full width, icons at full size. */
   body.dark.mobile-modern .content .deck-catalog-filter-primary>.filter-search { flex:1 1 100%;order:-1; }
   body.dark.mobile-modern .content .deck-catalog-filter-primary { flex-wrap:wrap; }
