@@ -21,11 +21,11 @@ function ebayPhotoStrip(draft,context='draft'){
 // Every draft of the card shows the same photos, so all their strips are drawn again.
 async function refreshEbayPhotos(variantId,photos){
   photos??=await api(`/api/ebay/photos?variant_id=${encodeURIComponent(variantId)}`);
-  $$('.ebay-photos',content).filter(strip=>strip.dataset.photoVariant===variantId).forEach(strip=>{
+  $$('.ebay-photos').filter(strip=>strip.dataset.photoVariant===variantId).forEach(strip=>{
     strip.outerHTML=ebayPhotoStrip({variant_id:variantId,photos},strip.dataset.photoContext);
   });
-  $$('[data-photo-count]',content).filter(label=>label.dataset.photoCount===variantId).forEach(label=>{label.textContent=photos.length?`Fotos (${photos.length})`:'Fotos'});
-  $$('.ebay-photos',content).filter(strip=>strip.dataset.photoVariant===variantId).forEach(strip=>bindEbayPhotoStrip(strip));
+  $$('[data-photo-count]').filter(label=>label.dataset.photoCount===variantId).forEach(label=>{label.textContent=photos.length?`Fotos (${photos.length})`:'Fotos'});
+  $$('.ebay-photos').filter(strip=>strip.dataset.photoVariant===variantId).forEach(strip=>bindEbayPhotoStrip(strip));
 }
 
 function bindEbayPhotoStrip(strip){
@@ -63,7 +63,7 @@ function bindEbayPhotoStrip(strip){
 // when cancelled. save(crop) and the extra actions throw to keep the editor open with a message.
 function openEbayCropper({src,crop,title,save,extra=[]}){
   return new Promise(resolve=>{
-    const modal=openSettingsModal({id:'ebay-crop-modal',eyebrow:'EBAY · FOTO',title,
+    const modal=openSettingsModal({id:'ebay-crop-modal',eyebrow:'EBAY · FOTO',title,stack:true,
       body:`<div class="ebay-crop-stage" id="ebay-crop-stage"><canvas></canvas><div class="ebay-crop-box" hidden>${['nw','ne','sw','se'].map(corner=>`<span class="ebay-crop-handle is-${corner}" data-corner="${corner}"></span>`).join('')}</div><div class="page-loader compact"><span></span></div></div>
         <div class="ebay-crop-tools">
           <div class="deal-filter-chips">${EBAY_CROP_ASPECTS.map(([id,label])=>`<button type="button" class="community-chip" data-crop-aspect="${id}">${label}</button>`).join('')}</div>

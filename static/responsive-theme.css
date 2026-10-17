@@ -873,3 +873,6 @@ body.dark.mobile-modern .content .variant-badge.tier-foil.missing { opacity:.55;
 @media (min-width:1024px) {
   body.dark.mobile-modern .deck-catalog-filter-secondary .op-color-filter { padding:1px; }
 }
+
+/* The dashboard's numbers at the height of every other gold pill (sales, sets, collection). */
+body.dark.mobile-modern .content deckledger-stat-pill.hero-summary { min-height:0; }

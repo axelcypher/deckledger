@@ -1352,15 +1352,7 @@ body.mobile-light .ebay-vs-market.is-above { color:#b2433b; }
   .ebay-draft-actions > :is(.primary-button,.secondary-button) { flex:1; }
   .ebay-section .sheet-section-head .deal-filter-chips { flex-basis:100%;margin-left:0; }
   /* A listing: the price goes under the details instead of squeezing the title. */
-  .ebay-listings { grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
-  .ebay-listing-media { padding:10px; }
-  .ebay-listing-main { gap:6px;padding:10px 10px 12px; }
-  .ebay-listing-title b { font-size:12px; }
-  .ebay-listing-foot { flex-direction:column;align-items:flex-start;gap:2px; }
   .ebay-listing-foot .ebay-listing-price { font-size:15px; }
-  .ebay-listing-card { flex-direction:column;align-items:flex-start;gap:4px; }
-  .ebay-listing-card-name { max-width:100%; }
-  .ebay-listing.is-open { grid-template-columns:96px minmax(0,1fr); }
   .ebay-sale { grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:9px 12px; }
   .ebay-sale > b { grid-column:1/-1;grid-row:1;white-space:normal; }
   .ebay-sale-date { grid-column:1;grid-row:2;font-size:11px; }
@@ -1474,4 +1466,57 @@ deckledger-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b2
 .sales-deals .deal-filters>.filter-search { grid-area:search;width:100%;max-width:none; }
 @media (max-width:760px) {
   .sales-deals .deal-filters { grid-template-columns:minmax(0,1fr);grid-template-areas:"status" "platform" "search"; }
+}
+
+/* ---- "Verkauf & Tausch": head like the dashboard, listing tiles --------------------------------- */
+.sales-nav-row { display:flex;align-items:stretch;gap:12px;margin:14px 0 26px; }
+.sales-nav-row>.sales-nav { flex:1;min-width:0; }
+.sales-nav-tools { display:flex;flex:none;align-items:center;gap:8px; }
+.sales-nav-tools .sales-sync { display:inline-flex;align-items:center;gap:8px; }
+.sales-nav-tools .sales-sync svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
+.sales-nav-tools .sales-sync.has-error { position:relative; }
+.sales-nav-tools .sales-sync.has-error::after { content:"";position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--danger); }
+.sales-nav-tools .icon-button svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6; }
+.sales-nav button:disabled { opacity:.5;cursor:default;transform:none; }
+.sales-nav button.active { border-color:var(--mt-gold,var(--brand)) !important;background:color-mix(in srgb,var(--surface-2) 84%,var(--mt-gold,var(--brand))) !important; }
+.sales-nav button:not(.active):first-child { border-color:var(--line) !important;background:var(--surface-2) !important; }
+.sheets-list-head { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
+.sheets-list-head>span { color:var(--muted);font-size:11px; }
+.sheets-list-head>button { margin-left:auto; }
+.sales-deals .sheet-section-head { display:flex;align-items:center;gap:10px; }
+.sales-deals .sheet-section-head>button { margin-left:auto; }
+.ebay-listing-filters { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 14px; }
+.ebay-listing-sort select { height:30px;padding:0 26px 0 12px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font:600 12px var(--font-ui,inherit);cursor:pointer; }
+.ebay-listing-sort select:hover,.ebay-listing-sort select:focus { color:var(--ink);border-color:color-mix(in srgb,var(--brand) 30%,var(--line)); }
+.sr-only { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap; }
+.ebay-drafts-toolbar { display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px; }
+.ebay-drafts-toolbar>span { margin-right:auto;color:var(--muted);font-size:12px; }
+.ebay-drafts-overlay .dl-modal { width:min(1040px,100%); }
+
+/* Listing tiles: three to a row, the card on the left with its numbers below it. */
+.ebay-listings { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.ebay-listing { display:grid;grid-template-columns:112px minmax(0,1fr);gap:14px;padding:12px; }
+.ebay-listing-side { display:flex;flex-direction:column;gap:8px;min-width:0; }
+.ebay-listing-media { aspect-ratio:5/7;padding:0;border-radius:9px;background:var(--surface-2);overflow:hidden; }
+.ebay-listing-media img { width:100%;height:100%;max-width:none;max-height:none;object-fit:cover;border-radius:9px;box-shadow:none; }
+.ebay-listing-rank { position:absolute;top:6px;left:6px; }
+.ebay-listing-side .ebay-listing-stats { display:grid;grid-template-columns:1fr;gap:3px; }
+.ebay-listing-side .ebay-stat { display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);font-size:11px;letter-spacing:0;text-transform:none; }
+.ebay-listing-side .ebay-stat svg { flex:none;width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
+.ebay-listing-side .ebay-stat b { color:var(--ink);font-weight:750;font-variant-numeric:tabular-nums; }
+.ebay-listing-main { gap:7px;padding:2px 0 0; }
+.ebay-listing-title b { -webkit-line-clamp:2;font-size:15px;line-height:1.25; }
+.ebay-listing-sub { display:-webkit-box;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-top:3px;color:var(--muted);font-size:11px;line-height:1.35; }
+.ebay-listing-meta { display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px; }
+.ebay-listing-meta .ebay-chip { margin:0; }
+.ebay-listing.is-open { grid-template-columns:112px minmax(0,1fr); }
+.ebay-listing.is-open .ebay-listing-media { aspect-ratio:5/7;height:auto; }
+@media (max-width:1180px) { .ebay-listings { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:760px) {
+  .sales-nav-row { flex-direction:column; }
+  .sales-nav-tools { justify-content:flex-end; }
+  .ebay-listings { grid-template-columns:minmax(0,1fr);gap:10px; }
+  .ebay-listing { grid-template-columns:96px minmax(0,1fr);gap:12px;padding:10px; }
+  .ebay-listing.is-open { grid-template-columns:96px minmax(0,1fr); }
+  .ebay-listing-filters { flex-wrap:wrap; }
 }

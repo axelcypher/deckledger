@@ -22,12 +22,7 @@ function dealMoney(deal){
 }
 const dealCardsLine=(deal,side)=>deal.cards.filter(card=>card.side===side).map(card=>`${card.quantity}× ${escapeHtml(card.name)}`).join(', ');
 
-// The two tabs of "Verkauf & Tausch": sales (eBay and every deal) first, then the sheets.
-function sheetTabsHtml(active){
-  // The gear opens the settings of what is on screen: eBay's with the sales, Reddit's with the sheets.
-  const settings=active==='sales'?['ebay','eBay-Einstellungen']:['trade','Einstellungen für Verkauf & Tausch'];
-  return `<div class="sheet-tabs" role="tablist">${[['sales','Verkäufe'],['sheets','Sheets']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}<button type="button" class="icon-button sheet-tabs-settings" data-sheet-settings="${settings[0]}" title="${settings[1]}" aria-label="${settings[1]}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div>`;
-}
+// The two tabs of "Verkauf & Tausch" are tiles in the head of either (salesHeaderHtml in js/ebay.js).
 function bindSheetTabs(){
   $$('[data-sheet-tab]',content).forEach(button=>button.onclick=()=>{sheetView.tab=button.dataset.sheetTab;state.sheetId=null;state.dealId=null;renderSheets()});
   $('[data-sheet-settings]',content)?.addEventListener('click',event=>event.currentTarget.dataset.sheetSettings==='ebay'?openEbaySettings():openTradeSettings());
@@ -58,7 +53,7 @@ function dealSectionHtml(deals){
   if(dealView.platform&&!platforms.some(name=>name.toLowerCase()===dealView.platform.toLowerCase()))dealView.platform='';
   const shown=filteredDeals(deals);
   return `<section class="ebay-section sales-deals" id="sales-deals">
-    <div class="sheet-section-head"><b>Vorgänge</b><span>${shown.length===deals.length?`${deals.length}`:`${shown.length} von ${deals.length}`}</span></div>
+    <div class="sheet-section-head"><b>Vorgänge</b><span>${shown.length===deals.length?`${deals.length}`:`${shown.length} von ${deals.length}`}</span><button type="button" class="secondary-button" id="new-deal">＋ Neuer Vorgang</button></div>
     <div class="deal-filters"><div class="deal-filter-chips">${DEAL_FILTERS.map(([id,label])=>`<button type="button" class="community-chip ${dealView.status===id?'active':''}" data-deal-filter="${id}">${label}</button>`).join('')}</div>
       ${platforms.length>1?`<div class="deal-filter-chips deal-platform-chips" aria-label="Plattform">${[['','Alle Plattformen'],...platforms.map(name=>[name,name])].map(([id,label])=>`<button type="button" class="community-chip ${dealView.platform===id?'active':''}" data-deal-platform="${escapeHtml(id)}">${escapeHtml(label)}</button>`).join('')}</div>`:''}
       <div class="filter-search"><span>⌕</span><input id="deal-q" value="${escapeHtml(dealView.q)}" placeholder="Partner, Plattform oder Karte"></div></div>
@@ -73,6 +68,7 @@ function bindDealSection(root,deals){
   $$('[data-deal-platform]',root).forEach(button=>button.onclick=()=>{dealView.platform=button.dataset.dealPlatform;redraw()});
   let timer;$('#deal-q',root).oninput=event=>{clearTimeout(timer);dealView.q=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deal-q',redraw),200)};
   $$('[data-deal]',root).forEach(row=>row.onclick=()=>{state.dealId=Number(row.dataset.deal);renderSheets()});
+  $('#new-deal',root).onclick=async()=>{try{const created=await post('/api/deals',{game_id:state.activeGameId});state.dealId=created.id;renderSheets()}catch(error){toast(error.message)}};
 }
 
 // What a card of a deal says about the collection, so nothing is promised twice.

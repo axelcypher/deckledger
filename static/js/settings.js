@@ -46,8 +46,10 @@ function openAccountPasswordDialog(user){
 
 // A settings dialog over the page it belongs to (eBay on its tab, sales & trade on the sheets
 // page). Returns the dialog element; the caller fills it.
-function openSettingsModal({id,eyebrow,title,intro='',body=''}){
-  closeSettingsModal();
+// stack: open over a dialog that is already open (the photo editor over the eBay drafts) instead
+// of replacing it; closing then returns to the one below.
+function openSettingsModal({id,eyebrow,title,intro='',body='',stack=false}){
+  if(!stack)while($('.dl-modal-overlay'))closeSettingsModal();
   const modal=document.createElement('div');
   modal.id=id;modal.className='overlay dl-modal-overlay';
   modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby',`${id}-title`);
@@ -59,9 +61,9 @@ function openSettingsModal({id,eyebrow,title,intro='',body=''}){
   return modal;
 }
 function closeSettingsModal(){
-  const open=$('.dl-modal-overlay');if(!open)return;
+  const open=$$('.dl-modal-overlay').at(-1);if(!open)return;
   open.remove();
-  document.documentElement.style.overflow='';document.body.style.overflow='';
+  if(!$('.dl-modal-overlay')){document.documentElement.style.overflow='';document.body.style.overflow=''}
 }
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('.dl-modal-overlay')&&!$('.watch-menu'))closeSettingsModal()});
 

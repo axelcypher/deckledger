@@ -553,18 +553,20 @@ describe('app in the browser', { skip }, () => {
     } finally { await admin.close(); }
   });
 
-  test('the eBay drafts are folded until opened, and stay open while working on them', async () => {
+  test('the eBay drafts open in a dialog from the tiles of the sales tab', async () => {
     await page.evaluate(`post('/api/ebay/drafts',{variant_ids:[${JSON.stringify(EMBER8)}]})`);
     await page.evaluate(`(setActiveGame('vcard'),sheetView.tab='sales',state.sheetId=null,1)`);
     await page.route('sheets');
-    await page.waitFor(`document.querySelector('#ebay-drafts-toggle')`, { message: 'the eBay tab to render' });
-    assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-body').hidden`), true, 'folded at first');
-    assert.match(await page.evaluate(`document.querySelector('#ebay-drafts-toggle').innerText`), /1 offen/);
-    await page.evaluate(`document.querySelector('#ebay-drafts-toggle').click()`);
-    assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-body').hidden`), false);
-    assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-toggle').getAttribute('aria-expanded')`), 'true');
-    await page.evaluate(`(renderSales(),1)`);
-    await page.waitFor(`document.querySelector('#ebay-drafts-body')&&!document.querySelector('#ebay-drafts-body').hidden&&document.querySelectorAll('.ebay-draft').length===1`, { message: 'the drafts to stay open after a redraw' });
+    await page.waitFor(`document.querySelector('[data-sales-open="drafts"]')`, { message: 'the sales tab to render' });
+    assert.equal(await page.evaluate(`document.querySelectorAll('#content .ebay-draft').length`), 0, 'no drafts on the page itself');
+    assert.match(await page.evaluate(`document.querySelector('[data-sales-open="drafts"]').innerText`), /1 offen/);
+    await page.evaluate(`document.querySelector('[data-sales-open="drafts"]').click()`);
+    await page.waitFor(`document.querySelectorAll('#ebay-drafts-modal .ebay-draft').length===1`, { message: 'the drafts dialog to list the draft' });
+    await page.evaluate(`(openSettingsModal({id:'stacked-test',eyebrow:'T',title:'T',stack:true}),1)`);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.dl-modal-overlay').length`), 2, 'a dialog opens over the drafts');
+    await page.evaluate(`(closeSettingsModal(),1)`);
+    assert.ok(await page.evaluate(`!!document.querySelector('#ebay-drafts-modal')`), 'closing it returns to the drafts');
+    await page.evaluate(`(closeSettingsModal(),1)`);
     noProblems();
   });
 
