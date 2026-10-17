@@ -2,7 +2,8 @@
 // followed for a card's price in the price tab, drafts made from sheets and the collection, and
 // the "eBay" tab next to Sheets and Vorgänge with the drafts and the account's own listings.
 
-const ebayView={status:null,listingFilter:'active'};
+// draftsOpen: the drafts section is folded until opened, for as long as the app stays loaded.
+const ebayView={status:null,listingFilter:'active',draftsOpen:false};
 const EBAY_RETURN_MESSAGES={
   connected:'eBay-Konto verbunden',
   denied:'Die Verbindung zu eBay wurde abgebrochen.',
@@ -276,10 +277,12 @@ async function renderEbay(){
       ?`<span class="user-settings-status is-connected"><i></i>${escapeHtml(status.username||'Verbunden')}</span><span class="muted">${escapeHtml(status.marketplace_label)} · abgeglichen ${ebayDate(status.listings_synced_at)}</span>${status.last_error?`<span class="sheet-warning">${escapeHtml(status.last_error)}</span>`:''}<button class="secondary-button" id="ebay-sync">Jetzt abgleichen</button>`
       :`<span class="user-settings-status"><i></i>${status.configured?'Kein eBay-Konto verbunden':'eBay nicht eingerichtet'}</span><span class="muted">Entwürfe kannst du trotzdem schon anlegen; zum Einstellen verbinde dein Konto.</span><button class="secondary-button" id="ebay-open-settings">eBay-Einstellungen</button>`}</div>
     <section class="ebay-section">
-      <div class="sheet-section-head"><b>Entwürfe</b><span>${open.length?`${open.length} offen`:''}</span>${open.length?`<button class="secondary-button" id="ebay-verify-all" ${status.connected?'':'disabled'}>Alle prüfen</button><button class="primary-button" id="ebay-publish-all" ${status.connected?'':'disabled'}>Alle einstellen</button>`:''}</div>
+      <div class="sheet-section-head ebay-drafts-head"><button type="button" class="ebay-section-toggle" id="ebay-drafts-toggle" aria-expanded="${ebayView.draftsOpen}" aria-controls="ebay-drafts-body"><i aria-hidden="true"></i><b>Entwürfe</b><span>${open.length?`${open.length} offen`:'keine offen'}${done.length?` · ${done.length} eingestellt`:''}</span></button>${open.length?`<button class="secondary-button" id="ebay-verify-all" ${status.connected?'':'disabled'}>Alle prüfen</button><button class="primary-button" id="ebay-publish-all" ${status.connected?'':'disabled'}>Alle einstellen</button>`:''}</div>
+      <div class="ebay-drafts-body" id="ebay-drafts-body" ${ebayView.draftsOpen?'':'hidden'}>
       ${open.length?`<div class="ebay-drafts">${open.map(draft=>ebayDraftRow(draft,status)).join('')}</div>`
         :'<div class="deck-zone-empty">Noch keine Entwürfe. Erzeuge sie im Sheet mit „eBay-Entwürfe“ oder in der Sammlung über die Mehrfachauswahl.</div>'}
       ${done.length?`<details class="ebay-done"><summary>${done.length} eingestellt</summary><div class="ebay-drafts">${done.map(draft=>ebayDraftRow(draft,status)).join('')}</div></details>`:''}
+      </div>
     </section>
     <section class="ebay-section">
       <div class="sheet-section-head"><b>Meine Angebote</b>${listings.listings.length?'<button class="secondary-button" id="ebay-open-stats">Statistik</button>':''}${status.connected&&listings.listings.some(item=>item.status==='active')?'<button class="secondary-button" id="ebay-open-revise" title="Titel, Beschreibung, Artikelmerkmale und Versand der aktiven Angebote aus der Vorlage neu setzen">Vorlage anwenden</button>':''}<div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div></div>
@@ -289,6 +292,11 @@ async function renderEbay(){
     ${listings.sales.length?`<section class="ebay-section"><div class="sheet-section-head"><b>Letzte Verkäufe</b></div><div class="ebay-sales">${listings.sales.map(sale=>`<div class="ebay-sale"><span class="ebay-sale-date">${ebayDate(sale.sold_at)}</span><b>${sale.quantity}× ${escapeHtml(sale.title)}</b><span class="ebay-sale-buyer">${escapeHtml(sale.buyer)}</span><strong>${ebayMoney(sale.price,sale.currency)}</strong></div>`).join('')}</div></section>`:''}`;
   bindSheetTabs();
   $('#ebay-open-settings')?.addEventListener('click',()=>openEbaySettings());
+  $('#ebay-drafts-toggle')?.addEventListener('click',event=>{
+    ebayView.draftsOpen=!ebayView.draftsOpen;
+    event.currentTarget.setAttribute('aria-expanded',String(ebayView.draftsOpen));
+    $('#ebay-drafts-body').hidden=!ebayView.draftsOpen;
+  });
   $('#ebay-open-stats')?.addEventListener('click',()=>openEbayStats(listings));
   $('#ebay-open-revise')?.addEventListener('click',()=>openEbayRevise());
   $('#ebay-sync')?.addEventListener('click',async event=>{

@@ -549,6 +549,21 @@ describe('app in the browser', { skip }, () => {
     } finally { await admin.close(); }
   });
 
+  test('the eBay drafts are folded until opened, and stay open while working on them', async () => {
+    await page.evaluate(`post('/api/ebay/drafts',{variant_ids:[${JSON.stringify(EMBER8)}]})`);
+    await page.evaluate(`(setActiveGame('vcard'),sheetView.tab='ebay',state.sheetId=null,1)`);
+    await page.route('sheets');
+    await page.waitFor(`document.querySelector('#ebay-drafts-toggle')`, { message: 'the eBay tab to render' });
+    assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-body').hidden`), true, 'folded at first');
+    assert.match(await page.evaluate(`document.querySelector('#ebay-drafts-toggle').innerText`), /1 offen/);
+    await page.evaluate(`document.querySelector('#ebay-drafts-toggle').click()`);
+    assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-body').hidden`), false);
+    assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-toggle').getAttribute('aria-expanded')`), 'true');
+    await page.evaluate(`(renderEbay(),1)`);
+    await page.waitFor(`document.querySelector('#ebay-drafts-body')&&!document.querySelector('#ebay-drafts-body').hidden&&document.querySelectorAll('.ebay-draft').length===1`, { message: 'the drafts to stay open after a redraw' });
+    noProblems();
+  });
+
   test('a shared collection opens for a visitor without signing in', async () => {
     await page.route('settings');
     await page.waitFor(`document.querySelector('#public-save')`, { message: 'the public profile settings to render' });

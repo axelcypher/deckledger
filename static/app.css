@@ -1417,3 +1417,21 @@ body .dl-modal .dl-control:focus { border-color:color-mix(in srgb,var(--mt-gold,
 .account-sign-in-row .user-settings-status { margin-left:0; }
 .account-settings-actions .spacer { flex:1; }
 @media (max-width:760px) { .account-sign-in-row { grid-template-columns:1fr auto; } .account-sign-in-row > :last-child { grid-column:1/-1; } }
+
+/* The drafts section of the eBay tab folds: its head is the switch, the bulk actions stay in it. */
+.ebay-section-toggle { display:inline-flex;align-items:center;gap:10px;margin:0;padding:4px 8px 4px 0;border:0;background:none;color:var(--ink);font:inherit;cursor:pointer; }
+.ebay-section-toggle>b { font-size:inherit; }
+.ebay-section-toggle>span { color:var(--muted);font-size:11px; }
+.ebay-section-toggle>i { display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-2); }
+.ebay-section-toggle>i::before { content:"";width:7px;height:7px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:translateX(-1px) rotate(-45deg);transition:transform .2s ease; }
+.ebay-section-toggle[aria-expanded="true"]>i::before { transform:translateY(-2px) rotate(45deg); }
+.ebay-section-toggle:focus-visible { outline:2px solid color-mix(in srgb,var(--brand) 60%,transparent);outline-offset:3px;border-radius:999px; }
+.ebay-drafts-body[hidden] { display:none; }
+.ebay-drafts-body { margin-top:4px; }
+/* (button.: one step more specific than the tab's "first button goes right" rule.) */
+.ebay-section .sheet-section-head>button.ebay-section-toggle { margin-left:0; }
+.ebay-section .sheet-section-head>.ebay-section-toggle+button { margin-left:auto; }
+@media (max-width:760px) {
+  .ebay-section .sheet-section-head.ebay-drafts-head>button.ebay-section-toggle { flex:1 1 100%; }
+  .ebay-section .sheet-section-head.ebay-drafts-head>.ebay-section-toggle~button { flex:1 1 0;margin-left:0; }
+}
