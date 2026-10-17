@@ -254,6 +254,7 @@ describe('app in the browser', { skip }, () => {
   });
 
   test('a sheet can be built from the collection and renders as an image', async () => {
+    await page.evaluate(`(sheetView.tab='sheets',1)`);
     await page.route('sheets');
     await page.evaluate(`document.querySelector('#first-sheet, #new-sheet').click()`);
     await page.waitFor(`state.sheetId&&document.querySelector('#sheet-picker-list [data-pick]')`, { message: 'the picker to list the collection' });
@@ -334,7 +335,7 @@ describe('app in the browser', { skip }, () => {
   });
 
   test('a comment on a linked post shows up in the inbox', async () => {
-    await page.evaluate(`(state.sheetId=null,1)`);
+    await page.evaluate(`(state.sheetId=null,sheetView.tab='sheets',1)`);
     await page.route('sheets');
     await page.waitFor(`document.querySelector('.sheet-overview-card')`, { message: 'the sheet made by an earlier test' });
     await page.evaluate(`document.querySelector('.sheet-overview-card').click()`);
@@ -347,8 +348,8 @@ describe('app in the browser', { skip }, () => {
     await page.waitFor(`document.querySelector('.sheet-post-new')?.innerText==='1 neu'`, { message: 'the new comment to be counted on the post' });
     await page.waitFor(`(()=>{const badge=document.querySelector('.nav-item [data-inbox-count]');return badge.textContent==='1'&&!badge.classList.contains('hidden')})()`, { message: 'the badge in the menu' });
     assert.match(await page.evaluate(`document.querySelector('.sheet-post').innerText`), /\[WTS\] Test post/);
-    // The inbox sits above the list of sheets.
-    await page.evaluate(`(state.sheetId=null,renderSheets(),1)`);
+    // The inbox is on the "Verkäufe" tab, the one "Verkauf & Tausch" opens with.
+    await page.evaluate(`(state.sheetId=null,sheetView.tab='sales',renderSheets(),1)`);
     await page.waitFor(`document.querySelector('.inbox-item')`, { message: 'the comment in the inbox' });
     const item = await page.evaluate(`(()=>{const entry=document.querySelector('.inbox-item');return {text:entry.innerText,link:entry.querySelector('a').href,match:entry.querySelector('.inbox-match')?.innerText,markup:entry.querySelector('p').innerHTML}})()`);
     assert.match(item.text, /u\/buyer_one/);
@@ -387,8 +388,10 @@ describe('app in the browser', { skip }, () => {
     await page.waitFor(`/geprüft/.test(document.querySelector('.community-row small')?.innerText||'')&&!/noch nicht/.test(document.querySelector('.community-row small').innerText)`, { message: 'the subreddit to be read' });
     await page.waitFor(`(()=>{const badge=document.querySelector('.nav-item [data-inbox-count]');return badge.textContent==='1'&&!badge.classList.contains('hidden')})()`, { message: 'the find to be counted in the menu' });
     // The sheet says where it is looked for, and can keep out of it.
-    await page.evaluate(`(closeSettingsModal(),state.sheetId=null,1)`);
+    // The inbox is on the "Verkäufe" tab, where a find can become a deal.
+    await page.evaluate(`(closeSettingsModal(),state.sheetId=null,sheetView.tab='sales',1)`);
     await page.route('sheets');
+    await page.waitFor(`document.querySelector('.inbox-item.is-find')`, { message: 'the find in the inbox of the sales tab' });
     const find = await page.evaluate(`(()=>{const entry=document.querySelector('.inbox-item.is-find');return entry&&{title:entry.querySelector('h4').innerText,body:entry.querySelector('p').innerHTML,match:entry.querySelector('.inbox-match').innerText,link:entry.querySelector('a').href}})()`);
     assert.match(find.title, /^\[US\] \[H\] (PayPal \[W\] Ember PL8|Ember PL8 \[W\] PayPal)$/);
     assert.equal(find.body, 'see pictures', 'the post is shown as text');
@@ -408,9 +411,10 @@ describe('app in the browser', { skip }, () => {
   test('a deal is entered by hand, finished, and leaves a record on the card', async () => {
     await page.evaluate(`(window.confirm=()=>true,state.sheetId=null,state.dealId=null,1)`);
     await page.evaluate(`post('/api/collection',{variant_id:${JSON.stringify(TIDE8)},quantity:3})`);
+    await page.evaluate(`(sheetView.tab='sheets',1)`);
     await page.route('sheets');
-    await page.evaluate(`document.querySelector('[data-sheet-tab="deals"]').click()`);
-    await page.waitFor(`document.querySelector('#new-deal')`, { message: 'the list of deals' });
+    await page.evaluate(`document.querySelector('[data-sheet-tab="sales"]').click()`);
+    await page.waitFor(`document.querySelector('#new-deal')&&document.querySelector('#sales-deals')`, { message: 'the sales tab with its deals' });
     await page.evaluate(`document.querySelector('#new-deal').click()`);
     await page.waitFor(`document.querySelector('#deal-partner')`, { message: 'the new deal' });
     await page.evaluate(`(()=>{const input=document.querySelector('#deal-partner');input.value='Kim vom Stammtisch';input.dispatchEvent(new Event('change'))})()`);
@@ -436,7 +440,7 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`document.querySelector('#deal-back').click()`);
     await page.waitFor(`document.querySelector('.deal-row')`, { message: 'the deal in the list' });
     assert.match(await text('.deal-row'), /Verkauf · Kim vom Stammtisch[\s\S]*1× Tide \(PL8\)[\s\S]*\+4,50/);
-    assert.match(await text('.deal-totals'), /Einnahmen\s*4,50/);
+    assert.match(await text('deckledger-stat-pill.ebay-summary'), /Einnahmen\s*4,50/i, 'the numbers of the tab count the deal');
     // The card remembers it.
     await page.evaluate(`(state.modalTab='collection',openCard('vcard-card-tide8',${JSON.stringify(TIDE8)}))`);
     await page.waitFor(`document.querySelector('.card-deal')`, { message: 'the deal in the card\'s detail view' });
@@ -551,7 +555,7 @@ describe('app in the browser', { skip }, () => {
 
   test('the eBay drafts are folded until opened, and stay open while working on them', async () => {
     await page.evaluate(`post('/api/ebay/drafts',{variant_ids:[${JSON.stringify(EMBER8)}]})`);
-    await page.evaluate(`(setActiveGame('vcard'),sheetView.tab='ebay',state.sheetId=null,1)`);
+    await page.evaluate(`(setActiveGame('vcard'),sheetView.tab='sales',state.sheetId=null,1)`);
     await page.route('sheets');
     await page.waitFor(`document.querySelector('#ebay-drafts-toggle')`, { message: 'the eBay tab to render' });
     assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-body').hidden`), true, 'folded at first');
@@ -559,7 +563,7 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`document.querySelector('#ebay-drafts-toggle').click()`);
     assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-body').hidden`), false);
     assert.equal(await page.evaluate(`document.querySelector('#ebay-drafts-toggle').getAttribute('aria-expanded')`), 'true');
-    await page.evaluate(`(renderEbay(),1)`);
+    await page.evaluate(`(renderSales(),1)`);
     await page.waitFor(`document.querySelector('#ebay-drafts-body')&&!document.querySelector('#ebay-drafts-body').hidden&&document.querySelectorAll('.ebay-draft').length===1`, { message: 'the drafts to stay open after a redraw' });
     noProblems();
   });

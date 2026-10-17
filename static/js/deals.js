@@ -1,8 +1,9 @@
 // Deals: what was sold, bought or traded, with whom, and what became of it (deckledger/deals.py).
-// They live next to the sheets: the list is the second tab of "Verkauf & Tausch", a deal opens
-// in place of it. A deal can be started by hand or from an entry of the inbox.
+// Their list is part of the "Verkäufe" tab of "Verkauf & Tausch" (renderSales in js/ebay.js),
+// together with eBay -- whose sales are deals too; a deal opens in place of the tab. A deal can be
+// started by hand or from an entry of the inbox.
 
-const dealView={status:'',q:'',found:{give:null,get:null}};
+const dealView={status:'',platform:'',q:'',found:{give:null,get:null}};
 const DEAL_STATES={open:'Offen',reserved:'Reserviert',done:'Abgeschlossen',cancelled:'Abgebrochen'};
 const DEAL_KINDS={sale:'Verkauf',purchase:'Kauf',trade:'Tausch','':'Vorgang'};
 const DEAL_EVENTS={created:'Angelegt',reserved:'Reserviert',open:'Wieder offen',done:'Abgeschlossen',received:'Empfang bestätigt',cancelled:'Abgebrochen'};
@@ -21,40 +22,57 @@ function dealMoney(deal){
 }
 const dealCardsLine=(deal,side)=>deal.cards.filter(card=>card.side===side).map(card=>`${card.quantity}× ${escapeHtml(card.name)}`).join(', ');
 
-// The two tabs of "Verkauf & Tausch". Sheets and deals share the page, not the content.
+// The two tabs of "Verkauf & Tausch": sales (eBay and every deal) first, then the sheets.
 function sheetTabsHtml(active){
-  // The gear opens the settings of what is on screen: eBay's on its tab, else sales & trade (Reddit).
-  const settings=active==='ebay'?['ebay','eBay-Einstellungen']:['trade','Einstellungen für Verkauf & Tausch'];
-  return `<div class="sheet-tabs" role="tablist">${[['sheets','Sheets'],['deals','Vorgänge'],['ebay','eBay']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}<button type="button" class="icon-button sheet-tabs-settings" data-sheet-settings="${settings[0]}" title="${settings[1]}" aria-label="${settings[1]}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div>`;
+  // The gear opens the settings of what is on screen: eBay's with the sales, Reddit's with the sheets.
+  const settings=active==='sales'?['ebay','eBay-Einstellungen']:['trade','Einstellungen für Verkauf & Tausch'];
+  return `<div class="sheet-tabs" role="tablist">${[['sales','Verkäufe'],['sheets','Sheets']].map(([id,label])=>`<button type="button" role="tab" data-sheet-tab="${id}" aria-selected="${id===active}" class="${id===active?'active':''}">${label}</button>`).join('')}<button type="button" class="icon-button sheet-tabs-settings" data-sheet-settings="${settings[0]}" title="${settings[1]}" aria-label="${settings[1]}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div>`;
 }
 function bindSheetTabs(){
   $$('[data-sheet-tab]',content).forEach(button=>button.onclick=()=>{sheetView.tab=button.dataset.sheetTab;state.sheetId=null;state.dealId=null;renderSheets()});
   $('[data-sheet-settings]',content)?.addEventListener('click',event=>event.currentTarget.dataset.sheetSettings==='ebay'?openEbaySettings():openTradeSettings());
 }
 
-async function renderDeals(){
-  const game=state.boot.games.find(item=>item.id===state.activeGameId),guard=renderGuard();
-  let data;
-  try{data=await api(`/api/deals?${new URLSearchParams({game_id:game.id,status:dealView.status,q:dealView.q})}`)}catch(error){content.innerHTML=`<div class="deck-zone-empty">${escapeHtml(error.message)}</div>`;return}
-  if(guard()||state.route!=='sheets'||state.dealId||sheetView.tab!=='deals')return;
-  const totals=data.totals;
-  content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · VERKAUF &amp; TAUSCH</span><h1>Vorgänge</h1><p>Was du verkauft, gekauft oder getauscht hast – mit wem, zu welchem Preis und was daraus wurde.</p></div><button class="primary-button" id="new-deal">＋ Neuer Vorgang</button></div>
-    ${sheetTabsHtml('deals')}
+// One deal in the list.
+function dealRowHtml(deal){
+  const gives=dealCardsLine(deal,'give'),gets=dealCardsLine(deal,'get');
+  return `<button type="button" class="deal-row" data-deal="${deal.id}">
+    <div class="deal-row-head"><b>${DEAL_KINDS[deal.kind]}${deal.partner?` · ${escapeHtml(deal.partner)}`:''}</b><small>${[deal.platform,dealDate(deal.completed_at||deal.updated_at)].filter(Boolean).map(escapeHtml).join(' · ')}</small></div>
+    <div class="deal-row-cards">${gives?`<span><i>gebe</i> ${gives}</span>`:''}${gets?`<span><i>bekomme</i> ${gets}</span>`:''}${!gives&&!gets?'<span><i>noch keine Karten</i></span>':''}</div>
+    <div class="deal-row-end">${dealMoney(deal)}${dealStatusChip(deal)}</div></button>`;
+}
+
+// The deals the filters let through: status, platform and the search (searchMatcher, as on the
+// server). Filtering here keeps the numbers of the tab about every deal.
+function filteredDeals(deals){
+  const matches=dealView.q.trim()?searchMatcher(dealView.q):null;
+  return deals.filter(deal=>(!dealView.status||(dealView.status==='transit'?deal.in_transit:deal.status===dealView.status))
+    &&(!dealView.platform||(deal.platform||'').toLowerCase()===dealView.platform.toLowerCase())
+    &&(!matches||matches([deal.partner,deal.platform,deal.note,...deal.cards.map(card=>card.name)])));
+}
+
+// The deals section of the "Verkäufe" tab: filters by status and by the platforms in use, a
+// search, and the list.
+function dealSectionHtml(deals){
+  const platforms=[...new Set(deals.map(deal=>deal.platform).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de'));
+  if(dealView.platform&&!platforms.some(name=>name.toLowerCase()===dealView.platform.toLowerCase()))dealView.platform='';
+  const shown=filteredDeals(deals);
+  return `<section class="ebay-section sales-deals" id="sales-deals">
+    <div class="sheet-section-head"><b>Vorgänge</b><span>${shown.length===deals.length?`${deals.length}`:`${shown.length} von ${deals.length}`}</span></div>
     <div class="deal-filters"><div class="deal-filter-chips">${DEAL_FILTERS.map(([id,label])=>`<button type="button" class="community-chip ${dealView.status===id?'active':''}" data-deal-filter="${id}">${label}</button>`).join('')}</div>
+      ${platforms.length>1?`<div class="deal-filter-chips deal-platform-chips" aria-label="Plattform">${[['','Alle Plattformen'],...platforms.map(name=>[name,name])].map(([id,label])=>`<button type="button" class="community-chip ${dealView.platform===id?'active':''}" data-deal-platform="${escapeHtml(id)}">${escapeHtml(label)}</button>`).join('')}</div>`:''}
       <div class="filter-search"><span>⌕</span><input id="deal-q" value="${escapeHtml(dealView.q)}" placeholder="Partner, Plattform oder Karte"></div></div>
-    ${totals.done?`<div class="deal-totals"><span>Abgeschlossen <b>${totals.done}</b></span><span>Einnahmen <b>${money(totals.money_in)}</b></span><span>Ausgaben <b>${money(totals.money_out)}</b></span><span>Versand <b>${money(totals.shipping)}</b></span><span>Saldo <b class="${totals.balance<0?'is-out':'is-in'}">${totals.balance<0?'−':'+'}${money(Math.abs(totals.balance))}</b></span></div>`:''}
-    ${data.deals.length?`<div class="deal-list">${data.deals.map(deal=>{
-      const gives=dealCardsLine(deal,'give'),gets=dealCardsLine(deal,'get');
-      return `<button type="button" class="deal-row" data-deal="${deal.id}">
-        <div class="deal-row-head"><b>${DEAL_KINDS[deal.kind]}${deal.partner?` · ${escapeHtml(deal.partner)}`:''}</b><small>${[deal.platform,dealDate(deal.completed_at||deal.updated_at)].filter(Boolean).map(escapeHtml).join(' · ')}</small></div>
-        <div class="deal-row-cards">${gives?`<span><i>gebe</i> ${gives}</span>`:''}${gets?`<span><i>bekomme</i> ${gets}</span>`:''}${!gives&&!gets?'<span><i>noch keine Karten</i></span>':''}</div>
-        <div class="deal-row-end">${dealMoney(deal)}${dealStatusChip(deal)}</div></button>`}).join('')}</div>`
-    :`<div class="deck-empty"><span>⇄</span><h2>${dealView.status||dealView.q?'Kein Vorgang passt dazu':'Noch kein Vorgang'}</h2><p>Ein Vorgang hält fest, was du mit jemandem ausgemacht hast – egal ob über Reddit, ein Forum oder am Spieltisch. Reservieren, abschließen und den Empfang bestätigen bucht die Karten in deiner Sammlung.</p></div>`}`;
-  bindSheetTabs();
-  $('#new-deal').onclick=async()=>{try{const created=await post('/api/deals',{game_id:game.id});state.dealId=created.id;renderSheets()}catch(error){toast(error.message)}};
-  $$('[data-deal-filter]',content).forEach(button=>button.onclick=()=>{dealView.status=button.dataset.dealFilter;renderDeals()});
-  let timer;$('#deal-q').oninput=event=>{clearTimeout(timer);dealView.q=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deal-q',renderDeals),250)};
-  $$('[data-deal]',content).forEach(row=>row.onclick=()=>{state.dealId=Number(row.dataset.deal);renderSheets()});
+    ${shown.length?`<div class="deal-list">${shown.map(dealRowHtml).join('')}</div>`
+      :`<div class="deck-empty"><span>⇄</span><h2>${deals.length?'Kein Vorgang passt dazu':'Noch kein Vorgang'}</h2><p>Ein Vorgang hält fest, was du mit jemandem ausgemacht hast – egal ob über Reddit, ein Forum, eBay oder am Spieltisch. Reservieren, abschließen und den Empfang bestätigen bucht die Karten in deiner Sammlung.</p></div>`}
+  </section>`;
+}
+
+function bindDealSection(root,deals){
+  const redraw=()=>{root.outerHTML=dealSectionHtml(deals);bindDealSection($('#sales-deals',content),deals)};
+  $$('[data-deal-filter]',root).forEach(button=>button.onclick=()=>{dealView.status=button.dataset.dealFilter;redraw()});
+  $$('[data-deal-platform]',root).forEach(button=>button.onclick=()=>{dealView.platform=button.dataset.dealPlatform;redraw()});
+  let timer;$('#deal-q',root).oninput=event=>{clearTimeout(timer);dealView.q=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deal-q',redraw),200)};
+  $$('[data-deal]',root).forEach(row=>row.onclick=()=>{state.dealId=Number(row.dataset.deal);renderSheets()});
 }
 
 // What a card of a deal says about the collection, so nothing is promised twice.
@@ -128,7 +146,7 @@ function paintDeal(deal){
   const path=`/api/deals/${deal.id}`;
   const apply=async(request)=>{try{paintDeal(await request)}catch(error){toast(error.message)}};
   const patch=change=>apply(api(path,{method:'PATCH',body:JSON.stringify(change)}));
-  $('#deal-back').onclick=()=>{state.dealId=null;sheetView.tab='deals';renderSheets()};
+  $('#deal-back').onclick=()=>{state.dealId=null;sheetView.tab='sales';renderSheets()};
   for(const [selector,field] of [['#deal-partner','partner'],['#deal-platform','platform'],['#deal-url','url'],['#deal-note','note'],['#deal-money-in','money_in'],['#deal-money-out','money_out'],['#deal-shipping','shipping']])
     $(selector).onchange=event=>patch({[field]:event.target.value.trim()});
   $$('[data-deal-take]',content).forEach(button=>button.onclick=()=>patch({[button.dataset.dealTake]:Number(button.dataset.value)}));
@@ -162,7 +180,7 @@ function paintDeal(deal){
     const action=button.dataset.dealAction;
     if(action==='delete'){
       if(!confirm('Vorgang löschen? Er verschwindet aus dem Verlauf.'))return;
-      try{await api(path,{method:'DELETE'});state.dealId=null;sheetView.tab='deals';renderSheets()}catch(error){toast(error.message)}
+      try{await api(path,{method:'DELETE'});state.dealId=null;sheetView.tab='sales';renderSheets()}catch(error){toast(error.message)}
       return;
     }
     if(action==='done'&&!confirm(`Vorgang abschließen?${hasGive?' Was du abgibst, wird aus deiner Sammlung und von deinen Sheets genommen.':''}${hasGet?' Was du bekommst, gilt als unterwegs, bis du den Empfang bestätigst.':''}`))return;
@@ -190,5 +208,5 @@ async function loadCardDeals(variantId){
   const what=row=>row.status==='reserved'?'reserviert für':row.side==='give'?'abgegeben an':row.in_transit?'unterwegs von':'bekommen von';
   box.insertAdjacentHTML('beforeend',`<div class="detail-section card-deals"><div class="detail-section-title">VERLAUF</div>${history.map(row=>`<button type="button" class="card-deal" data-card-deal="${row.deal_id}">
       <span>${escapeHtml(dealDate(row.completed_at||row.updated_at))}</span><b>${row.quantity}× ${what(row)} ${escapeHtml(row.partner||'–')}</b><small>${[row.platform,row.unit_price==null?'':`${money(row.unit_price)} je Stück`].filter(Boolean).map(escapeHtml).join(' · ')}</small></button>`).join('')}</div>`);
-  $$('[data-card-deal]',box).forEach(button=>button.onclick=()=>{closeOverlay('card-modal');sheetView.tab='deals';state.sheetId=null;state.dealId=Number(button.dataset.cardDeal);routeTo('sheets')});
+  $$('[data-card-deal]',box).forEach(button=>button.onclick=()=>{closeOverlay('card-modal');sheetView.tab='sales';state.sheetId=null;state.dealId=Number(button.dataset.cardDeal);routeTo('sheets')});
 }

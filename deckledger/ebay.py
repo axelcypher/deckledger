@@ -1494,26 +1494,15 @@ def ebay_listings():
 
 
 def sales_summary(uid, game_id, listings):
-    """The numbers above "Meine Angebote": what is on offer now and what has been sold, for the same
-    game as the listings shown (a sale counts for the game of its listing's card; a sale whose
-    listing has no card counts everywhere, as such listings are shown everywhere). Sales are all the
-    stored ones, not only the latest shown in the list."""
+    """What is on offer on eBay now, for the numbers on top of the "Verkäufe" tab. What has been
+    sold comes from the deals there: every eBay sale is booked as one (deals_from_sales)."""
     active = [listing for listing in listings if listing["status"] == "active"]
     available = lambda listing: max(0, (listing["quantity"] or 0) - (listing["quantity_sold"] or 0))
     ratios = [listing["market_ratio"] for listing in active if listing["market_ratio"] is not None]
-    sold = db().execute(
-        """SELECT COALESCE(SUM(sa.quantity),0) copies,COALESCE(SUM(sa.price),0) revenue,COUNT(*) sales
-           FROM ebay_sales sa LEFT JOIN ebay_listings l ON l.user_id=sa.user_id AND l.item_id=sa.item_id
-             LEFT JOIN variants v ON v.id=l.variant_id
-           WHERE sa.user_id=? AND (l.variant_id IS NULL OR v.game_id=? OR ? IS NULL)""", (uid, game_id, game_id),
-    ).fetchone()
     return {
         "active": len(active),
         "offered_copies": sum(available(listing) for listing in active),
         "offered_value": round(sum((listing["price"] or 0) * available(listing) for listing in active), 2),
-        "sold_copies": sold["copies"],
-        "sales": sold["sales"],
-        "revenue": round(sold["revenue"], 2),
         "watchers": sum(listing["watch_count"] or 0 for listing in active),
         "market_ratio": round(sum(ratios) / len(ratios)) if ratios else None,
     }

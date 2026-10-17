@@ -39,7 +39,8 @@ function inboxItemHtml(item){
   </article>`;
 }
 
-// The inbox above the list of sheets: new comments of the active game's posts, newest first.
+// The inbox on the "Verkäufe" tab (where its finds turn into deals): new comments of the active
+// game's posts and posts that name its cards, newest first.
 async function renderInbox(){
   const box=$('#sheet-inbox');if(!box)return;
   let data;

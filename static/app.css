@@ -1462,3 +1462,16 @@ deckledger-stat-pill.ebay-summary { margin:0 0 22px; }
 deckledger-stat-pill.ebay-summary [data-stat]>b small { color:var(--muted);font:600 11px var(--font-ui,inherit); }
 deckledger-stat-pill.ebay-summary .ebay-summary-below>b { color:var(--success,#2b7553); }
 deckledger-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b23f37); }
+/* Folding section heads of the "Verkäufe" tab: the switch on the left, its buttons together on
+   the right (the tab's older rule pushed every first button of a head to the right). */
+.ebay-section .sheet-section-head.ebay-drafts-head>.ebay-section-toggle~button { margin-left:0; }
+.ebay-section .sheet-section-head.ebay-drafts-head>.ebay-section-toggle+button { margin-left:auto; }
+.ebay-section .ebay-listing-filters { margin:4px 0 14px; }
+/* Deals of the "Verkäufe" tab: status and search on one line, the platforms below. */
+.sales-deals .deal-filters { display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);grid-template-areas:"status search" "platform platform";align-items:center;gap:10px 16px;margin-bottom:12px; }
+.sales-deals .deal-filters>.deal-filter-chips { grid-area:status;flex-wrap:wrap;margin:0; }
+.sales-deals .deal-filters>.deal-platform-chips { grid-area:platform; }
+.sales-deals .deal-filters>.filter-search { grid-area:search;width:100%;max-width:none; }
+@media (max-width:760px) {
+  .sales-deals .deal-filters { grid-template-columns:minmax(0,1fr);grid-template-areas:"status" "platform" "search"; }
+}

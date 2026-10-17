@@ -22,15 +22,15 @@ async function renderSheets(){
   // The options are fetched once; a first visit that is left before they arrive draws nothing.
   if(state.route!=='sheets')return;
   if(state.dealId)return renderDeal();
-  if(!state.sheetId&&sheetView.tab==='deals')return renderDeals();
-  if(!state.sheetId&&sheetView.tab==='ebay')return renderEbay();
+  // "Verkäufe" is the first tab and the one that opens (deals and eBay were tabs of their own once).
+  if(sheetView.tab!=='sheets')sheetView.tab='sales';
+  if(!state.sheetId&&sheetView.tab==='sales')return renderSales();
   if(!state.sheetId){
     content.innerHTML='<div class="page-loader"><span></span><p>Sheets werden geladen …</p></div>';
     const sheets=await api(`/api/trade-sheets?game_id=${encodeURIComponent(game.id)}`);
     if(state.route!=='sheets'||state.sheetId)return;
     content.innerHTML=`<div class="deck-page-head deck-overview-head"><div><span class="eyebrow">${escapeHtml(game.short_name).toUpperCase()} · VERKAUF &amp; TAUSCH</span><h1>Deine Sheets</h1><p>Stelle Karten für WTS- und WTT-Posts zusammen und gib sie als Bild aus.</p></div><button class="primary-button" id="new-sheet">＋ Neues Sheet</button></div>
       ${sheetTabsHtml('sheets')}
-      <section id="sheet-inbox" class="sheet-inbox hidden"></section>
       ${sheets.length?`<section class="sheet-overview-grid">${sheets.map(sheet=>`<button class="sheet-overview-card" data-sheet="${sheet.id}">
         <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
         <div class="sheet-overview-copy"><span class="sheet-kind sheet-kind-${sheet.kind.toLowerCase().replace('/','-')}">${escapeHtml(sheet.kind)}</span><h3>${escapeHtml(sheet.name)}</h3><small>${sheet.card_count} Karten · ${sheet.copies} Exemplare</small></div></button>`).join('')}</section>`
@@ -39,7 +39,6 @@ async function renderSheets(){
     $('#new-sheet').onclick=create;$('#first-sheet')?.addEventListener('click',create);
     $$('.sheet-overview-card',content).forEach(card=>card.onclick=()=>{state.sheetId=Number(card.dataset.sheet);renderSheets()});
     bindSheetTabs();
-    renderInbox();
     return;
   }
   content.innerHTML='<div class="page-loader"><span></span><p>Sheet wird geladen …</p></div>';
