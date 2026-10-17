@@ -281,8 +281,8 @@ async function renderSales(){
     <section id="sheet-inbox" class="sheet-inbox hidden"></section>
     <section class="ebay-section sales-listings">
       <div class="sheet-section-head"><b>eBay-Angebote</b><span>${active} aktiv${listings.listings.length>active?` · ${listings.listings.length-active} weitere`:''}</span></div>
-      ${listings.listings.length?`<div class="ebay-listing-filters"><div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div>
-        <label class="ebay-listing-sort"><span class="sr-only">Sortieren</span><select id="ebay-listing-sort" aria-label="Angebote sortieren">${EBAY_LISTING_SORTS.map(([id,label])=>`<option value="${id}" ${id===sort[0]?'selected':''}>${label}</option>`).join('')}</select></label></div>`:''}
+      <div class="ebay-listing-filters">${listings.listings.length?`<div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div>`:'<span></span>'}
+        <div class="ebay-listing-tools">${listings.listings.length?`<label class="ebay-listing-sort"><span class="sr-only">Sortieren</span><select id="ebay-listing-sort" aria-label="Angebote sortieren">${EBAY_LISTING_SORTS.map(([id,label])=>`<option value="${id}" ${id===sort[0]?'selected':''}>${label}</option>`).join('')}</select></label>`:''}${salesToolsHtml(status,'sales')}</div></div>
       ${shown.length?`<div class="ebay-listings">${shown.map(ebayListingRow).join('')}</div>`
         :`<div class="deck-zone-empty">${status.connected?'Keine Angebote in dieser Ansicht.':'Verbinde dein eBay-Konto, um deine Angebote hier zu sehen.'}</div>`}
     </section>
@@ -312,29 +312,29 @@ const SALES_NAV_ICONS={
   revise:'<svg viewBox="0 0 24 24"><path d="m4 20 10-10M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2ZM19 11l.7 1.3L21 13l-1.3.7L19 15l-.7-1.3L17 13l1.3-.7L19 11Z"/></svg>',
 };
 // The head of both tabs, built like the dashboard: the numbers, then a row of tiles -- the two
-// tabs and what opens in a dialog (drafts, statistics, the preset) -- with syncing and the
-// settings at its end.
+// tabs and what opens in a dialog (drafts, statistics, the preset).
 function salesHeaderHtml(data,active){
   const {drafts,listings,deals}=data,status=listings.status,game=state.boot.games.find(item=>item.id===state.activeGameId);
   const openDrafts=drafts.drafts.filter(draft=>draft.status!=='published').length;
   const activeListings=listings.listings.filter(item=>item.status==='active').length;
   const tile=(attrs,icon,label,value,extra='')=>`<button type="button" ${attrs} ${extra}>${SALES_NAV_ICONS[icon]}<span>${label}</span><strong>${value}</strong></button>`;
-  const synced=status.listings_synced_at?`Zuletzt abgeglichen: ${ebayDate(status.listings_synced_at)}`:'Noch nie abgeglichen';
   return `${salesSummaryPill(listings.summary,deals)}
-    <div class="sales-nav-row">
-      <nav class="dashboard-quick-nav sales-nav" aria-label="Verkauf &amp; Tausch">
+    <nav class="dashboard-quick-nav sales-nav" aria-label="Verkauf &amp; Tausch">
         ${tile(`data-sheet-tab="sales" class="${active==='sales'?'active':''}" aria-current="${active==='sales'?'page':'false'}"`,'sales','Verkäufe',`${deals.deals.length} Vorgänge`)}
         ${tile(`data-sheet-tab="sheets" class="${active==='sheets'?'active':''}" aria-current="${active==='sheets'?'page':'false'}"`,'sheets','Sheets',`${game?.sheet_count??''}`)}
         ${tile('data-sales-open="drafts"','drafts','Entwürfe',`${openDrafts} offen`)}
         ${tile('data-sales-open="stats"','stats','Statistik',`${listings.listings.length} Angebote`,listings.listings.length?'':'disabled title="Noch keine Angebote"')}
         ${tile('data-sales-open="revise"','revise','Vorlage anwenden',`${activeListings} aktiv`,status.connected&&activeListings?'':`disabled title="${status.connected?'Keine aktiven Angebote':'Kein eBay-Konto verbunden'}"`)}
-      </nav>
-      <div class="sales-nav-tools">${status.connected
-        ?`<button type="button" class="secondary-button sales-sync ${status.last_error?'has-error':''}" id="ebay-sync" title="${escapeHtml(status.last_error?`${synced} · Fehler: ${status.last_error}`:synced)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9M20 20v-4h-4"/></svg><span>Jetzt abgleichen</span></button>`
-        :`<button type="button" class="secondary-button" id="ebay-open-settings" title="${status.configured?'Kein eBay-Konto verbunden':'eBay ist auf diesem Server nicht eingerichtet'}">eBay verbinden</button>`}
-        <button type="button" class="icon-button sheet-tab-settings" data-sheet-settings="${active==='sales'?'ebay':'trade'}" title="${active==='sales'?'eBay-Einstellungen':'Einstellungen für Verkauf &amp; Tausch'}" aria-label="${active==='sales'?'eBay-Einstellungen':'Einstellungen für Verkauf &amp; Tausch'}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
-      </div>
-    </div>`;
+      </nav>`;
+}
+
+// Syncing with eBay and the settings of the tab: at the end of its row of filters.
+function salesToolsHtml(status,active,sync=active==='sales'){
+  const synced=status.listings_synced_at?`Zuletzt abgeglichen: ${ebayDate(status.listings_synced_at)}`:'Noch nie abgeglichen';
+  return `<div class="sales-nav-tools">${sync&&status.connected
+        ?`<button type="button" class="secondary-button sales-sync ${status.last_error?'has-error':''}" id="ebay-sync" aria-label="Jetzt abgleichen" title="${escapeHtml(status.last_error?`${synced} · Fehler: ${status.last_error}`:synced)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9M20 20v-4h-4"/></svg><span>Jetzt abgleichen</span></button>`
+        :sync?`<button type="button" class="secondary-button" id="ebay-open-settings" title="${status.configured?'Kein eBay-Konto verbunden':'eBay ist auf diesem Server nicht eingerichtet'}">eBay verbinden</button>`:''}
+        <button type="button" class="icon-button sheet-tab-settings" data-sheet-settings="${active==='sales'?'ebay':'trade'}" title="${active==='sales'?'eBay-Einstellungen':'Einstellungen für Verkauf &amp; Tausch'}" aria-label="${active==='sales'?'eBay-Einstellungen':'Einstellungen für Verkauf &amp; Tausch'}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div>`;
 }
 
 function bindSalesHeader(data){
@@ -478,13 +478,10 @@ function ebayListingRow(item){
   const heading=item.variant_id?(item.canonical_name||item.title):item.title;
   const printing=item.variant_id?[item.set_code,item.collector_number?`#${item.collector_number}`:''].filter(Boolean).join(' · '):'';
   return `<article class="ebay-listing ebay-listing-${escapeHtml(item.status)}" data-item="${escapeHtml(item.item_id)}">
-    <div class="ebay-listing-side">
-      <a class="ebay-listing-media" href="${url}" target="_blank" rel="noopener noreferrer" aria-label="Angebot bei eBay öffnen">
-        ${image?`<img src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="ebay-tracked-noimg">eBay</span>'}
-        ${item.rank?`<span class="ebay-listing-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:''}
-      </a>
-      <div class="ebay-listing-stats">${ebayListingStats(item)}</div>
-    </div>
+    <a class="ebay-listing-media" href="${url}" target="_blank" rel="noopener noreferrer" aria-label="Angebot bei eBay öffnen">
+      ${image?`<img src="${escapeHtml(image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="ebay-tracked-noimg">eBay</span>'}
+      ${item.rank?`<span class="ebay-listing-rank" title="Platz unter deinen aktiven Angeboten nach Beliebtheit">#${item.rank}</span>`:''}
+    </a>
     <div class="ebay-listing-main">
       <div class="ebay-listing-titles"><a class="ebay-listing-title" href="${url}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(heading)}</b></a>
         ${item.variant_id?`<small class="ebay-listing-sub" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</small>`:''}</div>
@@ -493,11 +490,12 @@ function ebayListingRow(item){
       <div class="ebay-listing-card">${item.variant_id
         ?`<span class="ebay-listing-card-name">${escapeHtml(printing)}</span><span class="ebay-listing-card-actions">${item.status==='active'?`<button type="button" class="link-button" data-ebay-photos-toggle data-photo-count="${escapeHtml(item.variant_id)}">${item.photos?.length?`Fotos (${item.photos.length})`:'Fotos'}</button>`:''}<button type="button" class="link-button" data-ebay-unlink>lösen</button></span>`
         :'<span class="ebay-listing-card-name">Keine Karte zugeordnet</span><button type="button" class="link-button" data-ebay-link>Karte zuordnen</button>'}</div>
-      ${item.variant_id&&item.status==='active'?`<div class="ebay-listing-photos hidden">${ebayPhotoStrip(item,'listing')}
-        <div class="ebay-listing-photo-actions"><button type="button" class="secondary-button" data-ebay-photos-import title="Die Bilder, die das Angebot jetzt bei eBay hat, als Fotos dieser Karte holen">Bilder von eBay holen</button><button type="button" class="primary-button" data-ebay-photos-push>Bei eBay ersetzen</button></div></div>`:''}
-      <div class="ebay-link-search hidden"><b class="ebay-link-heading">Vorschläge aus deiner Sammlung</b><div class="ebay-link-suggestions"><small class="muted">Wird gesucht …</small></div>
-        <input class="select-control" placeholder="Oder in deiner Sammlung suchen: Name, Nummer, Set …"><div class="ebay-link-results"></div></div>
     </div>
+    <div class="ebay-listing-stats">${ebayListingStats(item)}</div>
+    ${item.variant_id&&item.status==='active'?`<div class="ebay-listing-photos hidden">${ebayPhotoStrip(item,'listing')}
+      <div class="ebay-listing-photo-actions"><button type="button" class="secondary-button" data-ebay-photos-import title="Die Bilder, die das Angebot jetzt bei eBay hat, als Fotos dieser Karte holen">Bilder von eBay holen</button><button type="button" class="primary-button" data-ebay-photos-push>Bei eBay ersetzen</button></div></div>`:''}
+    <div class="ebay-link-search hidden"><b class="ebay-link-heading">Vorschläge aus deiner Sammlung</b><div class="ebay-link-suggestions"><small class="muted">Wird gesucht …</small></div>
+      <input class="select-control" placeholder="Oder in deiner Sammlung suchen: Name, Nummer, Set …"><div class="ebay-link-results"></div></div>
   </article>`;
 }
 
@@ -528,7 +526,7 @@ function bindEbayListingRow(row){
   $('[data-ebay-unlink]',row)?.addEventListener('click',()=>link(null));
   // Photos of a running listing: fetch what it has on eBay, edit, and put them back on this listing.
   const panel=$('.ebay-listing-photos',row);
-  // A tile with an open panel spans the whole row of the grid, so the panel has room.
+  // A tile with an open panel keeps its place in the grid; the panel opens inside it.
   const syncOpen=()=>row.classList.toggle('is-open',[panel,$('.ebay-link-search',row)].some(element=>element&&!element.classList.contains('hidden')));
   $('[data-ebay-photos-toggle]',row)?.addEventListener('click',()=>{panel.classList.toggle('hidden');syncOpen()});
   $('[data-ebay-photos-import]',row)?.addEventListener('click',async event=>{

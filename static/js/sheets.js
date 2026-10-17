@@ -32,7 +32,7 @@ async function renderSheets(){
     catch(error){content.innerHTML=`<div class="deck-zone-empty">${escapeHtml(error.message)}</div>`;return}
     if(state.route!=='sheets'||state.sheetId)return;
     content.innerHTML=`${salesHeaderHtml(overview,'sheets')}
-      <div class="sheet-section-head sheets-list-head"><b>Sheets</b><span>${sheets.length}</span><button class="secondary-button" id="new-sheet">＋ Neues Sheet</button></div>
+      <div class="sheet-section-head sheets-list-head"><b>Sheets</b><span>${sheets.length}</span><button class="secondary-button" id="new-sheet">＋ Neues Sheet</button>${salesToolsHtml(overview.listings.status,'sheets')}</div>
       ${sheets.length?`<section class="sheet-overview-grid">${sheets.map(sheet=>`<button class="sheet-overview-card" data-sheet="${sheet.id}">
         <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
         <div class="sheet-overview-copy"><span class="sheet-kind sheet-kind-${sheet.kind.toLowerCase().replace('/','-')}">${escapeHtml(sheet.kind)}</span><h3>${escapeHtml(sheet.name)}</h3><small>${sheet.card_count} Karten · ${sheet.copies} Exemplare</small></div></button>`).join('')}</section>`
