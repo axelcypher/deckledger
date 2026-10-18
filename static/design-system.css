@@ -65,7 +65,7 @@ body.dark.mobile-modern.mobile-light {
 body.dark.mobile-modern .topbar { background:color-mix(in srgb,var(--ds-bg) 90%,transparent); }
 
 /* Content: the brightest step, one radius, one shadow. */
-body.dark.mobile-modern .content :is(.set-card,.deck-overview-card,.deck-create-card,.sheet-overview-card,.ebay-listing,.game-tile,.watch-desired,.user-settings-card) {
+body.dark.mobile-modern .content :is(.set-card,.deck-overview-card,.deck-create-card,.sheet-overview-card,.ebay-listing,.game-tile,.watch-desired,.settings-section) {
   border-radius:var(--ds-radius-tile);
   background:var(--ds-card);
   box-shadow:inset 0 0 0 1px var(--ds-line),var(--ds-shadow-card);
@@ -183,3 +183,16 @@ body.dark.mobile-modern .content .sales-nav { margin-top:var(--ds-gap-tight);mar
    tight one between the numbers and the tiles. */
 body.dark.mobile-modern .content .dashboard-hero { row-gap:var(--ds-gap-block); }
 body.dark.mobile-modern .content .dashboard-hero .dashboard-quick-nav { margin-top:calc(var(--ds-gap-tight) - var(--ds-gap-block));margin-bottom:0; }
+
+/* ---- One column ---------------------------------------------------------------------------
+   Every page sits in the same column (.content>*, 1560px at most). The scrollbar's room is kept
+   even on a page too short to scroll, so switching tabs or opening a dialog never moves it. */
+html { scrollbar-gutter:stable; }
+body.dark.mobile-modern .content>.dashboard-shell,
+body[data-route="settings"].dark.mobile-modern .content>:is(.user-settings-page-head,.user-settings-layout),
+body[data-route="admin"].dark.mobile-modern .content>:is(.compact-page-head,.settings-section) { max-width:1560px; }
+body.dark.mobile-modern .content .oauth-admin-card { max-width:none; }
+/* The admin's cards are the same settings cards; their older, more specific rules set the
+   inset tone. */
+body[data-route="admin"].dark.mobile-modern .content>:is(.admin-settings-card,.oauth-admin-card),
+body.dark.mobile-modern .content .oauth-admin-card { background:var(--ds-card); }
