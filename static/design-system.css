@@ -1,0 +1,191 @@
+/* The shared design layer: loaded last, so every page and both appearances draw the same
+   building blocks the same way.
+
+   Surfaces come in clear steps -- a warm background, light panels on it (filter bars, page
+   heads, the numbers, the tab bar), the brightest surface for content (tiles, rows, dialogs),
+   fields bright with a hairline. Accents are dark in the light appearance (deep green) and
+   gold in the dark one; a selected chip, a ticked box and an active tab all use that accent.
+   Sizes and positions of the page layout stay with the theme files; this file only sets the
+   steps, the controls and the few shared measures (tile radius, section headings, spacing). */
+
+body.dark.mobile-modern {
+  --ds-bg:#0f0f0d;
+  --ds-panel:#171714;
+  --ds-card:#1f1e1a;
+  --ds-field:#252420;
+  --ds-inset:#272621;
+  --ds-line:#2d2c26;
+  --ds-line-strong:#4a473d;
+  --ds-shadow-card:0 1px 0 rgba(255,255,255,.03) inset,0 10px 26px rgba(0,0,0,.28);
+  --ds-accent:#d8b46c;
+  --ds-accent-ink:#17140d;
+  --ds-accent-soft:rgba(216,180,108,.16);
+  --ds-radius-tile:20px;
+  --ds-radius-row:14px;
+  --ds-gap-tight:14px;
+  --ds-gap-block:28px;
+  --ds-section-size:24px;
+
+  --bg:var(--ds-bg);
+  --surface:var(--ds-card);
+  --surface-2:var(--ds-inset);
+  --line:var(--ds-line);
+  --mp-soft:var(--ds-panel);
+  --mp-card:var(--ds-card);
+  --mp-line:var(--ds-line);
+  background:var(--ds-bg);
+}
+body.dark.mobile-modern.mobile-light {
+  --ds-bg:#ebe2d1;
+  --ds-panel:#f6f1e7;
+  --ds-card:#fffdf9;
+  --ds-field:#fffdf9;
+  --ds-inset:#f0e9dc;
+  --ds-line:#ddd2bf;
+  --ds-line-strong:#b9ad96;
+  --ds-shadow-card:0 1px 2px rgba(61,48,28,.06),0 10px 24px rgba(61,48,28,.07);
+  --ds-accent:#1f3a2e;
+  --ds-accent-ink:#f7f2e6;
+  --ds-accent-soft:rgba(31,58,46,.1);
+  /* The light theme files set these on this same, more specific selector: point them here too. */
+  --bg:var(--ds-bg);
+  --surface:var(--ds-card);
+  --surface-2:var(--ds-inset);
+  --line:var(--ds-line);
+  --mp-soft:var(--ds-panel);
+  --mp-card:var(--ds-card);
+  --mp-line:var(--ds-line);
+  background:var(--ds-bg);
+}
+@media (max-width:760px) {
+  body.dark.mobile-modern { --ds-section-size:19px;--ds-gap-tight:12px;--ds-gap-block:22px; }
+}
+
+/* ---- Steps ------------------------------------------------------------------------------- */
+body.dark.mobile-modern .topbar { background:color-mix(in srgb,var(--ds-bg) 90%,transparent); }
+
+/* Content: the brightest step, one radius, one shadow. */
+body.dark.mobile-modern .content :is(.set-card,.deck-overview-card,.deck-create-card,.sheet-overview-card,.ebay-listing,.game-tile,.watch-desired,.user-settings-card) {
+  border-radius:var(--ds-radius-tile);
+  background:var(--ds-card);
+  box-shadow:inset 0 0 0 1px var(--ds-line),var(--ds-shadow-card);
+}
+body.dark.mobile-modern .content :is(.deal-row,.inbox-item,.dashboard-recent-list) {
+  border-radius:var(--ds-radius-row);
+  background:var(--ds-card);
+  box-shadow:inset 0 0 0 1px var(--ds-line),var(--ds-shadow-card);
+}
+body.dark.mobile-modern .content .sheet-overview-art { background:var(--ds-inset); }
+@media (max-width:760px) {
+  /* On a phone the list ran edge to edge; as a content surface it keeps the page gutter. */
+  body.dark.mobile-modern .content .dashboard-recent-list { width:100%;margin-left:0;padding:0 14px;border-top:0;background:var(--ds-card); }
+}
+
+/* Fields and plain buttons: bright, with a hairline, on every step. */
+body.dark.mobile-modern .content :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea),
+body.dark.mobile-modern .dl-modal :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea) {
+  border-color:var(--ds-line);
+  background-color:var(--ds-field);
+}
+body.dark.mobile-modern :is(.content,.dl-modal) .secondary-button:not(:disabled) {
+  border:1px solid var(--ds-line);
+  background:var(--ds-field);
+}
+body.dark.mobile-modern :is(.content,.dl-modal) .secondary-button:not(:disabled):hover { border-color:var(--ds-line-strong); }
+
+/* An empty area: soft and dashed in the line colour, never a hard frame. */
+body.dark.mobile-modern .content :is(.deck-zone-empty,.sheet-preview-empty) {
+  border:1px dashed var(--ds-line-strong);
+  border-radius:var(--ds-radius-tile);
+  background:color-mix(in srgb,var(--ds-panel) 60%,transparent);
+  color:var(--muted);
+}
+
+/* ---- Selected chips and filters: the accent ----------------------------------------------- */
+body.dark.mobile-modern :is(.content,.dl-modal) :is(.community-chip,.op-filter-chip).active {
+  border-color:transparent;
+  background:var(--ds-accent);
+  box-shadow:none;
+  color:var(--ds-accent-ink);
+}
+body.dark.mobile-modern:not(.mobile-light) :is(.content,.dl-modal) :is(.community-chip,.op-filter-chip).active {
+  background:var(--ds-accent-soft);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ds-accent) 60%,transparent);
+  color:var(--ink);
+}
+body.dark.mobile-modern .content .op-color-filter.active { background:var(--ds-accent-soft);box-shadow:none; }
+
+/* VCard's element crests: round picks, no hexagon cut, the accent ring when chosen. */
+body.dark.mobile-modern .content .op-color-filter.vcard-element-filter { clip-path:none;padding:3px;border-radius:50%;background:transparent;opacity:.82;transition:opacity .15s ease,transform .15s ease; }
+body.dark.mobile-modern .content .op-color-filter.vcard-element-filter:hover { opacity:1;transform:translateY(-1px); }
+body.dark.mobile-modern .content .op-color-filter.vcard-element-filter.active { opacity:1;background:var(--ds-accent-soft);box-shadow:inset 0 0 0 1.5px var(--ds-accent); }
+.vcard-element-glyph { display:block;width:100%;height:100%;object-fit:contain;pointer-events:none; }
+
+/* ---- One checkbox ------------------------------------------------------------------------ */
+body.dark.mobile-modern input[type=checkbox]:not(.oauth-toggle-control input) {
+  appearance:none;-webkit-appearance:none;
+  display:inline-grid;flex:0 0 auto;place-items:center;
+  width:18px;height:18px;margin:0;
+  border:1.5px solid var(--ds-line-strong);border-radius:5px;
+  background:var(--ds-field);
+  cursor:pointer;transition:background-color .14s ease,border-color .14s ease;
+}
+body.dark.mobile-modern input[type=checkbox]:not(.oauth-toggle-control input)::after {
+  content:"";width:8px;height:4.5px;
+  border-left:2px solid var(--ds-accent-ink);border-bottom:2px solid var(--ds-accent-ink);
+  transform:translateY(-1px) rotate(-45deg) scale(0);transition:transform .14s ease;
+}
+body.dark.mobile-modern input[type=checkbox]:not(.oauth-toggle-control input):checked { border-color:var(--ds-accent);background:var(--ds-accent); }
+body.dark.mobile-modern input[type=checkbox]:not(.oauth-toggle-control input):checked::after { transform:translateY(-1px) rotate(-45deg) scale(1); }
+body.dark.mobile-modern input[type=checkbox]:not(.oauth-toggle-control input):focus-visible { outline:2px solid var(--ds-accent);outline-offset:2px; }
+body.dark.mobile-modern input[type=checkbox]:not(.oauth-toggle-control input):disabled { opacity:.45;cursor:not-allowed; }
+body.dark.mobile-modern input[type=range] { accent-color:var(--ds-accent); }
+body.dark.mobile-modern .oauth-toggle-control input:checked+span { background:var(--ds-accent); }
+
+/* ---- Section headings: one face for every section of a page ------------------------------ */
+body.dark.mobile-modern .content :is(.page-section-head>b,.dashboard-recent>h2) {
+  margin:0;
+  color:var(--ink);
+  font:600 var(--ds-section-size)/1.15 var(--font-display);
+  letter-spacing:-.01em;
+}
+body.dark.mobile-modern .content .page-section-head { align-items:baseline;margin-bottom:var(--ds-gap-tight); }
+body.dark.mobile-modern .content .page-section-head>span { color:var(--muted);font-size:12px; }
+body.dark.mobile-modern .content .page-section-head>:is(button,.sales-nav-tools) { align-self:center; }
+body.dark.mobile-modern .content .dashboard-recent>h2 { margin-bottom:var(--ds-gap-tight); }
+
+/* ---- The head of a page: the numbers, then the navigation, then the content -------------- */
+body.dark.mobile-modern .content deckledger-stat-pill:is(.dashboard-summary,.ebay-summary) { margin-top:0;margin-bottom:0;min-height:0; }
+body.dark.mobile-modern .content .dashboard-hero .dashboard-quick-nav { margin-top:var(--ds-gap-tight);margin-bottom:var(--ds-gap-block); }
+
+/* The tab bar of "Verkauf & Tausch": two tabs, then what opens in a dialog. */
+.sales-tabbar { display:flex;align-items:center;gap:12px;margin:var(--ds-gap-tight,14px) auto var(--ds-gap-block,28px); }
+body.dark.mobile-modern .content .sales-tabbar {
+  padding:6px;border-radius:999px;background:var(--ds-panel);box-shadow:inset 0 0 0 1px var(--ds-line);
+}
+.sales-tabs { display:inline-flex;flex:none;gap:4px; }
+body.dark.mobile-modern .content .segmented.sales-tabs { margin:0;padding:0;background:transparent;box-shadow:none; }
+body.dark.mobile-modern .content .sales-tabs button {
+  display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 18px;border:0;border-radius:999px;
+  background:transparent;color:var(--muted);font:650 13px var(--font-ui);cursor:pointer;
+}
+body.dark.mobile-modern .content .sales-tabs button:hover { color:var(--ink); }
+body.dark.mobile-modern .content .sales-tabs button.active { background:var(--ds-accent);color:var(--ds-accent-ink);box-shadow:none; }
+.tab-count { display:inline-grid;min-width:20px;height:20px;padding:0 6px;place-items:center;border-radius:999px;background:var(--ds-inset,rgba(0,0,0,.06));color:var(--muted);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums; }
+.sales-tabs button.active .tab-count { background:color-mix(in srgb,var(--ds-accent-ink) 18%,transparent);color:inherit; }
+.sales-tab-actions { display:flex;align-items:center;gap:6px;margin-left:auto; }
+body.dark.mobile-modern .content .sales-tab-actions .sales-tab-action {
+  display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 14px;border-radius:999px;font-size:12px;
+}
+body.dark.mobile-modern .content .sales-tab-actions .sales-tab-action:disabled { border:1px solid transparent;background:transparent;opacity:.45; }
+.sales-tab-action svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round; }
+.sales-tab-action .tab-count { min-width:18px;height:18px;font-size:10px;background:var(--ds-accent);color:var(--ds-accent-ink); }
+@media (max-width:760px) {
+  body.dark.mobile-modern .content .sales-tabbar { border-radius:22px;padding:5px; }
+  body.dark.mobile-modern .content .sales-tabs { flex:1 1 auto;min-width:0; }
+  body.dark.mobile-modern .content .sales-tabs button { flex:1;justify-content:center;min-height:36px;padding:0 10px;font-size:12px; }
+  body.dark.mobile-modern .content .sales-tab-actions { gap:4px; }
+  body.dark.mobile-modern .content .sales-tab-actions .sales-tab-action { position:relative;width:36px;min-width:36px;padding:0;justify-content:center; }
+  .sales-tab-action .tab-label { display:none; }
+  .sales-tab-action .tab-count { position:absolute;top:-4px;right:-4px; }
+}

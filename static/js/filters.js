@@ -108,13 +108,17 @@ function hololiveCardFilterBar(filters,prefix,rarityOptions,scope='card'){
   return `${gameRarityPopup(rarityOptions,filters,prefix,scope)}${hololiveCardFilterGroups(filters,scope)}`;
 }
 const VCARD_ELEMENT_FILTERS=[['Fire','#e2572b'],['Water','#2f8fd8'],['Grass','#3aa65a'],['Electric','#e9c530'],['Platinum','#b9c2cc'],['Divine','#f1e2a6'],['Chaos','#7a3fb4']];
+// VCard's own element crests (from vcardtcg.com), not the recoloured One Piece glyph.
+function vcardElementIcon(name){
+  return `<img class="vcard-element-glyph" src="/static/assets/vcard/elements/${name.toLowerCase()}.png" alt="" aria-hidden="true" loading="lazy">`;
+}
 const VCARD_TYPE_FILTERS=[['VT','VT'],['Mascot','Mascot'],['Support','Support'],['World','World']];
 const VCARD_POWER_LEVELS=[8,9,10];
 function vcardCardFilterGroups(filters,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
     <div class="op-filter-group op-types"><div>${VCARD_POWER_LEVELS.map(level=>`<button type="button" class="op-filter-chip ${active('costs',level)?'active':''}" ${filterData(scope,'costs',level)} aria-label="Power Level ${level}" title="Power Level ${level}">PL${level}</button>`).join('')}</div></div>
-    <div class="op-filter-group op-colors"><div>${VCARD_ELEMENT_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${active('colors',name)?'active':''}" ${filterData(scope,'colors',name)} aria-label="${name}" title="${name}">${opColorIcon(color,index*51)}</button>`).join('')}</div></div>`;
+    <div class="op-filter-group op-colors"><div>${VCARD_ELEMENT_FILTERS.map(([name])=>`<button type="button" class="op-color-filter vcard-element-filter ${active('colors',name)?'active':''}" ${filterData(scope,'colors',name)} aria-label="${name}" title="${name}">${vcardElementIcon(name)}</button>`).join('')}</div></div>`;
 }
 function vcardCardFilterBar(filters,prefix,rarityOptions,scope='card'){
   return `${gameRarityPopup(rarityOptions,filters,prefix,scope)}${vcardCardFilterGroups(filters,scope)}`;

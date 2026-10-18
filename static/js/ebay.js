@@ -280,7 +280,7 @@ async function renderSales(){
   content.innerHTML=`${salesHeaderHtml(data,'sales')}
     <section id="sheet-inbox" class="sheet-inbox hidden"></section>
     <section class="ebay-section sales-listings">
-      <div class="sheet-section-head"><b>eBay-Angebote</b><span>${active} aktiv${listings.listings.length>active?` · ${listings.listings.length-active} weitere`:''}</span></div>
+      <div class="sheet-section-head page-section-head"><b>eBay-Angebote</b><span>${active} aktiv${listings.listings.length>active?` · ${listings.listings.length-active} weitere`:''}</span></div>
       <div class="ebay-listing-filters">${listings.listings.length?`<div class="deal-filter-chips">${filters.map(([id,label])=>`<button type="button" class="community-chip ${ebayView.listingFilter===id?'active':''}" data-ebay-filter="${id}">${label}</button>`).join('')}</div>`:'<span></span>'}
         <div class="ebay-listing-tools">${listings.listings.length?`<label class="ebay-listing-sort"><span class="sr-only">Sortieren</span><select id="ebay-listing-sort" aria-label="Angebote sortieren">${EBAY_LISTING_SORTS.map(([id,label])=>`<option value="${id}" ${id===sort[0]?'selected':''}>${label}</option>`).join('')}</select></label>`:''}${salesToolsHtml(status,'sales')}</div></div>
       ${shown.length?`<div class="ebay-listings">${shown.map(ebayListingRow).join('')}</div>`
@@ -305,27 +305,31 @@ async function loadSalesOverview(game){
 }
 
 const SALES_NAV_ICONS={
-  sales:'<svg viewBox="0 0 24 24"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg>',
-  sheets:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
   drafts:'<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
   stats:'<svg viewBox="0 0 24 24"><path d="M5 20V11M10 20V5M15 20v-6M20 20V8"/></svg>',
   revise:'<svg viewBox="0 0 24 24"><path d="m4 20 10-10M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2ZM19 11l.7 1.3L21 13l-1.3.7L19 15l-.7-1.3L17 13l1.3-.7L19 11Z"/></svg>',
 };
-// The head of both tabs, built like the dashboard: the numbers, then a row of tiles -- the two
-// tabs and what opens in a dialog (drafts, statistics, the preset).
-function salesHeaderHtml(data,active){
+// The head of both tabs: the numbers, then one compact bar -- the two tabs on the left, what
+// opens in a dialog (drafts, statistics, the preset) on the right.
+function salesHeaderHtml(data,active,sheetCount=null){
   const {drafts,listings,deals}=data,status=listings.status,game=state.boot.games.find(item=>item.id===state.activeGameId);
   const openDrafts=drafts.drafts.filter(draft=>draft.status!=='published').length;
   const activeListings=listings.listings.filter(item=>item.status==='active').length;
-  const tile=(attrs,icon,label,value,extra='')=>`<button type="button" ${attrs} ${extra}>${SALES_NAV_ICONS[icon]}<span>${label}</span><strong>${value}</strong></button>`;
+  const count=value=>`<span class="tab-count">${value}</span>`;
+  const tab=(id,label,value)=>`<button type="button" role="tab" data-sheet-tab="${id}" class="${active===id?'active':''}" aria-selected="${active===id}">${label}${count(value)}</button>`;
+  const action=(id,label,value,disabled='')=>`<button type="button" class="secondary-button sales-tab-action" data-sales-open="${id}" title="${label}" aria-label="${label}" ${disabled}>${SALES_NAV_ICONS[id]}<span class="tab-label">${label}</span>${value?count(value):''}</button>`;
   return `${salesSummaryPill(listings.summary,deals)}
-    <nav class="dashboard-quick-nav sales-nav" aria-label="Verkauf &amp; Tausch">
-        ${tile(`data-sheet-tab="sales" class="${active==='sales'?'active':''}" aria-current="${active==='sales'?'page':'false'}"`,'sales','Verkäufe',`${deals.deals.length} Vorgänge`)}
-        ${tile(`data-sheet-tab="sheets" class="${active==='sheets'?'active':''}" aria-current="${active==='sheets'?'page':'false'}"`,'sheets','Sheets',`${game?.sheet_count??''}`)}
-        ${tile('data-sales-open="drafts"','drafts','Entwürfe',`${openDrafts} offen`)}
-        ${tile('data-sales-open="stats"','stats','Statistik',`${listings.listings.length} Angebote`,listings.listings.length?'':'disabled title="Noch keine Angebote"')}
-        ${tile('data-sales-open="revise"','revise','Vorlage anwenden',`${activeListings} aktiv`,status.connected&&activeListings?'':`disabled title="${status.connected?'Keine aktiven Angebote':'Kein eBay-Konto verbunden'}"`)}
-      </nav>`;
+    <div class="sales-tabbar">
+      <div class="segmented sales-tabs" role="tablist" aria-label="Verkauf &amp; Tausch">
+        ${tab('sales','Verkäufe',deals.deals.length)}
+        ${tab('sheets','Sheets',sheetCount??game?.sheet_count??0)}
+      </div>
+      <div class="sales-tab-actions">
+        ${action('drafts','Entwürfe',openDrafts)}
+        ${action('stats','Statistik','',listings.listings.length?'':'disabled')}
+        ${action('revise','Vorlage anwenden','',status.connected&&activeListings?'':'disabled')}
+      </div>
+    </div>`;
 }
 
 // Syncing with eBay and the settings of the tab: at the end of its row of filters.

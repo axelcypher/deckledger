@@ -8,7 +8,7 @@ function renderDashboard(){
     {label:'Gesamtwert',value:money(totalValue)},
     {label:'Karten',value:copies},
     {label:'Varianten',value:unique},
-  ],{className:'hero-summary',columns:3,mobileColumns:3});
+  ],{className:'dashboard-summary',columns:3,mobileColumns:3});
   content.innerHTML=`<div class="dashboard-shell">
     <section class="dashboard-hero">
       <div class="hero-top">

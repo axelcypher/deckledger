@@ -1449,8 +1449,6 @@ body .dl-modal .dl-control:focus { border-color:color-mix(in srgb,var(--mt-gold,
   .ebay-section .sheet-section-head.ebay-drafts-head>.ebay-section-toggle~button { flex:1 1 0;margin-left:0; }
 }
 /* The eBay tab's numbers (ebaySummaryPill): the dashboard's pill, with a quiet unit after a count. */
-deckledger-stat-pill.ebay-summary { margin:0 0 22px; }
-deckledger-stat-pill.ebay-summary [data-stat]>b small { color:var(--muted);font:600 11px var(--font-ui,inherit); }
 deckledger-stat-pill.ebay-summary .ebay-summary-below>b { color:var(--success,#2b7553); }
 deckledger-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b23f37); }
 /* Folding section heads of the "Verkäufe" tab: the switch on the left, its buttons together on
@@ -1468,7 +1466,6 @@ deckledger-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b2
 }
 
 /* ---- "Verkauf & Tausch": head like the dashboard, listing tiles --------------------------------- */
-.content .sales-nav { margin:14px auto 26px; }
 .sales-nav-tools { display:flex;flex:none;align-items:center;gap:8px; }
 .ebay-listing-tools { display:flex;flex:none;align-items:center;gap:8px;margin-left:auto; }
 .sales-nav-tools .sales-sync { min-height:34px; }
@@ -1478,9 +1475,6 @@ deckledger-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b2
 .sales-nav-tools .sales-sync.has-error { position:relative; }
 .sales-nav-tools .sales-sync.has-error::after { content:"";position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--danger); }
 .sales-nav-tools .icon-button svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6; }
-.sales-nav button:disabled { opacity:.5;cursor:default;transform:none; }
-.sales-nav button.active { border-color:var(--mt-gold,var(--brand)) !important;background:color-mix(in srgb,var(--surface-2) 84%,var(--mt-gold,var(--brand))) !important; }
-.sales-nav button:not(.active):first-child { border-color:var(--line) !important;background:var(--surface-2) !important; }
 .sheets-list-head { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
 .sheets-list-head>span { color:var(--muted);font-size:11px; }
 .sheets-list-head>button { margin-left:auto; }

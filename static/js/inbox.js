@@ -51,7 +51,7 @@ async function renderInbox(){
   box.classList.remove('hidden');
   const comments=data.items.filter(item=>item.kind!=='post').length,found=data.items.length-comments;
   const summary=[comments?`${comments} neue${comments===1?'r Kommentar':' Kommentare'}`:'',found?`${found} ${found===1?'Fund':'Funde'} in fremden Posts`:''].filter(Boolean).join(' · ');
-  box.innerHTML=`<div class="sheet-section-head"><b>Eingang</b><span>${summary}</span><button type="button" class="secondary-button" id="inbox-all-done">Alle erledigt</button></div>
+  box.innerHTML=`<div class="sheet-section-head page-section-head"><b>Eingang</b><span>${summary}</span><button type="button" class="secondary-button" id="inbox-all-done">Alle erledigt</button></div>
     <div class="inbox-list">${data.items.map(inboxItemHtml).join('')}</div>`;
   $$('[data-inbox-done]',box).forEach(button=>button.onclick=async()=>{
     try{await api(`/api/inbox/${button.dataset.inboxDone}`,{method:'PATCH',body:JSON.stringify({state:'done'})});renderInbox()}catch(error){toast(error.message)}

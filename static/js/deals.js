@@ -53,7 +53,7 @@ function dealSectionHtml(deals){
   if(dealView.platform&&!platforms.some(name=>name.toLowerCase()===dealView.platform.toLowerCase()))dealView.platform='';
   const shown=filteredDeals(deals);
   return `<section class="ebay-section sales-deals" id="sales-deals">
-    <div class="sheet-section-head"><b>Vorgänge</b><span>${shown.length===deals.length?`${deals.length}`:`${shown.length} von ${deals.length}`}</span><button type="button" class="secondary-button" id="new-deal">＋ Neuer Vorgang</button></div>
+    <div class="sheet-section-head page-section-head"><b>Vorgänge</b><span>${shown.length===deals.length?`${deals.length}`:`${shown.length} von ${deals.length}`}</span><button type="button" class="secondary-button" id="new-deal">＋ Neuer Vorgang</button></div>
     <div class="deal-filters"><div class="deal-filter-chips">${DEAL_FILTERS.map(([id,label])=>`<button type="button" class="community-chip ${dealView.status===id?'active':''}" data-deal-filter="${id}">${label}</button>`).join('')}</div>
       ${platforms.length>1?`<div class="deal-filter-chips deal-platform-chips" aria-label="Plattform">${[['','Alle Plattformen'],...platforms.map(name=>[name,name])].map(([id,label])=>`<button type="button" class="community-chip ${dealView.platform===id?'active':''}" data-deal-platform="${escapeHtml(id)}">${escapeHtml(label)}</button>`).join('')}</div>`:''}
       <div class="filter-search"><span>⌕</span><input id="deal-q" value="${escapeHtml(dealView.q)}" placeholder="Partner, Plattform oder Karte"></div></div>
