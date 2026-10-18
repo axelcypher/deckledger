@@ -559,7 +559,7 @@ describe('app in the browser', { skip }, () => {
     await page.route('sheets');
     await page.waitFor(`document.querySelector('[data-sales-open="drafts"]')`, { message: 'the sales tab to render' });
     assert.equal(await page.evaluate(`document.querySelectorAll('#content .ebay-draft').length`), 0, 'no drafts on the page itself');
-    assert.equal(await page.evaluate(`document.querySelector('[data-sales-open="drafts"] .tab-count').textContent`), '1', 'the drafts button counts the open drafts');
+    assert.equal(await page.evaluate(`document.querySelector('[data-sales-open="drafts"] strong').textContent`), '1', 'the drafts tile counts the open drafts');
     await page.evaluate(`document.querySelector('[data-sales-open="drafts"]').click()`);
     await page.waitFor(`document.querySelectorAll('#ebay-drafts-modal .ebay-draft').length===1`, { message: 'the drafts dialog to list the draft' });
     await page.evaluate(`(openSettingsModal({id:'stacked-test',eyebrow:'T',title:'T',stack:true}),1)`);
