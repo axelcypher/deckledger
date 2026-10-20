@@ -34,6 +34,22 @@ def test_adding_many_cards_to_a_list(client):
     assert login(ADMIN).post(f"/api/watchlists/{list_id}/entries/add", json={"variant_ids": [TIDE8]}).status_code == 404
 
 
+def test_moving_cards_between_lists(client):
+    source = client.get("/api/watchlists?game_id=vcard").get_json()[0]["id"]
+    target = client.post("/api/watchlists", json={"game_id": "vcard", "name": "Später"}).get_json()["id"]
+    assert client.post(f"/api/watchlists/{source}/entries/add", json={"variant_ids": [EMBER8, EMBER9, TIDE8]}).get_json() == {"added": 3}
+    client.patch(f"/api/watchlists/{source}/entries/{EMBER8}", json={"quantity": 3})
+    client.post(f"/api/watchlists/{target}/entries/add", json={"variant_ids": [EMBER9]})
+    client.patch(f"/api/watchlists/{target}/entries/{EMBER9}", json={"quantity": 2})
+    moved = client.post(f"/api/watchlists/{source}/entries/move", json={"target_list_id": target, "variant_ids": [EMBER8, EMBER9, EMBER8, ELSA]})
+    assert moved.get_json() == {"moved": 2}
+    entries = {(row["list_id"], row["variant_id"]): row["quantity"] for row in query("SELECT list_id,variant_id,quantity FROM named_watchlist_entries")}
+    # The desired count travels along; a card already on the target list keeps the count it has there.
+    assert entries == {(source, TIDE8): 1, (target, EMBER8): 3, (target, EMBER9): 2}
+    other_game = client.get("/api/watchlists?game_id=lorcana").get_json()[0]["id"]
+    assert client.post(f"/api/watchlists/{source}/entries/move", json={"target_list_id": other_game, "variant_ids": [TIDE8]}).status_code == 400
+
+
 def test_one_manual_price_for_many_cards(client):
     response = client.post("/api/variants/manual-prices", json={"variant_ids": [EMBER8, EMBER9, "missing"], "amount": "2,5"}).get_json()
     assert response == {"changed": 2, "amount": 2.5}

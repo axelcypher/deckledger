@@ -3,7 +3,11 @@
 async function openCard(identityId,variantId,refresh=false){
   if(!refresh){openOverlay('card-modal');advancedPanelExpanded=false}
   $('#card-dialog').innerHTML='<div class="page-loader"><span></span><p>Kartendetails werden geladen …</p></div>';
-  const card=await api(`/api/cards/${identityId}`),variant=card.variants.find(v=>v.id===variantId)||card.variants[0],watchlists=await api(`/api/watchlists?game_id=${variant.game_id}`);
+  // The lists of the game on screen are asked for alongside the card -- nearly always its game;
+  // a card of another one (from the search) asks again for its own.
+  const guessedGame=state.activeGameId,listsOfGuess=api(`/api/watchlists?game_id=${guessedGame}`);listsOfGuess.catch(()=>{});
+  const card=await api(`/api/cards/${identityId}`),variant=card.variants.find(v=>v.id===variantId)||card.variants[0];
+  const watchlists=variant.game_id===guessedGame?await listsOfGuess:await api(`/api/watchlists?game_id=${variant.game_id}`);
   // Closed while it was loading (a background refresh can still be on its way): there is nothing
   // to draw into, and keeping the card as "open" would mislead everything that checks for it.
   if($('#card-modal').classList.contains('hidden'))return;

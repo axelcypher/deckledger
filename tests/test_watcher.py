@@ -349,3 +349,32 @@ def test_comments_filed_once_per_sheet_are_merged(tmp_path):
     assert [tuple(row) for row in connection.execute("SELECT id,sheet_id,post_id,external_id,state FROM inbox_items ORDER BY id")] == [
         (1, 4, 14, "t1_a", "done"), (4, 4, 14, "t1_b", "new")]
     connection.close()
+
+
+def test_a_community_is_read_without_holding_the_database(client, sheet, reddit, monkeypatch):
+    """Nothing is written before the feed is in: the app's own writes must not wait for Reddit."""
+    client.post("/api/communities", json={"game_id": "vcard", "name": "vcardtrades"})
+    free = []
+
+    def fetch(url):
+        probe = sqlite3.connect(deckledger.config.DB_PATH, timeout=0)
+        try:
+            probe.execute("BEGIN IMMEDIATE")
+            probe.rollback()
+            free.append(True)
+        except sqlite3.OperationalError:
+            free.append(False)
+        finally:
+            probe.close()
+        return reddit.payload, reddit.pause
+
+    monkeypatch.setattr(watcher, "fetch_feed", fetch)
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection.row_factory = sqlite3.Row
+    try:
+        watcher.check_community(connection, "reddit", "vcardtrades")
+        connection.commit()
+    finally:
+        connection.close()
+    assert free == [True]
+    assert query("SELECT last_error FROM community_feeds WHERE name='vcardtrades'") == [{"last_error": ""}]

@@ -208,6 +208,7 @@ describe('views and their URLs', () => {
       '/api/collection?game_id=vcard&q=&set_id=&language=EN&rarity=&rarities=&costs=&colors=&inkwell=&finish=&mode=all&sort=number');
     assert.equal(run(`watchlistCardsUrl(12,defaultWatchFilters('vcard'))`),
       '/api/watchlists/12/cards?q=&set_id=&language=EN&rarity=&rarities=&costs=&colors=&inkwell=&finish=&sort=added');
+    assert.equal(run(`homeBannerUrl('one-piece')`), '/api/home-banner?game_id=one-piece');
     set('state.activeGameId', 'lorcana');
     run(`setActiveGame('vcard',false)`);
     assert.deepEqual(run(`[state.collectionFilters,state.watchFilters]`), run(`[defaultCollectionFilters('vcard'),defaultWatchFilters('vcard')]`));
@@ -234,6 +235,69 @@ describe('ordering', () => {
       return [await failed,await next];
     })()`);
     assert.deepEqual(result, ['boom', 'ran']);
+  });
+
+  test('a dragged slider saves its setting once it rests, and a pending one on leaving the page', async () => {
+    const sent = [], listeners = {};
+    const fetch = async (url, options) => { sent.push({ url, body: JSON.parse(options.body), keepalive: Boolean(options.keepalive) }); return { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ saved: true }) }; };
+    const page = loadScripts(['js/core.js'], { fetch, addEventListener: (type, listener) => { listeners[type] = listener; } });
+    await page.run(`(async()=>{
+      for(const size of [120,140,160,180])saveSettingSoon('zoom_vcard',size);
+      saveSettingSoon('setZoom',4);
+      await new Promise(resolve=>setTimeout(resolve,SETTING_SAVE_DELAY_MS+100));
+    })()`);
+    assert.deepEqual(sent, [
+      { url: '/api/settings', body: { zoom_vcard: 180 }, keepalive: false },
+      { url: '/api/settings', body: { setZoom: 4 }, keepalive: false },
+    ]);
+    sent.length = 0;
+    page.run(`saveSettingSoon('zoom_vcard',200);saveSettingSoon('setZoom',5)`);
+    listeners.pagehide();
+    assert.deepEqual(sent, [{ url: '/api/settings', body: { zoom_vcard: 200, setZoom: 5 }, keepalive: true }]);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    assert.equal(sent.length, 1, 'nothing is sent twice');
+  });
+
+  // A page whose elements keep what is written into them, and a server whose answers take as long
+  // as the test says.
+  function pageWithServer(answer) {
+    const nodes = new Map(), requests = [];
+    const node = () => ({ innerHTML: '', textContent: '', style: { setProperty() {} }, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, querySelectorAll: () => [] });
+    const document = {
+      querySelector: selector => nodes.get(selector) ?? nodes.set(selector, node()).get(selector),
+      querySelectorAll: () => [], createElement: node, addEventListener() {}, body: node(), documentElement: node(),
+    };
+    const fetch = (url, options = {}) => {
+      requests.push({ url, signal: options.signal });
+      return answer(url, options.signal).then(body => ({ status: 200, ok: true, headers: { get: () => null }, json: async () => body }));
+    };
+    return { requests, nodes, ...loadScripts(['js/core.js', 'js/finish.js', 'js/dashboard.js'], { document, fetch, AbortController }) };
+  }
+  const later = (ms, value) => new Promise(resolve => setTimeout(() => resolve(value), ms));
+
+  test('a search answer that arrives late does not replace a newer one', async () => {
+    const card = name => ({ identity_id: name, variant_id: name, canonical_name: name, set_name: 'Set', collector_number: '1', language: 'EN', game_id: 'vcard', game_name: 'VCard', finish: 'Normal', price: 1 });
+    const page = pageWithServer(url => (url.includes('q=first') ? later(60, [card('Old')]) : later(5, [card('New')])));
+    page.run(`state.activeGameId='vcard'`);
+    await page.run(`Promise.all([doSearch('first'),doSearch('second')])`);
+    const results = page.nodes.get('#search-results').innerHTML;
+    assert.ok(results.includes('New') && !results.includes('Old'), results);
+    assert.equal(page.requests[0].signal.aborted, true, 'the older request is called off');
+  });
+
+  test('the watchlist badge keeps the count of the game that is chosen', async () => {
+    const page = pageWithServer(url => (url.includes('game_id=lorcana') ? later(40, [{ count: 9 }]) : later(5, [{ count: 2 }])));
+    page.run(`state.activeGameId='lorcana'`);
+    const first = page.run(`refreshWatchCount()`);
+    page.run(`state.activeGameId='vcard'`);
+    await Promise.all([first, page.run(`refreshWatchCount()`)]);
+    assert.equal(page.nodes.get('#watch-count').textContent, 2);
+  });
+
+  test('offline, the reel falls back to a copy saved for every game', async () => {
+    const page = pageWithServer(url => (url.includes('game_id=') ? Promise.reject(new TypeError('offline')) : later(1, { slides: [{ game_id: 'vcard', cards: [] }] })));
+    assert.deepEqual(await page.run(`bannerSlides('vcard')`), { slides: [{ game_id: 'vcard', cards: [] }] });
+    assert.deepEqual(page.requests.map(request => request.url), ['/api/home-banner?game_id=vcard', '/api/home-banner']);
   });
 
   test('a render that was overtaken knows it', () => {

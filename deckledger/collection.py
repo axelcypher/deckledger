@@ -161,11 +161,13 @@ def collection_browser():
       CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted
       FROM collection_entries c JOIN variants v ON v.id=c.variant_id JOIN printings p ON p.id=v.printing_id
       JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id JOIN games g ON g.id=v.game_id
-      WHERE c.user_id=? AND v.game_id=? AND c.quantity>0 GROUP BY v.id""",(user_id(),user_id(),game_id)).fetchall()
+      WHERE c.user_id=? AND v.game_id=? AND c.quantity>0 GROUP BY c.variant_id ORDER BY c.variant_id""",(user_id(),user_id(),game_id)).fetchall()
+    # Grouped by the collection's own key: its unique index already hands the rows over in
+    # variant order, where grouping by v.id needed a temporary b-tree. The order is stated all the
+    # same (it costs nothing): the stable sort below keeps it among cards that compare equal.
     cards=[]
     for item in rows:
         r=dict(item);r["identity_attrs"]=jload(r["identity_attrs"],{})
-        if q and not query_matches_row(q,r):continue
         if set_id and r["set_id"]!=set_id:continue
         if language!="all" and r["language"]!=language:continue
         if rarity and r["rarity"]!=rarity:continue
@@ -173,6 +175,8 @@ def collection_browser():
         if finish and r["finish"]!=finish:continue
         if mode=="duplicates" and r["quantity"]<2:continue
         if mode=="watchlisted" and not r["watchlisted"]:continue
+        # The text search, the dearest test, last: only for cards the other filters let through.
+        if q and not query_matches_row(q,r):continue
         r.update({"variants":[dict(r)],"variant_count":1,"owned_variants":1})
         cards.append(r)
     sorters={"number":lambda c:[int(x) if x.isdigit() else x for x in re.split(r"(\d+)",c["collector_number"])],"name":lambda c:c["canonical_name"],"set":lambda c:(c["release_date"],c["collector_number"]),"rarity":lambda c:(rarity_rank(game_id,c["rarity"]),c["collector_number"]),"value":lambda c:-c["value"],"quantity":lambda c:-c["quantity"]}

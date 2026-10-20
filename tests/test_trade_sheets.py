@@ -154,6 +154,29 @@ def test_image_is_rendered_for_each_page(client, sheet):
     assert client.get(f"/api/trade-sheets/{sheet}/image/1.gif").status_code == 404
 
 
+def test_a_page_is_drawn_again_only_when_something_on_it_changed(client, sheet, monkeypatch):
+    for variant in (EMBER8, TIDE8):
+        add(client, sheet, variant)
+    drawn, draw = [], sheet_render.render_page
+    monkeypatch.setattr(sheet_render, "render_page", lambda *args, **kwargs: drawn.append(1) or draw(*args, **kwargs))
+    url = f"/api/trade-sheets/{sheet}/image/1.jpg?scale=0.3"
+    first = client.get(url)
+    again = client.get(url)
+    assert len(drawn) == 1 and again.get_data() == first.get_data()
+    # The browser keeps it and asks whether it is still current.
+    assert first.headers["Cache-Control"] == "private, no-cache" and first.headers["ETag"]
+    assert client.get(url, headers={"If-None-Match": first.headers["ETag"]}).status_code == 304
+    assert len(drawn) == 1
+    # A label, a quantity, the title: each one is a new page.
+    add(client, sheet, TIDE8, label="5 €")
+    changed = client.get(url, headers={"If-None-Match": first.headers["ETag"]})
+    assert changed.status_code == 200 and changed.headers["ETag"] != first.headers["ETag"] and len(drawn) == 2
+    client.patch(f"/api/trade-sheets/{sheet}", json={"name": "Neu"})
+    client.get(url)
+    client.get(f"/api/trade-sheets/{sheet}/image/1.png?scale=0.3")
+    assert len(drawn) == 4
+
+
 def test_every_background_renders():
     cards = [{"image_path": None, "name": f"Karte {n}", "set_code": "1", "number": f"{n:03d}", "quantity": n, "label": "5 €"} for n in range(1, 6)]
     for name in sheet_render.BACKGROUNDS:

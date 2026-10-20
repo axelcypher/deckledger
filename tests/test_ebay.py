@@ -881,3 +881,71 @@ def test_the_tab_sums_up_what_is_on_offer(client):
     assert (summary["active"], summary["offered_copies"], summary["offered_value"]) == (2, 3, 18.0), "2 of Ember at 4 € and 1 at 10 €"
     assert summary["watchers"] == 3 and summary["market_ratio"] is None
     assert client.get("/api/ebay/listings?game_id=lorcana").get_json()["summary"]["active"] == 1, "a listing without a card shows everywhere"
+
+
+# ---- No write lock while eBay is being asked -------------------------------------------------------
+
+def write_lock_free():
+    """Whether another connection could start writing right now -- a web request, say."""
+    import sqlite3
+    probe = sqlite3.connect(deckledger.config.DB_PATH, timeout=0)
+    try:
+        probe.execute("BEGIN IMMEDIATE")
+        probe.rollback()
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        probe.close()
+
+
+@pytest.fixture
+def lock_watch(configured, monkeypatch):
+    """Records, for every call to eBay, whether the database was free for others to write."""
+    seen, answer = [], configured.__call__
+
+    def call(method, url, **kwargs):
+        seen.append(write_lock_free())
+        return answer(method, url, **kwargs)
+
+    monkeypatch.setattr(configured, "__call__", call)
+    monkeypatch.setattr(deckledger.ebay, "http", call)
+    return seen
+
+
+def background_connection():
+    connection = deckledger.web.sqlite3.connect(deckledger.config.DB_PATH)
+    connection.row_factory = deckledger.web.sqlite3.Row
+    return connection
+
+
+def test_followed_listings_are_read_without_holding_the_database(client, configured, lock_watch):
+    configured.items = {ITEM: listing(5), OTHER_ITEM: listing(7)}
+    for item in (ITEM, OTHER_ITEM):
+        client.post(f"/api/variants/{EMBER8}/ebay-items", json={"url": item})
+    query("UPDATE ebay_tracked_items SET checked_at='2020-01-01T00:00:00+00:00'")
+    configured.items = {ITEM: listing(6), OTHER_ITEM: listing(8)}
+    lock_watch.clear()
+    connection = background_connection()
+    try:
+        assert deckledger.ebay.run_due(connection)["tracked"] == 2
+    finally:
+        connection.close()
+    assert len(lock_watch) >= 2 and all(lock_watch)
+    assert price_of(client, EMBER8, "vcard-card-ember8")["price"] == 7.0
+
+
+def test_the_listing_sync_asks_ebay_before_it_writes(client, configured, lock_watch):
+    connect()
+    configured.selling = {"ActiveList": f"<ActiveList><ItemArray>{item_xml('111', 'Ember PL8', '4.25', sku=f'DL-{EMBER8}')}</ItemArray></ActiveList>",
+                          "UnsoldList": f"<UnsoldList><ItemArray>{item_xml('222', 'Tide PL8', '3.00')}</ItemArray></UnsoldList>",
+                          "SoldList": f"<SoldList><OrderTransactionArray><OrderTransaction>{sold('333', 'Ember PL8', '4.00', 1, 't-1', 'sammlerin')}"
+                                      "</OrderTransaction></OrderTransactionArray></SoldList>"}
+    lock_watch.clear()
+    connection = background_connection()
+    try:
+        deckledger.ebay.sync_listings(connection, 1)
+    finally:
+        connection.close()
+    assert len(lock_watch) >= 3 and all(lock_watch)
+    assert {row["item_id"]: row["status"] for row in query("SELECT item_id,status FROM ebay_listings")} == {"111": "active", "222": "unsold", "333": "sold"}

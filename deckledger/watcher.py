@@ -382,16 +382,22 @@ def file_finds(connection, source, name, posts, stamp=None):
 
 def check_community(connection, source, name):
     """Reads a community's newest posts and files what fits. Returns how many entries were new.
-    The caller commits. Raises FeedError; the feed row then carries the reason."""
+    The caller commits. Raises FeedError; the feed row then carries the reason.
+
+    Nothing is written before the feed has been read: the first write opens the transaction and
+    takes the database's write lock, which the app's own writes would otherwise wait for (or give
+    up on) for as long as the source takes to answer."""
     stamp = now_iso()
-    connection.execute("INSERT OR IGNORE INTO community_feeds(source,name) VALUES(?,?)", (source, name))
+    feed_row = "INSERT OR IGNORE INTO community_feeds(source,name) VALUES(?,?)"
     try:
         payload, pause = fetch_feed(listing_url(source, name))
         posts = parse_listing(payload)
     except FeedError as error:
+        connection.execute(feed_row, (source, name))
         close_gate(connection, error.retry_after or FALLBACK_PAUSE_SECONDS)
         connection.execute("UPDATE community_feeds SET last_checked_at=?,last_error=? WHERE source=? AND name=?", (stamp, str(error), source, name))
         raise
+    connection.execute(feed_row, (source, name))
     close_gate(connection, pause)
     new = file_finds(connection, source, name, posts, stamp)
     connection.execute("UPDATE community_feeds SET last_checked_at=?,last_error='' WHERE source=? AND name=?", (stamp, source, name))

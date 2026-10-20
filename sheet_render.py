@@ -94,7 +94,11 @@ def font(size: float, weight: int = 700) -> ImageFont.ImageFont:
         return ImageFont.load_default(size=size)
 
 
+@lru_cache(maxsize=16)
 def rounded_mask(size: tuple[int, int], radius: float) -> Image.Image:
+    """The rounded shape of a card of `size`, drawn supersampled. Every card of a page has the
+    same size, so it is drawn once per page instead of once per card (and again for a reserved
+    one). Callers only read it: it is the mask of a paste or the source of an alpha channel."""
     big = Image.new("L", (size[0] * SUPERSAMPLE, size[1] * SUPERSAMPLE), 0)
     ImageDraw.Draw(big).rounded_rectangle((0, 0, big.width - 1, big.height - 1), radius * SUPERSAMPLE, fill=255)
     return big.resize(size, Image.LANCZOS)
@@ -316,8 +320,12 @@ def card_tile(card: dict, size: tuple[int, int]) -> Image.Image:
     if path and Path(path).is_file():
         try:
             with Image.open(path) as source:
-                image = source.convert("RGBA")
-            image = image.resize(size, Image.LANCZOS)
+                # A scan without transparency is scaled down first and given its alpha after:
+                # the same pixels as the other way round, with a quarter of the channels to scale.
+                if source.mode == "RGB":
+                    image = source.resize(size, Image.LANCZOS).convert("RGBA")
+                else:
+                    image = source.convert("RGBA").resize(size, Image.LANCZOS)
             # Scans come with square or with already-rounded, transparent corners; clipping to
             # the same rounded shape makes both look alike.
             image.putalpha(ImageChops.multiply(image.getchannel("A"), rounded_mask(size, radius)))

@@ -18,14 +18,13 @@ def toggle_watchlist():
     payload = request.get_json(force=True)
     variant_id = payload.get("variant_id")
     list_id = payload.get("list_id")
+    listed_variant = db().execute("SELECT game_id FROM variants WHERE id=?", (variant_id,)).fetchone()
     if not list_id:
-        variant = db().execute("SELECT game_id FROM variants WHERE id=?", (variant_id,)).fetchone()
-        if not variant: return jsonify({"error":"variant not found"}), 404
-        target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? ORDER BY is_default DESC,id LIMIT 1", (user_id(),variant["game_id"])).fetchone()
+        if not listed_variant: return jsonify({"error":"variant not found"}), 404
+        target = db().execute("SELECT id FROM named_watchlists WHERE user_id=? AND game_id=? ORDER BY is_default DESC,id LIMIT 1", (user_id(),listed_variant["game_id"])).fetchone()
         list_id = target["id"] if target else None
     owned_list = db().execute("SELECT id,game_id FROM named_watchlists WHERE id=? AND user_id=?", (list_id,user_id())).fetchone()
     if not owned_list: return jsonify({"error":"watchlist not found"}), 404
-    listed_variant = db().execute("SELECT game_id FROM variants WHERE id=?", (variant_id,)).fetchone()
     if not listed_variant: return jsonify({"error":"variant not found"}), 404
     if listed_variant["game_id"] != owned_list["game_id"]: return jsonify({"error":"Diese Karte gehört zu einem anderen Spiel als die Watchlist."}), 400
     existing = db().execute("SELECT id FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id)).fetchone()
@@ -74,9 +73,10 @@ def add_watchlist_entries(list_id):
     placeholders = ",".join("?" * len(variant_ids))
     found = [row["id"] for row in db().execute(f"SELECT id FROM variants WHERE game_id=? AND id IN ({placeholders})", (owned_list["game_id"], *variant_ids))]
     stamp = now_iso()
-    added = sum(db().execute(
-        "INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,1,?)", (list_id, variant_id, stamp),
-    ).rowcount for variant_id in found)
+    added = db().executemany(
+        "INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,1,?)",
+        [(list_id, variant_id, stamp) for variant_id in found],
+    ).rowcount if found else 0
     db().commit()
     return jsonify({"added": added})
 
@@ -116,14 +116,16 @@ def move_watchlist_entries(list_id):
     if not target: return jsonify({"error":"target watchlist not found"}), 404
     if target["game_id"] != source["game_id"]: return jsonify({"error":"Zielliste gehört zu einem anderen Spiel."}), 400
     if not variant_ids: return jsonify({"error":"no variants selected"}), 400
-    moved = 0
-    for variant_id in variant_ids:
-        entry = db().execute("SELECT quantity FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id)).fetchone()
-        if not entry: continue
-        db().execute("INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,quantity,created_at) VALUES(?,?,?,?)",
-                      (target_list_id,variant_id,entry["quantity"],now_iso()))
-        db().execute("DELETE FROM named_watchlist_entries WHERE list_id=? AND variant_id=?", (list_id,variant_id))
-        moved += 1
+    # Copy, then remove, as one write: two moves at once cannot interleave between the steps,
+    # and a selection of hundreds is two statements, not three per card.
+    placeholders = ",".join("?" * len(variant_ids))
+    db().execute("BEGIN IMMEDIATE")
+    db().execute(
+        f"""INSERT OR IGNORE INTO named_watchlist_entries(list_id,variant_id,quantity,created_at)
+            SELECT ?,variant_id,quantity,? FROM named_watchlist_entries WHERE list_id=? AND variant_id IN ({placeholders})""",
+        (target_list_id, now_iso(), list_id, *variant_ids),
+    )
+    moved = db().execute(f"DELETE FROM named_watchlist_entries WHERE list_id=? AND variant_id IN ({placeholders})", (list_id, *variant_ids)).rowcount
     db().commit()
     return jsonify({"moved": moved})
 

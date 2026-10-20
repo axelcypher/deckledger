@@ -120,3 +120,39 @@ def test_a_publishers_placeholder_counts_as_a_missing_scan(tmp_path, monkeypatch
     stale.with_suffix(".mime").write_text("image/png")
     assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == scan
     assert not stale.exists()
+
+
+def test_a_failed_download_is_not_tried_again_on_every_view(tmp_path, monkeypatch):
+    """A source that is down (or hangs until the timeout) is asked once per MISS_RETRY_SECONDS,
+    not for every tile of every view; the stand-in shows meanwhile, as it would anyway."""
+    import os
+    import time
+    from urllib.error import URLError
+    for name in ("IMAGE_CACHE", "IMAGE_SOURCE_CACHE", "IMAGE_LOCK_CACHE"):
+        monkeypatch.setattr(deckledger.images, name, tmp_path / name.lower())
+    asked = []
+
+    def down(request, timeout):
+        asked.append(request.full_url)
+        raise URLError("timed out")
+
+    monkeypatch.setattr(deckledger.images, "urlopen", down)
+    row = {"game_id": "vcard", "variant_attributes": json.dumps({"imageUrl": "https://cdn.example/scan.png"})}
+    with pytest.raises(URLError):
+        deckledger.images.cached_real_image(row, "v")
+    assert deckledger.images.cached_real_image(row, "v") is None
+    assert asked == ["https://cdn.example/scan.png"]
+    # Once the pause is over the source is asked again, and an image that arrives is kept.
+    for marker in (tmp_path / "image_lock_cache").glob("*.miss"):
+        past = time.time() - deckledger.images.MISS_RETRY_SECONDS - 1
+        os.utime(marker, (past, past))
+
+    class Answer:
+        headers = type("Headers", (), {"get_content_type": lambda self: "image/png"})()
+
+        def read(self, limit):
+            return b"S" * 3000
+
+    monkeypatch.setattr(deckledger.images, "urlopen", lambda request, timeout: asked.append(request.full_url) or Answer())
+    assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == b"S" * 3000
+    assert len(asked) == 2 and not list((tmp_path / "image_lock_cache").glob("*.miss"))

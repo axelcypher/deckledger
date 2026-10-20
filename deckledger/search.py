@@ -42,32 +42,54 @@ def field_words(text):
     return words, "".join(words)
 
 
-def within(word, other, limit):
-    """Whether two words are at most `limit` edits apart (Levenshtein, cut off early)."""
-    if abs(len(word) - len(other)) > limit:
-        return False
-    previous = list(range(len(other) + 1))
-    for i, char in enumerate(word, 1):
-        current = [i]
-        for j, other_char in enumerate(other, 1):
-            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (char != other_char)))
-        if min(current) > limit:
+def within_prefixes(token, word, lengths, limit):
+    """Whether `token` is at most `limit` edits (Levenshtein) from word[:n] for any n in `lengths`.
+
+    One table for all of them: row i, column j of the table between the token and the longest
+    prefix is the distance from token[:i] to word[:j], so its last row holds the distance to every
+    prefix at once. Only cells within `limit` of the diagonal can end up within `limit`; the others
+    are capped at limit + 1 and not computed, and a row with nothing left within `limit` ends it.
+    A table per prefix length (and one for the whole word), as before, cost four times the work
+    on every new word typed into a search box."""
+    top, cap = max(lengths), limit + 1
+    previous = [j if j <= limit else cap for j in range(top + 1)]
+    for i, char in enumerate(token, 1):
+        current = [cap] * (top + 1)
+        current[0] = best = i if i <= limit else cap
+        for j in range(max(1, i - limit), min(top, i + limit) + 1):
+            value = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (char != word[j - 1]), cap)
+            current[j] = value
+            best = min(best, value)
+        if best > limit:
             return False
         previous = current
-    return previous[-1] <= limit
+    return any(previous[length] <= limit for length in lengths)
 
 
-@lru_cache(maxsize=400_000)
+@lru_cache(maxsize=4096)
+def typo_tolerant(token):
+    """Whether a token may be a letter off: four letters or more, no digits (PL8 is no typo of PL9).
+    Cached because a search asks it for every field of every card it scores."""
+    return len(token) >= 4 and not any(char.isdigit() for char in token)
+
+
 def near_miss(token, text):
     """Whether the field has a word (or two run together) one letter off the token, two from eight
     letters on -- whole, or as much of its start as was typed. Not for numbers: PL8 is no typo of
     PL9."""
-    if len(token) < 4 or any(char.isdigit() for char in token):
-        return False
+    # Tested ahead of the cache of matches: short words and numbers never match, and would fill it.
+    return typo_tolerant(token) and fuzzy_match(token, text)
+
+
+@lru_cache(maxsize=400_000)
+def fuzzy_match(token, text):
     words = field_words(text)[0]
     limit = 1 if len(token) < 8 else 2
     for word in list(words) + [a + b for a, b in zip(words, words[1:])]:
-        if within(token, word, limit) or any(within(token, word[:size], limit) for size in (len(token) - 1, len(token), len(token) + 1) if 0 < size < len(word)):
+        lengths = [size for size in (len(token) - 1, len(token), len(token) + 1) if 0 < size < len(word)]
+        if abs(len(word) - len(token)) <= limit:
+            lengths.append(len(word))
+        if lengths and within_prefixes(token, word, lengths, limit):
             return True
     return False
 
@@ -76,8 +98,10 @@ def token_score(token, fields):
     """The weight of the best field the token is in; a near miss counts 0.6 of it. Rules text is
     only searched for the word itself -- long texts have a near miss for almost anything."""
     best = max((weight for text, weight in fields if token in field_words(text)[1]), default=0.0)
+    if not typo_tolerant(token):
+        return best
     for text, weight in fields:
-        if weight > TEXT and weight * FUZZY > best and near_miss(token, text):
+        if weight > TEXT and weight * FUZZY > best and fuzzy_match(token, text):
             best = weight * FUZZY
     return best
 

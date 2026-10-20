@@ -75,7 +75,7 @@ async function renderGame(gameId){
   $('#set-type-filter').onchange=e=>{state.setType=e.target.value;renderGame(gameId)};
   $('#set-sort').onchange=e=>{state.setSort=e.target.value;renderGame(gameId)};
   $('#set-direction').onchange=e=>{state.setDirection=e.target.value;renderGame(gameId)};
-  $('#set-zoom').oninput=e=>{state.setZoom=e.target.value;$$('.set-grid',content).forEach(grid=>grid.style.setProperty('--set-cols',state.setZoom));post('/api/settings',{setZoom:Number(state.setZoom)});};
+  $('#set-zoom').oninput=e=>{state.setZoom=e.target.value;$$('.set-grid',content).forEach(grid=>grid.style.setProperty('--set-cols',state.setZoom));saveSettingSoon('setZoom',Number(state.setZoom));};
 }
 
 function setGroupSection(gameId,group,items){
@@ -149,7 +149,7 @@ async function renderSet(setId, preserve=false){
   $$('[data-card-single-filter]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardSingleFilter,value=b.dataset.value;f[key]=f[key]===value?'':value;renderSet(setId,true)});
   $$('[data-card-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardMode,value=b.dataset.value;f[key]=value;renderSet(setId,true)});
   bindTileEditionSwitch(game.id,()=>renderSet(setId,true));
-  $('#card-zoom').oninput=e=>{state.zoom=e.target.value;$('.card-grid').style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
+  $('#card-zoom').oninput=e=>{state.zoom=e.target.value;$('.card-grid').style.setProperty('--card-size',`${state.zoom}px`);saveSettingSoon(`zoom_${game.id}`,Number(state.zoom))};
   let searchTimer;$('#set-card-search').oninput=event=>{clearTimeout(searchTimer);state.query=event.target.value;searchTimer=setTimeout(()=>reRenderPreservingFocus('#set-card-search',()=>renderSet(setId,true)),280)};
 }
 
@@ -214,7 +214,7 @@ async function renderAllCards(gameId,preserve=false){
   $$('[data-card-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.cardMode,value=b.dataset.value;f[key]=value;renderAllCards(gameId,true)});
   bindTileEditionSwitch(gameId,()=>renderAllCards(gameId,true));
   let timer;$('#all-card-search').oninput=event=>{clearTimeout(timer);state.query=event.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#all-card-search',()=>renderAllCards(gameId,true)),280)};
-  $('#all-card-zoom').oninput=event=>{state.zoom=event.target.value;$('.all-card-groups',content).style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${game.id}`]:Number(state.zoom)})};
+  $('#all-card-zoom').oninput=event=>{state.zoom=event.target.value;$('.all-card-groups',content).style.setProperty('--card-size',`${state.zoom}px`);saveSettingSoon(`zoom_${game.id}`,Number(state.zoom))};
 }
 
 const cardCycleRegistry=new Map();
@@ -400,6 +400,8 @@ function bindCardEvents(watchlistId=null){
       if(!frontEl.classList.contains('front')){[frontEl,backEl]=[backEl,frontEl]}
       let cycleIndex=0,cycleTimer=null;
       const advance=()=>{
+        // A tile redrawn away under the pointer never sees its mouseleave.
+        if(!tile.isConnected){clearInterval(cycleTimer);return}
         cycleIndex=(cycleIndex+1)%cycle.length;
         const variant=cycle[cycleIndex];
         backEl.src=artUrl(variant.variant_id);

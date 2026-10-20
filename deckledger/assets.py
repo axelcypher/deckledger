@@ -1,6 +1,7 @@
 """Logos, set visuals, filter icons, card backs and the shared foil textures."""
 
 import math
+import os
 import re
 import xml.sax.saxutils as xml_escape
 from pathlib import Path
@@ -10,7 +11,7 @@ from flask import Response, send_file
 
 from .config import CARD_BACK_UPLOAD_DIR, IMAGE_CACHE, PUBLIC_DIR, PUBLIC_IMAGE_EXTENSIONS, PUBLIC_OP_ICON_DIR, PUBLIC_SET_DIR, ROOT
 from .games import game as game_rules
-from .web import app, db, login_required
+from .web import app, compress_file, db, login_required
 
 
 @app.get("/game-logo/<game_id>")
@@ -72,12 +73,33 @@ def public_set_visual(set_row) -> Path | None:
         for candidate in (safe, safe.lower()):
             if candidate and candidate not in stems:
                 stems.append(candidate)
+    present = public_set_files()
     for stem in stems:
         for extension in PUBLIC_IMAGE_EXTENSIONS:
-            candidate = PUBLIC_SET_DIR / f"{stem}{extension}"
-            if candidate.is_file():
-                return candidate
+            if f"{stem}{extension}" in present:
+                return PUBLIC_SET_DIR / f"{stem}{extension}"
     return None
+
+
+_public_set_listing = {}
+
+
+def public_set_files():
+    """The names of the files in the public set folder. Every set of a game looked for up to
+    twenty-four names there on every set overview, one file system call each; the folder is now
+    read once and again whenever it changes (adding, removing or renaming a file changes its
+    modification time). A file replaced in place keeps its name and gets a new version from its
+    own modification time in set_visual_version."""
+    try:
+        changed = PUBLIC_SET_DIR.stat().st_mtime_ns
+    except OSError:
+        return frozenset()
+    cached = _public_set_listing.get(PUBLIC_SET_DIR)
+    if not cached or cached[0] != changed:
+        with os.scandir(PUBLIC_SET_DIR) as entries:
+            cached = (changed, frozenset(entry.name for entry in entries if entry.is_file()))
+        _public_set_listing[PUBLIC_SET_DIR] = cached
+    return cached[1]
 
 
 def set_visual_version(set_row) -> str:
@@ -195,7 +217,7 @@ def glass_plate_asset():
     # conditional+etag (not a fixed max_age) so edits to the file on disk -- this is meant to
     # be hand-tuned in place -- are picked up on the next request via a 304 revalidation
     # instead of needing a manually-bumped ?v= query param each time.
-    return send_file(path, mimetype="image/svg+xml", conditional=True, etag=True, max_age=0)
+    return compress_file(send_file(path, mimetype="image/svg+xml", conditional=True, etag=True, max_age=0), path)
 
 
 @app.get("/foil-base-reflection.png")
@@ -234,4 +256,5 @@ def lorcana_foil_presets_asset():
     path = ROOT / "lorcana_foil_original_presets.json"
     if not path.is_file():
         return Response(status=404)
-    return send_file(path, mimetype="application/json", conditional=True, etag=True, max_age=0)
+    # 156 KB of JSON, 7 KB compressed.
+    return compress_file(send_file(path, mimetype="application/json", conditional=True, etag=True, max_age=0), path)

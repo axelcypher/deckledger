@@ -8,7 +8,10 @@ async function renderWatchlist(preserve=false){
   state.activeWatchlists=lists;
   if(!state.watchlistId||!lists.some(l=>l.id===state.watchlistId))state.watchlistId=lists[0]?.id;
   if(!state.watchlistId){content.innerHTML='<div class="empty-state"><b>Noch keine Watchlist</b></div>';return}
-  const f=state.watchFilters, data=await api(watchlistCardsUrl(state.watchlistId,f)), sets=await api(`/api/games/${state.activeGameId}/sets`);
+  // The set switcher needs only the sets' names: the game's list as the catalogue already loaded
+  // it, fetched alongside the cards when it is not there yet (every filter change redraws).
+  const f=state.watchFilters,[data,sets]=await Promise.all([api(watchlistCardsUrl(state.watchlistId,f)),game.sets?Promise.resolve(game.sets):api(`/api/games/${game.id}/sets`)]);
+  game.sets=sets;
   if(stale())return;
   const currentSet=sets.find(set=>set.id===f.set_id),rarityOptions=collectionRarityOptions(game.id,f.language);
   state.cards=data.cards.map(r=>({...r,variants:[r],variant_count:1,owned_variants:r.quantity?1:0,watchlisted:true,value:r.quantity*r.price}));
@@ -63,10 +66,14 @@ async function renderWatchlist(preserve=false){
 // Multi-selection is an explicit mode. Cards themselves become the selection targets so the
 // artwork stays free of persistent checkboxes; these small DOM updates avoid a refetch for every
 // selected card.
+// The list's cards by variant: every tile looks itself up, and searching the list once per tile
+// made a click in a long list cost time in proportion to its length squared.
+const watchCardsByVariant=()=>new Map(state.cards.map(card=>[card.variant_id,card]));
 function syncWatchSelectionTiles(){
+  const cards=watchCardsByVariant();
   $$('.watch-selection-mode .card-tile',content).forEach(tile=>{
     const selected=state.watchSelection.has(tile.dataset.variant);
-    const item=state.cards.find(card=>card.variant_id===tile.dataset.variant);
+    const item=cards.get(tile.dataset.variant);
     tile.classList.toggle('watch-selected',selected);
     tile.setAttribute('aria-pressed',String(selected));
     tile.setAttribute('aria-label',`${item?.canonical_name||'Karte'} ${selected?'ausgewählt':'auswählen'}`);
@@ -112,8 +119,9 @@ function bindWatchlistBulkActions(){
   };
 }
 function enhanceWatchlistTiles(){
+  const cards=watchCardsByVariant();
   $$('.card-tile',content).forEach(tile=>{
-    const item=state.cards.find(c=>c.variant_id===tile.dataset.variant); if(!item)return;
+    const item=cards.get(tile.dataset.variant); if(!item)return;
     const info=$('.card-info',tile);
     if(state.watchSelectionMode){
       tile.classList.toggle('watch-selected',state.watchSelection.has(item.variant_id));

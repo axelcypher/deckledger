@@ -4,6 +4,7 @@ import fcntl
 import hashlib
 import os
 import re
+import time
 import xml.sax.saxutils as xml_escape
 from pathlib import Path
 from urllib.parse import urlparse
@@ -82,18 +83,39 @@ def cached_real_image(row, variant_id):
     return download_real_image(candidates[-1], legacy_data, legacy_mime, placeholders)
 
 
+# After a download failed, the image is not asked for again for this long. A grid of cards whose
+# scans are missing or whose source hangs asked again on every view, each try holding one of the
+# server's few threads for up to the 15 s timeout. The stand-in shown meanwhile is kept by the
+# browser for an hour anyway (card_art).
+MISS_RETRY_SECONDS = 600
+
+
+def recently_missed(miss_path):
+    try:
+        return time.time() - miss_path.stat().st_mtime < MISS_RETRY_SECONDS
+    except OSError:
+        return False
+
+
 def download_real_image(url, legacy_data, legacy_mime, placeholders=()):
     source_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
     data_path = IMAGE_SOURCE_CACHE / f"{source_key}.img"
     mime_path = IMAGE_SOURCE_CACHE / f"{source_key}.mime"
     if data_path.exists() and mime_path.exists():
         return data_path, mime_path.read_text().strip(), source_key
+    miss_path = IMAGE_LOCK_CACHE / f"{source_key}.miss"
+    if recently_missed(miss_path) and not (legacy_data.exists() and legacy_mime.exists()):
+        return None
 
     lock_path = IMAGE_LOCK_CACHE / f"{source_key}.lock"
     with lock_path.open("a+b") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         if data_path.exists() and mime_path.exists():
             return data_path, mime_path.read_text().strip(), source_key
+        # The request that held the lock may just have failed: the ones that waited for it do not
+        # each wait out the timeout again.
+        if recently_missed(miss_path) and not (legacy_data.exists() and legacy_mime.exists()):
+            return None
         if legacy_data.exists() and legacy_mime.exists():
             # A hard link seeds the URL cache without duplicating 200–400 KB per
             # language/finish variant already present in the old cache.
@@ -103,25 +125,31 @@ def download_real_image(url, legacy_data, legacy_mime, placeholders=()):
                 pass
             mime_path.write_text(legacy_mime.read_text().strip())
             return data_path, mime_path.read_text().strip(), source_key
-        response = urlopen(
-            Request(url, headers={
-                "User-Agent": "DeckLedger/0.1",
-                "Accept": "image/avif,image/webp,image/*",
-                # Some CDNs (e.g. Cardmarket's product-image bucket) 403 hotlink-style
-                # requests without a same-site Referer.
-                "Referer": f"https://{urlparse(url).netloc}/",
-            }),
-            timeout=15,
-        )
-        payload = response.read(5_000_000)
+        try:
+            response = urlopen(
+                Request(url, headers={
+                    "User-Agent": "DeckLedger/0.1",
+                    "Accept": "image/avif,image/webp,image/*",
+                    # Some CDNs (e.g. Cardmarket's product-image bucket) 403 hotlink-style
+                    # requests without a same-site Referer.
+                    "Referer": f"https://{urlparse(url).netloc}/",
+                }),
+                timeout=15,
+            )
+            payload = response.read(5_000_000)
+        except OSError:
+            miss_path.touch()
+            raise
         content_type = response.headers.get_content_type()
         if not content_type.startswith("image/"):
             # A handful of CDNs (again, Cardmarket) serve a bogus/missing Content-Type
             # instead of the real one -- fall back to sniffing the file's magic bytes.
             content_type = sniff_image_type(payload) or content_type
         if not content_type.startswith("image/") or len(payload) < 1000 or is_placeholder(payload, placeholders):
+            miss_path.touch()
             return None
         data_path.write_bytes(payload)
+        miss_path.unlink(missing_ok=True)
         mime_path.write_text(content_type)
         return data_path, content_type, source_key
 

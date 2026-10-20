@@ -180,5 +180,5 @@ function zoomControl(id){
 // The zoom of a card grid: one size for every view of a game, kept in the settings.
 function bindZoomControl(id,grid,gameId){
   const input=$(`#${id}`,content);if(!input)return;
-  input.oninput=event=>{state.zoom=event.target.value;grid?.style.setProperty('--card-size',`${state.zoom}px`);post('/api/settings',{[`zoom_${gameId}`]:Number(state.zoom)})};
+  input.oninput=event=>{state.zoom=event.target.value;grid?.style.setProperty('--card-size',`${state.zoom}px`);saveSettingSoon(`zoom_${gameId}`,Number(state.zoom))};
 }

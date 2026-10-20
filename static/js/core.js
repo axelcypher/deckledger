@@ -75,6 +75,27 @@ const api = async (url, options={}) => {
 };
 const post = (url,data) => api(url,{method:'POST',body:JSON.stringify(data)});
 
+// A range slider reports every step while it is dragged; saving each one sent dozens of requests
+// (each a database write) per drag. The value is saved once the slider rests, per setting, and
+// one still waiting when the page is left goes out with the unload (keepalive outlives the page).
+const SETTING_SAVE_DELAY_MS=400;
+const pendingSettings=new Map();
+function saveSettingSoon(key,value){
+  clearTimeout(pendingSettings.get(key)?.timer);
+  const timer=setTimeout(()=>{pendingSettings.delete(key);post('/api/settings',{[key]:value}).catch(()=>{})},SETTING_SAVE_DELAY_MS);
+  pendingSettings.set(key,{timer,value});
+}
+function flushPendingSettings(){
+  if(!pendingSettings.size)return;
+  const settings={};
+  for(const [key,{timer,value}] of pendingSettings){clearTimeout(timer);settings[key]=value}
+  pendingSettings.clear();
+  fetch('/api/settings',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)}).catch(()=>{});
+}
+addEventListener('pagehide',flushPendingSettings);
+// A phone may end an app in the background without a pagehide; being hidden is the last sure moment.
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushPendingSettings()});
+
 // Debounced search inputs (collection/watchlist/deck-catalog/all-cards) all call this after
 // each pause in typing. renderFn() is async and can take a moment (network round-trip, full
 // re-render) -- type fast enough and a SECOND call can start for the same selector before the
@@ -139,6 +160,7 @@ const defaultCollectionFilters=gameId=>({q:'',set_id:'',language:gameDefaultLang
 const defaultWatchFilters=gameId=>({q:'',set_id:'',language:gameDefaultLanguage(gameId),rarity:'',rarities:[],costs:[],colors:[],inkwell:'',finish:'',sort:'added'});
 const collectionUrl=(gameId,filters)=>`/api/collection?${new URLSearchParams({game_id:gameId,...filters})}`;
 const watchlistCardsUrl=(listId,filters)=>`/api/watchlists/${listId}/cards?${new URLSearchParams(filters)}`;
+const homeBannerUrl=gameId=>`/api/home-banner?game_id=${encodeURIComponent(gameId)}`;
 
 function setActiveGame(gameId, persist=true) {
   const previousGameId=state.activeGameId;
@@ -233,8 +255,10 @@ function openOverlay(id){$(`#${id}`).classList.remove('hidden');document.documen
 function closeOverlay(id){$(`#${id}`).classList.add('hidden');document.documentElement.style.overflow='';document.body.style.overflow='';if(id==='card-modal'){state.modalCard=null}}
 
 async function refreshWatchCount(){
-  if(!state.activeGameId)return;
-  const lists=await api(`/api/watchlists?game_id=${state.activeGameId}`);
+  const gameId=state.activeGameId;
+  if(!gameId)return;
+  const lists=await api(`/api/watchlists?game_id=${gameId}`);
+  if(gameId!==state.activeGameId)return; // the game switched to meanwhile has its own count on the way
   const count=lists.reduce((a,l)=>a+l.count,0);
   $('#watch-count').textContent=count;
   const mtBadge=$('#mt-watch-count');
@@ -278,9 +302,18 @@ function searchMatcher(query){
   };
 }
 
+// Typing fires a search per pause; an answer that arrives after a newer search started must not
+// replace that one's results, and the request it belonged to is called off.
+let searchSequence=0,searchController=null;
 async function doSearch(q){
+  const mine=++searchSequence;searchController?.abort();searchController=null;
   const wrap=$('#search-results'); if(q.trim().length<2){wrap.innerHTML='<div class="empty-search"><b>Finde jede Karte. Sofort.</b><span>Name, Nummer, Set oder Ausführung – in beliebiger Reihenfolge, z.&nbsp;B. „Smugalana PL9 1st Ed“. Alternativen mit |: PL9|PL10</span></div>';return}
-  const rows=await api(`/api/search?q=${encodeURIComponent(q)}&game_id=${encodeURIComponent(state.activeGameId)}`); if(!rows.length){wrap.innerHTML='<div class="empty-search"><b>Keine Treffer</b><span>Versuche einen anderen Namen oder eine Nummer.</span></div>';return}
+  const controller=searchController=new AbortController();
+  let rows;
+  try{rows=await api(`/api/search?q=${encodeURIComponent(q)}&game_id=${encodeURIComponent(state.activeGameId)}`,{signal:controller.signal})}
+  catch(error){if(mine!==searchSequence)return;throw error}
+  if(mine!==searchSequence)return;
+  if(!rows.length){wrap.innerHTML='<div class="empty-search"><b>Keine Treffer</b><span>Versuche einen anderen Namen oder eine Nummer.</span></div>';return}
   const groups=Object.groupBy?Object.groupBy(rows,x=>x.game_name):rows.reduce((a,x)=>((a[x.game_name]??=[]).push(x),a),{});
   wrap.innerHTML=Object.entries(groups).map(([game,items])=>`<div class="search-group-title">${escapeHtml(game).toUpperCase()}</div>${items.map(r=>`<button class="search-result" data-id="${r.identity_id}" data-variant="${r.variant_id}">${finishThumb(r,artUrl(r.variant_id),r.canonical_name,'search-thumb')}<div><b>${escapeHtml(r.canonical_name)}</b><small>${escapeHtml(r.set_name)} · ${escapeHtml(r.collector_number)} · ${r.language} · ${escapeHtml(r.game_id==='lorcana'?lorcanaFinishLabel(r.finish,r.rarity):r.finish)}</small></div><span class="search-price">${r.price==null?"–":money(r.price)}</span></button>`).join('')}`).join('');
   $$('.search-result',wrap).forEach(el=>el.onclick=()=>{closeOverlay('search-overlay');openCard(el.dataset.id,el.dataset.variant)});

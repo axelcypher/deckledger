@@ -133,16 +133,26 @@ def public_profile_data(slug):
     if not owner:
         return not_found()
     uid, profile, name = owner
-    games = []
-    for game in shared_games(profile):
-        counts = db().execute(
-            """SELECT COUNT(DISTINCT p.identity_id) total,
-                 COUNT(DISTINCT CASE WHEN EXISTS(SELECT 1 FROM collection_entries c JOIN variants cv ON cv.id=c.variant_id
-                   WHERE c.user_id=? AND c.quantity>0 AND cv.printing_id=p.id) THEN p.identity_id END) owned
-               FROM printings p WHERE p.game_id=? AND EXISTS(SELECT 1 FROM variants v WHERE v.printing_id=p.id)""", (uid, game["id"])).fetchone()
-        copies = db().execute("SELECT COALESCE(SUM(c.quantity),0) FROM collection_entries c JOIN variants v ON v.id=c.variant_id WHERE c.user_id=? AND v.game_id=?",
-                              (uid, game["id"])).fetchone()[0]
-        games.append({**game, "total": counts["total"], "owned": counts["owned"], "copies": copies})
+    games = shared_games(profile)
+    # Each figure for every shared game at once; what is owned is read from the collection's side
+    # (the owner's rows), not by asking every printing of the catalogue whether it is owned.
+    placeholders = ",".join("?" * len(games))
+    game_ids = [game["id"] for game in games]
+    totals = dict(db().execute(
+        f"""SELECT p.game_id, COUNT(DISTINCT p.identity_id) FROM printings p
+            WHERE p.game_id IN ({placeholders}) AND EXISTS(SELECT 1 FROM variants v WHERE v.printing_id=p.id) GROUP BY p.game_id""", game_ids,
+    ).fetchall()) if games else {}
+    owned = dict(db().execute(
+        f"""SELECT p.game_id, COUNT(DISTINCT p.identity_id) FROM collection_entries c
+            JOIN variants v ON v.id=c.variant_id JOIN printings p ON p.id=v.printing_id
+            WHERE c.user_id=? AND c.quantity>0 AND p.game_id IN ({placeholders}) GROUP BY p.game_id""", (uid, *game_ids),
+    ).fetchall()) if games else {}
+    copies = dict(db().execute(
+        f"""SELECT v.game_id, SUM(c.quantity) FROM collection_entries c JOIN variants v ON v.id=c.variant_id
+            WHERE c.user_id=? AND v.game_id IN ({placeholders}) GROUP BY v.game_id""", (uid, *game_ids),
+    ).fetchall()) if games else {}
+    games = [{**game, "total": totals.get(game["id"], 0), "owned": owned.get(game["id"], 0), "copies": copies.get(game["id"]) or 0}
+             for game in games]
     return jsonify({"name": name, "slug": profile["slug"], "games": games})
 
 

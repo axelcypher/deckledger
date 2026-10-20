@@ -95,26 +95,39 @@ def log_event(deal_id, kind, detail=""):
     db().execute("INSERT INTO deal_events(deal_id,at,kind,detail) VALUES(?,?,?,?)", (deal_id, now_iso(), kind, detail))
 
 
+DEALS_PER_QUERY = 500
+
+
 def deal_cards(deal):
     """The deal's cards with what the catalogue and the collection say about them now. A card
     the catalogue no longer has is still listed, from what the deal kept."""
-    uid = deal["user_id"]
-    rows = db().execute(
-        f"""SELECT dc.*,v.id known,v.finish,v.variant_code,v.is_parallel,v.game_id,i.id identity_id,p.rarity,p.collector_number,s.code set_code,
-              COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=dc.variant_id),0) owned,
-              {RESERVED_SQL.replace('v.id', 'dc.variant_id')} reserved
-            FROM deal_cards dc LEFT JOIN variants v ON v.id=dc.variant_id LEFT JOIN printings p ON p.id=v.printing_id
-              LEFT JOIN card_identities i ON i.id=p.identity_id LEFT JOIN sets s ON s.id=p.set_id
-            WHERE dc.deal_id=? ORDER BY dc.side,dc.id""", (uid, uid, deal["id"]),
-    ).fetchall()
-    cards = []
-    for row in rows:
-        card = dict(row)
-        card["known"] = bool(card["known"])
-        # Reserved by other deals: this deal's own reservation is not competition for itself.
-        if deal["status"] == "reserved" and card["side"] == "give":
-            card["reserved"] -= card["quantity"]
-        cards.append(card)
+    return cards_of_deals([deal])[deal["id"]]
+
+
+def cards_of_deals(deals):
+    """deal_cards() of several deals of one user: {deal id: cards}, a query per few hundred deals
+    instead of one per deal -- the list of deals asked once for each of them."""
+    by_id = {deal["id"]: deal for deal in deals}
+    cards = {deal_id: [] for deal_id in by_id}
+    ids = list(by_id)
+    for start in range(0, len(ids), DEALS_PER_QUERY):
+        chunk = ids[start:start + DEALS_PER_QUERY]
+        uid = by_id[chunk[0]]["user_id"]
+        rows = db().execute(
+            f"""SELECT dc.*,v.id known,v.finish,v.variant_code,v.is_parallel,v.game_id,i.id identity_id,p.rarity,p.collector_number,s.code set_code,
+                  COALESCE((SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=? AND c.variant_id=dc.variant_id),0) owned,
+                  {RESERVED_SQL.replace('v.id', 'dc.variant_id')} reserved
+                FROM deal_cards dc LEFT JOIN variants v ON v.id=dc.variant_id LEFT JOIN printings p ON p.id=v.printing_id
+                  LEFT JOIN card_identities i ON i.id=p.identity_id LEFT JOIN sets s ON s.id=p.set_id
+                WHERE dc.deal_id IN ({','.join('?' * len(chunk))}) ORDER BY dc.deal_id,dc.side,dc.id""", (uid, uid, *chunk),
+        ).fetchall()
+        for row in rows:
+            card, deal = dict(row), by_id[row["deal_id"]]
+            card["known"] = bool(card["known"])
+            # Reserved by other deals: this deal's own reservation is not competition for itself.
+            if deal["status"] == "reserved" and card["side"] == "give":
+                card["reserved"] -= card["quantity"]
+            cards[deal["id"]].append(card)
     return cards
 
 
@@ -123,8 +136,8 @@ def deal_kind(cards):
     return "trade" if gives and gets else "sale" if gives else "purchase" if gets else ""
 
 
-def deal_payload(deal, with_events=True):
-    cards = deal_cards(deal)
+def deal_payload(deal, with_events=True, cards=None):
+    cards = deal_cards(deal) if cards is None else cards
     payload = dict(deal) | {
         "cards": cards, "kind": deal_kind(cards),
         # Cards coming in that have not been confirmed as arrived.
@@ -259,13 +272,15 @@ def deals():
     if request.args.get("game_id"):
         clauses.append("d.game_id=?")
         values.append(request.args["game_id"])
-    rows = db().execute(f"SELECT d.* FROM deals d WHERE {' AND '.join(clauses)} ORDER BY COALESCE(d.completed_at,d.updated_at) DESC,d.id DESC", values).fetchall()
-    found = [deal_payload(row, with_events=False) for row in rows]
     status, query = request.args.get("status", ""), request.args.get("q", "").strip()
+    if status in DEAL_STATES:
+        clauses.append("d.status=?")
+        values.append(status)
+    rows = db().execute(f"SELECT d.* FROM deals d WHERE {' AND '.join(clauses)} ORDER BY COALESCE(d.completed_at,d.updated_at) DESC,d.id DESC", values).fetchall()
+    cards = cards_of_deals(rows)
+    found = [deal_payload(row, with_events=False, cards=cards[row["id"]]) for row in rows]
     if status == "transit":
         found = [deal for deal in found if deal["in_transit"]]
-    elif status in DEAL_STATES:
-        found = [deal for deal in found if deal["status"] == status]
     if query:
         found = [deal for deal in found if search.matches(query, [(deal["partner"], search.NAME), (deal["platform"], search.DETAIL), (deal["note"], search.TEXT),
                                                                   *((card["name"], search.NAME) for card in deal["cards"])])]

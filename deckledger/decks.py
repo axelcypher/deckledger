@@ -151,20 +151,29 @@ def deck_catalog():
     }.get(sort, "p.collector_number COLLATE NOCASE,i.canonical_name COLLATE NOCASE")
     joins = """FROM variants v JOIN printings p ON p.id=v.printing_id
       JOIN card_identities i ON i.id=p.identity_id JOIN sets s ON s.id=p.set_id"""
-    total = db().execute(f"SELECT COUNT(*) {joins} WHERE {where}", values).fetchone()[0]
+    # The page and the number of all matches come from one pass: every page the builder loads
+    # while scrolling used to filter (and, with a search, score) the whole game a second time
+    # just to count it. One row per variant either way -- the joins only ever find one printing,
+    # identity and set for it -- so the window count is the number of matching cards.
     rows = db().execute(
         f"""SELECT v.id variant_id,v.finish,v.is_parallel,p.id printing_id,i.id identity_id,
           i.canonical_name,i.card_type,i.attributes identity_attrs,p.collector_number,p.language,
           p.rarity,p.set_id,s.name set_name,s.code set_code,{latest_price_sql('v')} price,
-          COALESCE(SUM(c.quantity),0) owned
+          COALESCE(SUM(c.quantity),0) owned,COUNT(*) OVER () matches
           {joins} LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
           WHERE {where} GROUP BY v.id ORDER BY {order_by} LIMIT ? OFFSET ?""",
         [user_id(), *values, limit, offset],
     ).fetchall()
+    if rows:
+        total = rows[0]["matches"]
+    else:
+        # Past the last page (or nothing matches at all) there is no row to carry the count.
+        total = db().execute(f"SELECT COUNT(*) {joins} WHERE {where}", values).fetchone()[0] if offset else 0
     deck_ruleset = game_deck_ruleset(game_id)
     result = []
     for item in rows:
         card = dict(item)
+        del card["matches"]
         card["attributes"] = jload(card.pop("identity_attrs"), {})
         card["suggested_zone"] = zone_for_card_type(deck_ruleset, card["card_type"])
         result.append(card)

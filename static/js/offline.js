@@ -137,12 +137,11 @@ async function saveForOffline({fullImages=false,onProgress=()=>{}}={}){
   let skipped=0;
   try{
     const boot=await data('/api/bootstrap');
-    await data('/api/home-banner');
     const identities=new Set(),variants=new Set();
     const collect=cards=>cards.forEach(card=>{identities.add(card.identity_id);variants.add(card.variant_id)});
     for(const game of boot.games){
       const id=encodeURIComponent(game.id);
-      await Promise.all([`/api/games/${id}/sets`,`/api/games/${id}/formats`,`/api/decks?game_id=${id}`,`/api/trade-sheets?game_id=${id}`,`/api/home-recent?game_id=${id}`].map(data));
+      await Promise.all([`/api/games/${id}/sets`,`/api/games/${id}/formats`,`/api/decks?game_id=${id}`,`/api/trade-sheets?game_id=${id}`,`/api/home-recent?game_id=${id}`,homeBannerUrl(game.id)].map(data));
       collect((await data(collectionUrl(game.id,defaultCollectionFilters(game.id)))).cards);
       for(const list of await data(`/api/watchlists?game_id=${game.id}`))collect((await data(watchlistCardsUrl(list.id,defaultWatchFilters(game.id)))).cards);
     }

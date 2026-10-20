@@ -19,43 +19,71 @@ def game_sets(game_id):
     return jsonify(sets_of_game(game_id, user_id()))
 
 
+GAME_SETS_SQL = "SELECT id FROM sets WHERE game_id=?"
+SET_FIGURES = ("total", "owned", "value", "variants_total", "variants_owned", "playset_owned")
+
+
+def set_statistics(game_id, uid):
+    """Per set of the game: {set_id: {total, owned, value, variants_total, variants_owned,
+    playset_owned}}. Each figure is one grouped query over the whole game. Asked set by set (six
+    queries each, two of them reading the user's entire collection and pricing every card in it
+    again) the set overview took several seconds for a game with a hundred sets."""
+    stats = {}
+
+    def merge(sql, params, *fields):
+        for row in db().execute(sql, params):
+            entry = stats.setdefault(row[0], dict.fromkeys(SET_FIGURES, 0))
+            entry.update(zip(fields, row[1:]))
+
+    # Ownership and value start from the user's own rows: the price lookup is a correlated
+    # subquery, and running it for every variant of the game instead of only the owned ones
+    # would cost far more than the rest of the endpoint.
+    merge(
+        f"""SELECT p.set_id, COUNT(DISTINCT CASE WHEN c.quantity>0 THEN p.identity_id END),
+              COALESCE(SUM(c.quantity * {latest_price_sql('v')}),0)
+            FROM collection_entries c JOIN variants v ON v.id=c.variant_id
+            JOIN printings p ON p.id=v.printing_id
+            WHERE c.user_id=? AND p.set_id IN ({GAME_SETS_SQL}) GROUP BY p.set_id""",
+        (uid, game_id), "owned", "value",
+    )
+    # Joining the variants counts only printings that have one, as the set's card total should.
+    merge(
+        f"""SELECT p.set_id, COUNT(DISTINCT p.identity_id), COUNT(*)
+            FROM printings p JOIN variants v ON v.printing_id=p.id
+            WHERE p.set_id IN ({GAME_SETS_SQL}) GROUP BY p.set_id""",
+        (game_id,), "total", "variants_total",
+    )
+    merge(
+        f"""SELECT p.set_id, COUNT(DISTINCT v.id)
+            FROM variants v JOIN printings p ON p.id=v.printing_id
+            JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? AND c.quantity>0
+            WHERE p.set_id IN ({GAME_SETS_SQL}) GROUP BY p.set_id""",
+        (uid, game_id), "variants_owned",
+    )
+    merge(
+        f"""SELECT set_id, COUNT(*) FROM (
+              SELECT p.set_id, p.identity_id, COALESCE(SUM(c.quantity),0) qty
+              FROM printings p JOIN variants v ON v.printing_id=p.id
+              LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
+              WHERE p.set_id IN ({GAME_SETS_SQL})
+              GROUP BY p.set_id, p.identity_id
+              HAVING qty>=?
+            ) GROUP BY set_id""",
+        (uid, game_id, playset_size(game_id)), "playset_owned",
+    )
+    return stats
+
+
 def sets_of_game(game_id, uid):
     """The sets of a game with that user's ownership, completion and value, newest first. Also
     what a public profile shows (deckledger/public_profile.py, without the value)."""
     rows = []
+    statistics = set_statistics(game_id, uid)
+    release_dates = release_dates_of_game(game_id)
     for s in db().execute("SELECT * FROM sets WHERE game_id=? ORDER BY release_date DESC", (game_id,)):
-        # Ownership and value start from the user's own rows: the price lookup is a correlated
-        # subquery, and running it for every variant of the set instead of only the owned ones
-        # is what made this endpoint take about a second per game.
-        owned_values = db().execute(
-            f"""SELECT COUNT(DISTINCT CASE WHEN c.quantity>0 THEN p.identity_id END) owned,
-                COALESCE(SUM(c.quantity * {latest_price_sql('v')}),0) value
-                FROM collection_entries c JOIN variants v ON v.id=c.variant_id
-                JOIN printings p ON p.id=v.printing_id
-                WHERE c.user_id=? AND p.set_id=?""",
-            (uid, s["id"]),
-        ).fetchone()
-        values = {
-            "total": db().execute(
-                "SELECT COUNT(DISTINCT p.identity_id) FROM printings p WHERE p.set_id=? AND EXISTS(SELECT 1 FROM variants v WHERE v.printing_id=p.id)",
-                (s["id"],),
-            ).fetchone()[0],
-            "owned": owned_values["owned"], "value": owned_values["value"],
-        }
-        variants_total = db().execute("SELECT COUNT(*) FROM variants v JOIN printings p ON p.id=v.printing_id WHERE p.set_id=?", (s["id"],)).fetchone()[0]
-        variants_owned = db().execute("SELECT COUNT(DISTINCT v.id) FROM variants v JOIN printings p ON p.id=v.printing_id JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=? AND c.quantity>0 WHERE p.set_id=?", (uid, s["id"])).fetchone()[0]
-        playset_owned = db().execute(
-            """SELECT COUNT(*) FROM (
-                SELECT p.identity_id, COALESCE(SUM(c.quantity),0) qty
-                FROM printings p JOIN variants v ON v.printing_id=p.id
-                LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
-                WHERE p.set_id=?
-                GROUP BY p.identity_id
-                HAVING qty>=?
-            )""",
-            (uid, s["id"], playset_size(game_id)),
-        ).fetchone()[0]
-        if not values["total"]:
+        figures = statistics.get(s["id"]) or dict.fromkeys(SET_FIGURES, 0)
+        total, owned, variants_total, variants_owned = figures["total"], figures["owned"], figures["variants_total"], figures["variants_owned"]
+        if not total:
             # A `sets` row can exist (announced/synced set metadata) before any of its cards
             # have actual printings in the catalog -- e.g. a newly-announced set, or a non-card
             # promotional product that only ever gets metadata, never printings. Both the set
@@ -66,9 +94,15 @@ def sets_of_game(game_id, uid):
             continue
         item = dict(s)
         item["classifications"] = jload(item["classifications"], [])
-        item["release_dates"] = release_dates_for_set(s["id"], item["release_date"])
+        item["release_dates"] = release_dates.get(s["id"]) or fallback_release_dates(item["release_date"])
         item["visual_version"] = set_visual_version(s)
-        item.update({"owned": values["owned"], "total": values["total"], "value": round(values["value"], 2), "base_completion": round(values["owned"] / values["total"] * 100) if values["total"] else 0, "foil_completion": round(variants_owned / variants_total * 100) if variants_total else 0, "master_completion": round(variants_owned / variants_total * 100) if variants_total else 0, "playset_completion": round(playset_owned / values["total"] * 100) if values["total"] else 0})
+        variant_completion = round(variants_owned / variants_total * 100) if variants_total else 0
+        item.update({
+            "owned": owned, "total": total, "value": round(figures["value"], 2),
+            "base_completion": round(owned / total * 100),
+            "foil_completion": variant_completion, "master_completion": variant_completion,
+            "playset_completion": round(figures["playset_owned"] / total * 100),
+        })
         # Lorcana's set `code` now holds the community abbreviation (providers/lorcana.py:
         # LORCANA_SET_ABBREVIATIONS), not the plain release number LorcanaJSON itself uses --
         # the set overview still wants that number visible too ("9 FAB", not just "FAB"), so
@@ -85,6 +119,10 @@ def sets_of_game(game_id, uid):
     return rows
 
 
+def fallback_release_dates(release_date):
+    return [release_date] if release_date else []
+
+
 def release_dates_for_set(set_id, fallback=None):
     product_dates = [row[0] for row in db().execute(
         """SELECT DISTINCT json_extract(attributes,'$.releaseProductReleaseDate')
@@ -92,7 +130,21 @@ def release_dates_for_set(set_id, fallback=None):
              AND json_extract(attributes,'$.releaseProductReleaseDate') IS NOT NULL
            ORDER BY 1""", (set_id,)
     )]
-    return product_dates or ([fallback] if fallback else [])
+    return product_dates or fallback_release_dates(fallback)
+
+
+def release_dates_of_game(game_id):
+    """release_dates_for_set() for every set of a game in one query: {set_id: [dates]}, sets
+    without product dates left out."""
+    dates = {}
+    for set_id, day in db().execute(
+        f"""SELECT DISTINCT set_id, json_extract(attributes,'$.releaseProductReleaseDate')
+            FROM printings WHERE set_id IN ({GAME_SETS_SQL})
+              AND json_extract(attributes,'$.releaseProductReleaseDate') IS NOT NULL
+            ORDER BY 1, 2""", (game_id,)
+    ):
+        dates.setdefault(set_id, []).append(day)
+    return dates
 
 
 def natural_code_key(value):
@@ -114,35 +166,37 @@ def compare_set_release(a, b, direction="desc"):
     return (-1 if a_code < b_code else 1) * multiplier
 
 
-def card_rows(set_id, uid):
+def card_rows(set_id, uid, stats_only=False):
+    return catalog_rows("p.set_id", set_id, uid, stats_only)
+
+
+def game_card_rows(game_id, uid, stats_only=False):
+    return catalog_rows("p.game_id", game_id, uid, stats_only)
+
+
+def catalog_rows(column, key, uid, stats_only=False):
+    """Every variant whose printing has `column` = key, with the user's copies, watchlist mark and
+    current price. For the summary numbers alone (stats_only, asked again after every quantity
+    change) the mark is left out and the price looked up for owned variants only: the value adds
+    up copies times price, so no other variant changes it, and the lookup is most of the query's
+    cost."""
+    if stats_only:
+        watchlisted, price = "0", f"CASE WHEN SUM(c.quantity)>0 THEN {latest_price_sql('v')} END"
+    else:
+        watchlisted = """CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id
+                           WHERE nwe.variant_id=v.id AND nw.user_id=?1) THEN 1 ELSE 0 END"""
+        price = latest_price_sql('v')
     return db().execute(
         f"""SELECT i.id identity_id,i.canonical_name,i.rules_text,i.card_type,i.attributes identity_attrs,
             p.id printing_id,p.collector_number,p.language,p.rarity,p.set_id,p.attributes printing_attrs,
             v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.source_type,
             COALESCE(SUM(c.quantity),0) quantity,MAX(c.condition) condition,
-            CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted,
-            {latest_price_sql('v')} price
+            {watchlisted} watchlisted,{price} price
             FROM card_identities i JOIN printings p ON p.identity_id=i.id
             JOIN variants v ON v.printing_id=p.id
-            LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
-            WHERE p.set_id=?
-            GROUP BY v.id""", (uid, uid, set_id)
-    ).fetchall()
-
-
-def game_card_rows(game_id, uid):
-    return db().execute(
-        f"""SELECT i.id identity_id,i.canonical_name,i.rules_text,i.card_type,i.attributes identity_attrs,
-            p.id printing_id,p.collector_number,p.language,p.rarity,p.set_id,p.attributes printing_attrs,
-            v.id variant_id,v.variant_code,v.finish,v.is_parallel,v.source_type,
-            COALESCE(SUM(c.quantity),0) quantity,MAX(c.condition) condition,
-            CASE WHEN EXISTS(SELECT 1 FROM named_watchlist_entries nwe JOIN named_watchlists nw ON nw.id=nwe.list_id WHERE nwe.variant_id=v.id AND nw.user_id=?) THEN 1 ELSE 0 END watchlisted,
-            {latest_price_sql('v')} price
-            FROM card_identities i JOIN printings p ON p.identity_id=i.id
-            JOIN variants v ON v.printing_id=p.id
-            LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?
-            WHERE p.game_id=?
-            GROUP BY v.id""", (uid, uid, game_id)
+            LEFT JOIN collection_entries c ON c.variant_id=v.id AND c.user_id=?1
+            WHERE {column}=?2
+            GROUP BY v.id""", (uid, key)
     ).fetchall()
 
 
@@ -171,8 +225,11 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
         raw = [row for row in raw if query_matches_row(query, row)]
     identities = {}
     for row in raw:
-        row["identity_attrs"] = jload(row["identity_attrs"], {})
-        identities.setdefault(row["identity_id"], []).append(row)
+        variants = identities.setdefault(row["identity_id"], [])
+        # Every variant of a card carries the same attributes text: parsed once per card, the
+        # variants share the result (it is only read from here on).
+        row["identity_attrs"] = variants[0]["identity_attrs"] if variants else jload(row["identity_attrs"], {})
+        variants.append(row)
     # "finish" picks which printing (Normal or Silver) represents each card -- the shown
     # art/price and the "owned" count -- independent of "foil_mode", which filters by whether
     # that foil copy specifically is owned/missing (Alle leaves ownership unfiltered).
@@ -274,14 +331,17 @@ def serialize_card_rows(raw, language, mode, query, sort, game_id, rarity="", fo
     owned = sum(1 for card in unfiltered_cards if card["quantity"] > 0)
     # What counts for Foil% is the game's call (see Game.is_foil).
     foil_variants = [variant for variant in all_variants if rules.is_foil(variant, rules)]
-    playset_owned = sum(1 for card in unfiltered_cards if card["quantity"] >= playset_size(game_id))
+    playset = playset_size(game_id)
+    playset_owned = sum(1 for card in unfiltered_cards if card["quantity"] >= playset)
     stats = {
         "owned": owned,
         "total": total,
         "base": round(owned / total * 100) if total else 0,
         "foil": round(sum(1 for variant in foil_variants if variant["quantity"] > 0) / max(1, len(foil_variants)) * 100),
         "master": round(sum(1 for variant in all_variants if variant["quantity"] > 0) / max(1, len(all_variants)) * 100),
-        "value": round(sum(variant["quantity"] * (variant["price"] or 0) for variant in all_variants), 2),
+        # Started as a float: the summary alone (stats_only) prices owned cards only, and its sum
+        # must come out as the same number type as the full answer's.
+        "value": round(sum((variant["quantity"] * (variant["price"] or 0) for variant in all_variants), 0.0), 2),
         "missing": max(0, total - owned),
         "variant_total": len(all_variants),
         "variant_owned": sum(1 for variant in all_variants if variant["quantity"] > 0),
@@ -312,8 +372,9 @@ def set_cards(set_id):
     selected_costs = [value for value in request.args.get("costs", "").split(",") if value]
     selected_colors = [value for value in request.args.get("colors", "").split(",") if value]
     inkwell = request.args.get("inkwell", "")
-    cards, stats = serialize_card_rows(card_rows(set_id, uid), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
-    if request.args.get("stats_only"):
+    stats_only = bool(request.args.get("stats_only"))
+    cards, stats = serialize_card_rows(card_rows(set_id, uid, stats_only), language, mode, query, sort, set_row["game_id"], rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
+    if stats_only:
         return jsonify({"stats": stats})
     rarity_sql = "SELECT DISTINCT rarity FROM printings WHERE set_id=?" + ("" if language == "combined" else " AND language=?")
     rarity_params = (set_id,) if language == "combined" else (set_id, language)
@@ -347,14 +408,16 @@ def game_cards(game_id):
     if set_order not in {"asc", "desc"}:
         set_order = "desc"
     grouped_raw = {}
-    for row in game_card_rows(game_id, uid):
+    stats_only = bool(request.args.get("stats_only"))
+    for row in game_card_rows(game_id, uid, stats_only):
         grouped_raw.setdefault(row["set_id"], []).append(row)
-    groups = []
+    groups, group_count = [], 0
     aggregate = {"owned": 0, "total": 0, "value": 0.0, "variant_total": 0, "variant_owned": 0, "foil_total": 0, "foil_owned": 0, "playset_total": 0, "playset_owned": 0}
     sets = []
+    release_dates = release_dates_of_game(game_id)
     for row in db().execute("SELECT * FROM sets WHERE game_id=?", (game_id,)).fetchall():
         item = dict(row)
-        item["release_dates"] = release_dates_for_set(row["id"], row["release_date"])
+        item["release_dates"] = release_dates.get(row["id"]) or fallback_release_dates(row["release_date"])
         sets.append(item)
     sets.sort(key=cmp_to_key(lambda a, b: compare_set_release(a, b, set_order)))
     rarity_sql = "SELECT DISTINCT p.rarity FROM printings p JOIN sets s ON s.id=p.set_id WHERE s.game_id=?" + ("" if language == "combined" else " AND p.language=?")
@@ -362,13 +425,16 @@ def game_cards(game_id):
     rarity_options = sorted({r["rarity"] for r in db().execute(rarity_sql, rarity_params)}, key=lambda r: (rarity_rank(game_id, r), r))
     for set_row in sets:
         cards, stats = serialize_card_rows(grouped_raw.get(set_row["id"], []), language, mode, query, sort, game_id, rarity, foil, selected_rarities, selected_costs, selected_colors, inkwell, finish)
-        meta = dict(set_row)
-        meta["classifications"] = jload(meta["classifications"], [])
-        meta["visual_version"] = set_visual_version(set_row)
         for key in aggregate:
             aggregate[key] += stats[key]
         if not cards:
             continue
+        group_count += 1
+        if stats_only:
+            continue  # the summary only counts the groups: no set details, no look for its logo file
+        meta = dict(set_row)
+        meta["classifications"] = jload(meta["classifications"], [])
+        meta["visual_version"] = set_visual_version(set_row)
         groups.append({"set": meta, "cards": cards, "stats": stats})
     aggregate.update({
         "missing": max(0, aggregate["total"] - aggregate["owned"]),
@@ -378,8 +444,8 @@ def game_cards(game_id):
         "playset": round(aggregate["playset_owned"] / max(1, aggregate["playset_total"]) * 100),
         "value": round(aggregate["value"], 2),
     })
-    if request.args.get("stats_only"):
-        return jsonify({"stats": aggregate, "group_count": len(groups)})
+    if stats_only:
+        return jsonify({"stats": aggregate, "group_count": group_count})
     return jsonify({"game": {**dict(game), "languages": jload(game["languages"], [])}, "groups": groups, "stats": aggregate, "rarities": rarity_options})
 
 
@@ -407,8 +473,12 @@ def card_detail(identity_id):
             LEFT JOIN (SELECT variant_id,SUM(quantity) quantity,MAX(notes) notes,
               SUM(quantity*COALESCE(price_override,0)) override_value,
               SUM(CASE WHEN price_override IS NULL THEN quantity ELSE 0 END) unpriced_quantity
-              FROM collection_entries WHERE user_id=? GROUP BY variant_id) agg ON agg.variant_id=v.id
-            WHERE p.identity_id=? ORDER BY p.language,s.release_date,s.code,p.collector_number,v.is_parallel,v.variant_code""", (uid,uid,identity_id)
+              FROM collection_entries WHERE user_id=?
+                -- only this card's rows: summing the whole collection first cost every card click
+                -- time in proportion to the collection's size
+                AND variant_id IN (SELECT v2.id FROM variants v2 JOIN printings p2 ON p2.id=v2.printing_id WHERE p2.identity_id=?)
+              GROUP BY variant_id) agg ON agg.variant_id=v.id
+            WHERE p.identity_id=? ORDER BY p.language,s.release_date,s.code,p.collector_number,v.is_parallel,v.variant_code""", (uid,uid,identity_id,identity_id)
     ).fetchall()
     variant_rows = []
     checked_row = db().execute("SELECT value FROM catalog_metadata WHERE key='price_sync_checked'").fetchone()
@@ -544,7 +614,10 @@ def global_search():
           JOIN (SELECT v.id found_id,{search.card_score_sql("?1")} score
                 FROM card_identities i JOIN printings p ON p.identity_id=i.id JOIN variants v ON v.printing_id=p.id JOIN sets s ON s.id=p.set_id
                 WHERE (?4 IS NULL OR i.game_id=?5)
-                  AND (?7 IS NULL OR (SELECT SUM(c.quantity) FROM collection_entries c WHERE c.user_id=?2 AND c.variant_id=v.id)>0)) found ON found.found_id=v.id
+                  -- As a set of owned variants the filter is applied before the score, which then
+                  -- runs for the collection only instead of for every card in the catalogue.
+                  AND (?7 IS NULL OR v.id IN (SELECT c.variant_id FROM collection_entries c WHERE c.user_id=?2
+                                              GROUP BY c.variant_id HAVING SUM(c.quantity)>0))) found ON found.found_id=v.id
           WHERE found.score>0
           ORDER BY found.score DESC,i.canonical_name,p.collector_number,v.id
           LIMIT ?6""", (q,user_id(),user_id(),game_id,game_id,limit,owned)

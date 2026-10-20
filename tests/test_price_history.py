@@ -180,3 +180,40 @@ def test_price_is_dated_by_the_last_successful_sync(client):
     assert price_of(client, EMBER8, "vcard-card-ember8")["price_observed_at"].startswith("2026-08-01")
     query("INSERT INTO catalog_metadata(key,value) VALUES('price_sync_checked',?)", (json.dumps({"cardmarket": "2026-09-30T06:00:00+0200"}),))
     assert price_of(client, EMBER8, "vcard-card-ember8")["price_observed_at"].startswith("2026-09-30")
+
+
+def test_folding_a_month_leaves_the_database_free_while_reading_the_next(monkeypatch):
+    """Each month is its own short write: catching up on several must not hold the write lock
+    (and the app's own writes) for all of them."""
+    for day, amount in ((date(2026, 4, 1), 4.0), (date(2026, 5, 16), 6.0), (date(2026, 6, 10), 7.0)):
+        run(price_sync.store_changed_observations, [synced(day, amount)])
+    free, average = [], price_sync.month_average
+
+    def probing_average(*args):
+        probe = sqlite3.connect(deckledger.config.DB_PATH, timeout=0)
+        try:
+            probe.execute("BEGIN IMMEDIATE")
+            probe.rollback()
+            free.append(True)
+        except sqlite3.OperationalError:
+            free.append(False)
+        finally:
+            probe.close()
+        return average(*args)
+
+    monkeypatch.setattr(price_sync, "month_average", probing_average)
+    assert run(price_sync.compact_price_history, TODAY)["months"] == ["2026-04", "2026-05", "2026-06"]
+    assert free == [True, True, True]
+
+
+def test_the_newest_rows_can_be_read_ahead_of_the_write():
+    run(price_sync.store_changed_observations, [synced(date(2026, 9, 1), 1.0), synced(date(2026, 9, 1), 2.0, variant_id=TIDE8)])
+    connection = connect()
+    try:
+        newest = price_sync.newest_observations(connection, [synced(date(2026, 9, 2), 1.0)])
+    finally:
+        connection.close()
+    assert newest == {(EMBER8, "cardmarket", "trend"): (1.0, stamp(date(2026, 9, 1))), (TIDE8, "cardmarket", "trend"): (2.0, stamp(date(2026, 9, 1)))}
+    batch = [synced(date(2026, 9, 2), 1.0), synced(date(2026, 9, 2), 2.5, variant_id=TIDE8)]
+    assert run(price_sync.store_changed_observations, batch, newest) == 1
+    assert rows(TIDE8) == [("2026-09-01", 2.0), ("2026-09-02", 2.5)]

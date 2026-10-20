@@ -59,21 +59,30 @@ HISTORY_FORMAT = "changes"
 # carry a value forward until the next row (app.py: latest_observation_sql, price history).
 # Months older than the daily window are folded into one time-weighted average each.
 
-def store_changed_observations(connection, observation_rows: list[tuple]) -> int:
-    """Inserts (variant_id, provider_id, metric, amount, currency, observed_at) rows whose amount
-    differs from the newest stored row of the same series; returns how many were written."""
+def newest_observations(connection, observation_rows: list[tuple]) -> dict:
+    """{(variant_id, provider_id, metric): (amount, observed_at)} of the newest stored row of every
+    series of the providers in observation_rows."""
     providers = sorted({row[1] for row in observation_rows})
     if not providers:
-        return 0
+        return {}
     placeholders = ",".join("?" for _ in providers)
     # SQLite returns the other columns from the row that holds MAX(), i.e. the newest observation.
-    newest = {
+    return {
         (variant_id, provider_id, metric): (amount, observed_at)
         for variant_id, provider_id, metric, amount, observed_at in connection.execute(
             f"""SELECT variant_id,provider_id,metric,amount,MAX(observed_at) FROM price_observations
                 WHERE provider_id IN ({placeholders}) GROUP BY variant_id,provider_id,metric""", providers
         )
     }
+
+
+def store_changed_observations(connection, observation_rows: list[tuple], newest: dict | None = None) -> int:
+    """Inserts (variant_id, provider_id, metric, amount, currency, observed_at) rows whose amount
+    differs from the newest stored row of the same series; returns how many were written.
+    `newest` is newest_observations(), when the caller read it before taking the write lock."""
+    if not observation_rows:
+        return 0
+    newest = dict(newest_observations(connection, observation_rows) if newest is None else newest)
     changed = []
     for row in observation_rows:
         known = newest.get(row[:3])
@@ -131,6 +140,10 @@ def compact_price_history(connection, today: date | None = None) -> dict:
     The price a series ended the month with is written as the first row of the following month
     where it differs from the average, so "carry the last row forward" stays true across the
     fold. Idempotent: only months that still hold unfolded rows are touched.
+
+    Each month is committed on its own, and everything a month needs is read before its first
+    write: the write lock is held for the swap of that month's rows only, not for the reading of
+    all of them -- catching up on several months held it for twenty seconds and more.
     """
     boundary = ((today or local_today()) - timedelta(days=DAILY_HISTORY_DAYS)).replace(day=1).isoformat()
     months = [row[0] for row in connection.execute(
@@ -168,6 +181,7 @@ def compact_price_history(connection, today: date | None = None) -> dict:
         insert = "INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,?,?,?,?,?)"
         connection.executemany(insert, averages)
         connection.executemany(insert, openings)
+        connection.commit()
         removed -= len(averages) + len(openings)
     return {"months": months, "rows_removed": removed}
 
@@ -1020,6 +1034,12 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             return result
 
         matched_at = datetime.now(timezone.utc).isoformat()
+        # Read before the transaction: going through the whole history takes about a second, and
+        # inside it the database's write lock would be held all along (the transaction starts
+        # writing at once). Nothing else adds these providers' prices -- the price-sync lock keeps a
+        # second run out; catalog_sync only removes the rows of cards that leave the catalogue, and
+        # a stale entry for one of those merely skips an insert for a card that is going away.
+        newest = newest_observations(connection, observation_rows)
         connection.execute("BEGIN")
         providers_to_replace = ["optcgapi"]
         if cardmarket_game_ids:
@@ -1042,7 +1062,7 @@ def synchronize(if_needed=False, dry_run=False) -> dict:
             ) for mapping in all_mappings if "values" in mapping
             ],
         )
-        counts["price_changes_stored"] = store_changed_observations(connection, observation_rows)
+        counts["price_changes_stored"] = store_changed_observations(connection, observation_rows, newest)
         # When each provider's prices were last confirmed: an unchanged price writes no row, so
         # "as of" can no longer be read off the newest row's date.
         checked = metadata_value(connection, "price_sync_checked", {}) or {}

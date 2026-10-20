@@ -16,15 +16,20 @@ MANUAL_PRICE_LIMIT = 1_000_000
 
 def latest_observation_sql(alias, metric, field):
     """Newest observation of a variant: a price entered by hand if there is one, else Cardmarket's,
-    else the newest of any other mapped provider. The inner MAX() is a single index seek per provider, so the cost stays flat
-    however much price history piles up -- sorting a variant's whole history on every lookup (as
-    this did before) got slower with each daily sync, on every page that shows a price."""
+    else the newest of any other mapped provider. Each provider's newest row is found by one seek
+    into idx_prices_variant_metric (newest first) and then read by its rowid, so the cost stays
+    flat however much price history piles up. Matching po.observed_at against a MAX() instead
+    walked every stored observation of the variant and ran the MAX() again for each of them --
+    five times slower on a catalogue with a few months of history, on every page that shows a
+    price. Ties are settled the same way every time: within a provider the older row (the index's
+    own order), between two other providers with the same timestamp the first by name."""
     return f"""(SELECT po.{field} FROM marketplace_products mp
-      JOIN price_observations po ON po.variant_id=mp.variant_id AND po.provider_id=mp.provider_id AND po.metric='{metric}'
-      WHERE mp.variant_id={alias}.id AND po.observed_at=(
-        SELECT MAX(latest.observed_at) FROM price_observations latest
-        WHERE latest.variant_id=mp.variant_id AND latest.provider_id=mp.provider_id AND latest.metric='{metric}')
-      ORDER BY CASE po.provider_id WHEN '{MANUAL_PRICE_PROVIDER}' THEN -1 WHEN 'cardmarket' THEN 0 ELSE 9 END,po.observed_at DESC LIMIT 1)"""
+      JOIN price_observations po ON po.id=(
+        SELECT latest.id FROM price_observations latest
+        WHERE latest.variant_id=mp.variant_id AND latest.provider_id=mp.provider_id AND latest.metric='{metric}'
+        ORDER BY latest.observed_at DESC,latest.id LIMIT 1)
+      WHERE mp.variant_id={alias}.id
+      ORDER BY CASE po.provider_id WHEN '{MANUAL_PRICE_PROVIDER}' THEN -1 WHEN 'cardmarket' THEN 0 ELSE 9 END,po.observed_at DESC,po.provider_id LIMIT 1)"""
 
 
 def latest_price_sql(alias="v", metric="trend"):
@@ -33,6 +38,18 @@ def latest_price_sql(alias="v", metric="trend"):
 
 def latest_price_meta_sql(alias="v", field="provider_id"):
     return latest_observation_sql(alias, "trend", field)
+
+
+def latest_prices(variant_ids):
+    """{variant_id: current price or None} for a handful of cards. For a view that picks its cards
+    first and shows only a few of them: pricing every candidate inside the query that picks them
+    costs a correlated subquery per row."""
+    variant_ids = list(dict.fromkeys(variant_ids))
+    if not variant_ids:
+        return {}
+    placeholders = ",".join("?" * len(variant_ids))
+    rows = db().execute(f"SELECT v.id,{latest_price_sql('v')} FROM variants v WHERE v.id IN ({placeholders})", variant_ids)
+    return {row[0]: row[1] for row in rows}
 
 
 @app.post("/api/prices/sync")

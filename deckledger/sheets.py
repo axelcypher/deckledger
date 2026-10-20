@@ -1,17 +1,20 @@
 """Trade / sale sheets: storage, sorting and handing cards to the renderer."""
 
+import hashlib
 import io
 import json
+import os
 import re
+import threading
 from pathlib import Path
 
 from flask import Response, jsonify, request
 
 import sheet_render
 
-from .config import SHEET_BACKGROUND_DIR, now_iso
+from .config import SHEET_BACKGROUND_DIR, SHEET_RENDER_CACHE, now_iso
 from .games import RARITY_FALLBACK_RANK, game as game_rules, rarity_rank
-from .web import app, db, login_required, user_id
+from .web import app, db, derived_from_file, login_required, user_id
 from .prices import latest_price_sql
 from .images import card_image
 from .catalog import natural_code_key
@@ -252,22 +255,99 @@ def trade_sheet_image(sheet_id, page, fmt):
         tiles.append({"image_path": image_path, "name": card["canonical_name"], "set_code": card["set_code"],
                       "number": card["collector_number"], "quantity": card["quantity"], "label": card["label"], "reserved": card["reserved"],
                       "ebay": bool(card["ebay"]), "holo": sheet_render.is_holo(card["finish"], card["variant_code"], card["rarity"], card["game_id"], card["is_parallel"])})
-    image = sheet_render.render_page(
-        tiles, columns, rows, **background_for(sheet), kind=sheet["kind"], title=sheet["name"],
-        subtitle=sheet["subtitle"], page=(page, len(pages)), scale=scale * sheet_render.scale_for(columns),
-    )
-    buffer = io.BytesIO()
-    if fmt == "png":
-        image.convert("RGB").save(buffer, format="PNG", optimize=True)
+    background, scale = background_for(sheet), scale * sheet_render.scale_for(columns)
+    key = render_key(tiles, columns, rows, background, sheet, (page, len(pages)), scale, fmt)
+    # The tag names everything drawn on the page: a browser that has it, has this page.
+    if request.if_none_match.contains(key):
+        response = Response(status=304)
     else:
-        image.convert("RGB").save(buffer, format="JPEG", quality=92, subsampling=0)
-    response = Response(buffer.getvalue(), mimetype="image/png" if fmt == "png" else "image/jpeg")
-    response.headers["Cache-Control"] = "private, no-store"
+        def render():
+            image = sheet_render.render_page(
+                tiles, columns, rows, **background, kind=sheet["kind"], title=sheet["name"],
+                subtitle=sheet["subtitle"], page=(page, len(pages)), scale=scale,
+            )
+            buffer = io.BytesIO()
+            if fmt == "png":
+                image.convert("RGB").save(buffer, format="PNG", optimize=True)
+            else:
+                image.convert("RGB").save(buffer, format="JPEG", quality=92, subsampling=0)
+            return buffer.getvalue()
+
+        response = Response(cached_render(key, fmt, render), mimetype="image/png" if fmt == "png" else "image/jpeg")
+    response.set_etag(key)
+    response.headers["Cache-Control"] = "private, no-cache"
     if request.args.get("download"):
         name = re.sub(r"[^A-Za-z0-9-]+", "-", f'{sheet["kind"]}-{sheet["name"]}').strip("-").lower() or "sheet"
         suffix = f"-{page}" if len(pages) > 1 else ""
         response.headers["Content-Disposition"] = f"attachment; filename={name}{suffix}.{fmt}"
     return response
+
+
+# ---- Rendered pages -----------------------------------------------------------------------------
+# Drawing a page takes one to five seconds, and the sheet list and the preview ask for every page
+# each time they are shown. A rendered page is kept on disk (shared by the workers) under a key
+# made of everything drawn on it, so it is drawn again only when something on it changed.
+SHEET_RENDERS_KEPT = 200
+SHEET_RENDER_BYTES_KEPT = 200 * 1024 * 1024
+_renderer_versions = {}
+
+
+def file_version(path):
+    """[path, modification time, size] of a file, or None for none."""
+    try:
+        stat = Path(path).stat() if path else None
+    except OSError:
+        return None
+    return [str(path), stat.st_mtime_ns, stat.st_size] if stat else None
+
+
+def render_key(tiles, columns, rows, background, sheet, page, scale, fmt):
+    """A name for one rendered page that changes with anything drawn on it: the cards with the
+    version of each card's image file, the layout, the background (and its file), the texts, the
+    page, the size, the format -- and the drawing code and its typeface."""
+    parts = {
+        "renderer": derived_from_file(sheet_render.__file__, _renderer_versions, lambda code: hashlib.sha256(code).hexdigest()),
+        "font": file_version(sheet_render.FONT_PATH),
+        "tiles": [{**tile, "image_path": file_version(tile["image_path"])} for tile in tiles],
+        "background": {key: file_version(value) if key == "background_image" else value for key, value in background.items()},
+        "layout": [columns, rows], "texts": [sheet["kind"], sheet["name"], sheet["subtitle"]],
+        "page": list(page), "scale": scale, "format": fmt,
+    }
+    return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()[:32]
+
+
+def cached_render(key, fmt, render):
+    """The encoded page stored under `key`, rendered (render() -> bytes) and stored first when it
+    is not there. The most recently used pages are kept, up to SHEET_RENDERS_KEPT of them and
+    SHEET_RENDER_BYTES_KEPT in all (a full-size PNG is some 4.5 MB)."""
+    SHEET_RENDER_CACHE.mkdir(parents=True, exist_ok=True)
+    path = SHEET_RENDER_CACHE / f"{key}.{fmt}"
+    try:
+        payload = path.read_bytes()
+        os.utime(path)  # recently used: the last to go
+        return payload
+    except FileNotFoundError:
+        pass
+    payload = render()
+    temporary = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")
+    temporary.write_bytes(payload)
+    os.replace(temporary, path)
+    stored = []
+    with os.scandir(SHEET_RENDER_CACHE) as entries:
+        for entry in entries:
+            try:
+                if entry.name.endswith((".jpg", ".png")):
+                    stat = entry.stat()
+                    stored.append((stat.st_mtime_ns, stat.st_size, entry.path))
+            except FileNotFoundError:
+                pass  # removed meanwhile by another worker's clean-up
+    stored.sort(reverse=True)
+    total = 0
+    for position, (_, size, stored_path) in enumerate(stored):
+        total += size
+        if position >= SHEET_RENDERS_KEPT or total > SHEET_RENDER_BYTES_KEPT:
+            Path(stored_path).unlink(missing_ok=True)
+    return payload
 
 
 # ---- Backgrounds ------------------------------------------------------------------------------

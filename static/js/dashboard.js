@@ -85,10 +85,17 @@ function paintBannerSlide(index){
   return duration;
 }
 
+// The reel of one game. A copy saved for offline use before the reel was asked for per game has
+// only the answer for every game: offline that one stands in (each slide names its game).
+async function bannerSlides(gameId){
+  try{return await api(homeBannerUrl(gameId))}
+  catch(error){if(error.isNetworkError)return await api('/api/home-banner');throw error}
+}
+
 async function loadHomeBanner(){
   clearTimeout(state.homeBannerTimer);
   try{
-    const data=await api('/api/home-banner');
+    const data=await bannerSlides(state.activeGameId);
     const matching=data.slides.filter(slide=>slide.game_id===state.activeGameId);
     const seen=new Set(),cards=[];
     for(const slide of matching)for(const card of slide.cards){
@@ -108,9 +115,11 @@ async function loadHomeBanner(){
 async function loadRecentAdditions(){
   const section=$('#dashboard-recent'),list=$('#dashboard-recent-list');
   if(!section||!list)return;
+  const gameId=state.activeGameId;
   try{
-    const cards=await api(`/api/home-recent?game_id=${encodeURIComponent(state.activeGameId)}`);
-    if(!cards.length||!$('#dashboard-recent-list'))return;
+    const cards=await api(`/api/home-recent?game_id=${encodeURIComponent(gameId)}`);
+    // Another game chosen meanwhile has its own answer on the way.
+    if(gameId!==state.activeGameId||!cards.length||!$('#dashboard-recent-list'))return;
     list.innerHTML=cards.slice(0,4).map(card=>`<button type="button" class="dashboard-recent-row" data-recent-identity="${card.identity_id}" data-recent-variant="${card.variant_id}">
       <img loading="lazy" decoding="async" src="${artUrl(card.variant_id)}" alt="">
       <span class="dashboard-recent-copy"><b>${escapeHtml(card.canonical_name)}</b><small>${escapeHtml(card.set_name)} · #${escapeHtml(card.collector_number)}</small></span>

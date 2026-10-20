@@ -1263,16 +1263,22 @@ def sync_listings(connection, uid):
         )
         return item_id
 
-    for section in pages("ActiveList"):
+    # Every page is fetched before anything is written: the first write takes the database's
+    # write lock, and the app's own writes would wait out (or give up on) every eBay call after it.
+    # A call that fails now leaves the stored listings as they were instead of half updated.
+    active_pages = list(pages("ActiveList"))
+    unsold_pages = list(pages("UnsoldList", "<DurationInDays>60</DurationInDays>"))
+    sold_pages = list(pages("SoldList", "<DurationInDays>60</DurationInDays>"))
+    for section in active_pages:
         for item in section.findall("ItemArray/Item") if section is not None else []:
             if upsert(item, "active"):
                 seen_active.add(text(item, "ItemID"))
                 counts["active"] += 1
-    for section in pages("UnsoldList", "<DurationInDays>60</DurationInDays>"):
+    for section in unsold_pages:
         for item in section.findall("ItemArray/Item") if section is not None else []:
             if text(item, "ItemID") not in seen_active and upsert(item, "unsold"):
                 counts["unsold"] += 1
-    for section in pages("SoldList", "<DurationInDays>60</DurationInDays>"):
+    for section in sold_pages:
         for transaction in section.iter("Transaction") if section is not None else []:
             item = transaction.find("Item")
             item_id = text(item, "ItemID")
@@ -1432,6 +1438,20 @@ def sync_traffic(connection, uid):
     # eBay counts days in its own (Pacific) time; today there may not have started yet.
     last = (datetime.now(timezone.utc) - timedelta(hours=8)).date()
     first = last - timedelta(days=TRAFFIC_DAYS - 1)
+    # Written after the reports are in (also when a later batch fails), not between the calls:
+    # a write holds the database's write lock until the caller commits.
+    updates = []
+    try:
+        fetch_traffic(connection, config, token, listing_ids, first, last, updates)
+    finally:
+        for values, item_id in updates:
+            connection.execute(f"UPDATE ebay_listings SET {','.join(f'{column}=?' for column in values)} WHERE user_id=? AND item_id=?",
+                               (*values.values(), uid, item_id))
+
+
+def fetch_traffic(connection, config, token, listing_ids, first, last, updates):
+    """The traffic report in batches of TRAFFIC_BATCH listings; appends ({column: value}, item_id)
+    to `updates` as each batch comes in."""
     for start in range(0, len(listing_ids), TRAFFIC_BATCH):
         batch = listing_ids[start:start + TRAFFIC_BATCH]
         response, payload = rest_get(connection, f'{hosts(config)["api"]}/sell/analytics/v1/traffic_report', token, config, {
@@ -1448,8 +1468,7 @@ def sync_traffic(connection, uid):
                 if key in TRAFFIC_METRICS and metric.get("value") is not None:
                     values[TRAFFIC_METRICS[key]] = metric["value"]
             if item_id and values:
-                connection.execute(f"UPDATE ebay_listings SET {','.join(f'{column}=?' for column in values)} WHERE user_id=? AND item_id=?",
-                                   (*values.values(), uid, item_id))
+                updates.append((values, item_id))
 
 
 @app.post("/api/ebay/listings/sync")
@@ -1613,13 +1632,21 @@ def fetch_item(connection, item_id):
     }
 
 
-def refresh_tracked(connection, row):
-    try:
-        fields = fetch_item(connection, row["item_id"])
-    except EbayError as error:
-        fields = {"status": "error", "error": str(error)[:300]}
-    fields["checked_at"] = now_iso()
-    connection.execute(f"UPDATE ebay_tracked_items SET {','.join(f'{key}=?' for key in fields)} WHERE id=?", (*fields.values(), row["id"]))
+def refresh_tracked(connection, rows):
+    """Reads the followed listings (rows with id and item_id) from eBay, then stores what came
+    back. Nothing is written while eBay is being asked: the first write takes the database's
+    write lock until the caller commits, and up to sixty calls of up to 30 s each would hold the
+    app's own writes off for longer than they wait."""
+    found = []
+    for row in rows:
+        try:
+            fields = fetch_item(connection, row["item_id"])
+        except EbayError as error:
+            fields = {"status": "error", "error": str(error)[:300]}
+        fields["checked_at"] = now_iso()
+        found.append((row["id"], fields))
+    for tracked_id, fields in found:
+        connection.execute(f"UPDATE ebay_tracked_items SET {','.join(f'{key}=?' for key in fields)} WHERE id=?", (*fields.values(), tracked_id))
 
 
 def store_metric(connection, variant_id, metric, amount, stamp):
@@ -1689,7 +1716,7 @@ def variant_ebay_items(variant_id):
         (variant_id, item_id, item_url(config, item_id), user_id(), now_iso()),
     )
     db().commit()
-    refresh_tracked(db(), {"id": cursor.lastrowid, "item_id": item_id})
+    refresh_tracked(db(), [{"id": cursor.lastrowid, "item_id": item_id}])
     update_card_price(db(), variant_id)
     db().commit()
     return jsonify(tracked_payload(variant_id)), 201
@@ -1710,8 +1737,7 @@ def remove_variant_ebay_item(variant_id, item_id):
 @login_required
 def refresh_variant_ebay_items(variant_id):
     require_config(db())
-    for row in db().execute("SELECT id,item_id FROM ebay_tracked_items WHERE variant_id=?", (variant_id,)).fetchall():
-        refresh_tracked(db(), row)
+    refresh_tracked(db(), db().execute("SELECT id,item_id FROM ebay_tracked_items WHERE variant_id=?", (variant_id,)).fetchall())
     update_card_price(db(), variant_id)
     db().commit()
     return jsonify(tracked_payload(variant_id))
@@ -1735,9 +1761,8 @@ def run_due(connection, tracked_limit=60):
            ORDER BY checked_at IS NOT NULL,checked_at LIMIT ?""",
         (fresh, day, (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(), tracked_limit),
     ).fetchall()
-    for row in due:
-        refresh_tracked(connection, {"id": row[0], "item_id": row[1]})
-        summary["tracked"] += 1
+    refresh_tracked(connection, [{"id": row[0], "item_id": row[1]} for row in due])
+    summary["tracked"] += len(due)
     for variant_id in {row[2] for row in due}:
         update_card_price(connection, variant_id)
     connection.commit()

@@ -72,6 +72,18 @@ def test_visitors_see_every_card_of_a_shared_game_with_counts_but_no_prices(clie
     assert owned_only and all(card["quantity"] for card in owned_only)
 
 
+def test_the_profile_counts_each_shared_game_on_its_own(client, visitor):
+    own(EMBER8, 2), own(EMBER8_HOLO, 1), own(TIDE8, 0), own(ELSA, 3)
+    share(client, games=["vcard", "lorcana", "one-piece"])
+    games = {game["id"]: game for game in visitor.get("/api/public/alex").get_json()["games"]}
+    totals = {row["game_id"]: row["n"] for row in query(
+        "SELECT p.game_id, COUNT(DISTINCT p.identity_id) n FROM printings p JOIN variants v ON v.printing_id=p.id GROUP BY p.game_id")}
+    # A row at zero copies is no card owned; the total counts cards, not their prints.
+    assert {key: (game["owned"], game["copies"], game["total"]) for key, game in games.items()} == {
+        "vcard": (1, 3, totals["vcard"]), "lorcana": (1, 3, totals["lorcana"]), "one-piece": (0, 0, totals["one-piece"]),
+    }
+
+
 def test_a_game_not_shared_stays_private(client, visitor):
     own(ELSA, 1)
     share(client)

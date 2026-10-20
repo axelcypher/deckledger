@@ -136,6 +136,22 @@ def test_the_app_starts_on_an_upgraded_database(first_release, monkeypatch):
         connection.close()
 
 
+def test_start_up_switches_the_database_to_wal(first_release, monkeypatch):
+    """The web app's connections no longer ask for WAL themselves: start-up sets it once, in the
+    file, for every connection that follows."""
+    def journal_mode():
+        connection = connect(first_release)
+        try:
+            return connection.execute("PRAGMA journal_mode").fetchone()[0]
+        finally:
+            connection.close()
+
+    assert journal_mode() != "wal"
+    monkeypatch.setattr(deckledger.schema, "DB_PATH", str(first_release))
+    deckledger.schema.init_database()
+    assert journal_mode() == "wal"
+
+
 # ---- the runner --------------------------------------------------------------------------------
 
 def test_a_failing_migration_leaves_no_trace_and_is_not_recorded(tmp_path):
@@ -284,3 +300,20 @@ def test_the_demo_account_is_locked_while_it_has_the_published_password(tmp_path
     connection = connect(path)
     assert (connection.execute("SELECT password_hash FROM users WHERE username='demo'").fetchone()[0] == "") is locked
     connection.close()
+
+
+@pytest.mark.parametrize("statement, index", [
+    ("SELECT MAX(observed_at) FROM price_observations", "idx_prices_observed_at"),
+    ("SELECT 1 FROM ebay_listings l WHERE l.user_id=1 AND l.variant_id='x' AND l.status='active'", "idx_ebay_listings_variant"),
+    ("SELECT 1 FROM card_identities i WHERE i.canonical_name='elsa' COLLATE NOCASE", "idx_card_identities_name"),
+    ("SELECT * FROM deal_events WHERE deal_id=1", "idx_deal_events_deal"),
+    ("SELECT * FROM inbox_items WHERE post_id=1", "idx_inbox_items_post"),
+    ("DELETE FROM applied_requests WHERE created_at<datetime('now','-30 days')", "idx_applied_requests_created"),
+])
+def test_frequent_lookups_use_an_index(statement, index):
+    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    try:
+        plan = " ".join(row[3] for row in connection.execute(f"EXPLAIN QUERY PLAN {statement}"))
+    finally:
+        connection.close()
+    assert index in plan, plan

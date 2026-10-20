@@ -123,6 +123,10 @@ def init_database():
     connection = sqlite3.connect(DB_PATH)
     connection.execute("PRAGMA busy_timeout = 10000")
     try:
+        # WAL lets readers and the one writer work side by side. The mode is stored in the
+        # database file itself, so setting it once here covers every later connection; doing it
+        # on every request cost each of them a lock round-trip.
+        connection.execute("PRAGMA journal_mode = WAL")
         migrate(connection, DB_PATH)
         # Gunicorn workers can import the app concurrently on a fresh volume.
         # Serialize the one-time seed so both workers never insert the first admin.

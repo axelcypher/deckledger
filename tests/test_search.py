@@ -83,3 +83,48 @@ def test_the_global_search_is_forgiving_and_ranked(client):
     assert {row["canonical_name"] for row in found} == {"Ember (PL8)"}
     found = client.get("/api/search", query_string={"q": "Embr Test Set", "game_id": "vcard", "limit": 80}).get_json()
     assert found and found[0]["canonical_name"] == "Ember" and {"Ember (PL8)", "Ember (PL9)"} <= {row["canonical_name"] for row in found}
+
+
+def reference_near_miss(token, text):
+    """near_miss as it was first written: a full edit-distance table per word and per prefix
+    length. The faster version (one banded table per word) has to agree with it everywhere."""
+    def within(word, other, limit):
+        if abs(len(word) - len(other)) > limit:
+            return False
+        previous = list(range(len(other) + 1))
+        for i, char in enumerate(word, 1):
+            current = [i]
+            for j, other_char in enumerate(other, 1):
+                current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (char != other_char)))
+            previous = current
+        return previous[-1] <= limit
+
+    if len(token) < 4 or any(char.isdigit() for char in token):
+        return False
+    words = search.field_words(text)[0]
+    limit = 1 if len(token) < 8 else 2
+    return any(
+        within(token, word, limit) or any(within(token, word[:size], limit) for size in (len(token) - 1, len(token), len(token) + 1) if 0 < size < len(word))
+        for word in list(words) + [a + b for a, b in zip(words, words[1:])]
+    )
+
+
+def test_typo_tolerance_agrees_with_the_plain_edit_distance():
+    import random
+    generator = random.Random(7)
+    # A small alphabet makes near misses common; lengths around 4 and 8 cover both limits.
+    alphabet = "abcde"
+    texts = ["Mickey Mouse - Detective", "Smug Alana PL9", "Goddess of the Sea", "Ember (PL8)", "Maleficent", "a", ""]
+    texts += [" ".join("".join(generator.choice(alphabet) for _ in range(generator.randint(1, 11))) for _ in range(generator.randint(1, 3))) for _ in range(400)]
+    tokens = ["mickey", "mikey", "mickeymouse", "godess", "goddes", "smugalana", "malefiscent", "embr", "ember", "pl8"]
+    tokens += ["".join(generator.choice(alphabet) for _ in range(generator.randint(3, 10))) for _ in range(150)]
+    disagreements = [(token, text) for token in tokens for text in texts if search.near_miss(token, text) != reference_near_miss(token, text)]
+    assert not disagreements
+    matches = sum(reference_near_miss(token, text) for token in tokens for text in texts)
+    assert matches > 500, "the sample has to contain plenty of near misses to mean anything"
+
+
+def test_short_words_and_numbers_stay_out_of_the_typo_cache():
+    search.fuzzy_match.cache_clear()
+    assert not search.near_miss("els", "Elsa - Snow Queen") and not search.near_miss("pl10", "Smug Alana PL9")
+    assert search.fuzzy_match.cache_info().currsize == 0

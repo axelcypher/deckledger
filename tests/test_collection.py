@@ -1,7 +1,7 @@
 """The collection write endpoint and the small input checks around it."""
 import pytest
 
-from conftest import ADMIN, ELSA, EMBER8, TIDE8, login, query
+from conftest import ADMIN, ELSA, EMBER8, EMBER9, TIDE8, login, query
 
 
 def quantity(variant_id, **filters):
@@ -108,7 +108,16 @@ def test_simultaneous_deck_adds_all_count(client):
 def test_stats_only_answers_match_the_full_ones(client):
     """The grids refresh their summary numbers after a quantity change without the card list."""
     client.post("/api/collection", json={"variant_id": EMBER8, "delta": 3})
-    for url in ("/api/sets/vcard-test/cards?language=EN", "/api/games/vcard/cards?language=EN", "/api/collection?game_id=vcard"):
+    client.post("/api/collection", json={"variant_id": TIDE8, "delta": 1, "condition": "Played"})
+    # Prices of owned and of unowned cards: only the owned ones may count towards the value.
+    for variant_id, amount in ((EMBER8, 1.1), (TIDE8, 2.2), (EMBER9, 30.0)):
+        query("INSERT OR IGNORE INTO marketplace_products VALUES('cardmarket',?,?,'vcard','https://example.com','test','2026-01-01','{}')", (f"cm-{variant_id}", variant_id))
+        query("INSERT INTO price_observations(variant_id,provider_id,metric,amount,currency,observed_at) VALUES(?,'cardmarket','trend',?,'EUR','2026-01-01T06:00:00+00:00')", (variant_id, amount))
+    for url in ("/api/sets/vcard-test/cards?language=EN", "/api/games/vcard/cards?language=EN", "/api/collection?game_id=vcard",
+                "/api/games/vcard/cards?language=EN&mode=owned", "/api/games/vcard/cards?language=EN&q=ember", "/api/sets/vcard-test/cards?language=EN&finish=foil"):
         full, short = client.get(url).get_json(), client.get(url + "&stats_only=1").get_json()
         assert short["stats"] == full["stats"], url
         assert "cards" not in short and "groups" not in short, url
+        if "groups" in full:
+            assert short["group_count"] == len(full["groups"]), url
+    assert client.get("/api/games/vcard/cards?language=EN&stats_only=1").get_json()["stats"]["value"] == round(3 * 1.1 + 2.2, 2)
