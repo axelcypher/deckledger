@@ -13,7 +13,7 @@ EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_RU_NAME.
   background job (ebay_sync.py) asks every LISTING_SYNC_MINUTES; "Jetzt abgleichen" asks at once.
 * Drafts: made from cards (a sheet, the collection's selection) with the user's preset
   ("Angebotsvorlage"). They stay in DeckLedger until the user publishes one; publishing uploads
-  the card image (UploadSiteHostedPictures) and lists it (AddFixedPriceItem) with the seller's
+  the card image (Media API, upload_picture) and lists it (AddFixedPriceItem) with the seller's
   business policies. eBay's own API cannot create drafts in Seller Hub.
 * Tracked listings: any listing URL entered in a card's price tab is read through the Browse API
   with an application token (no user account needed). The active ones' median and lowest price
@@ -330,7 +330,7 @@ def number(element, path):
         return None
 
 
-def trading_call(connection, uid, call, body, image=None):
+def trading_call(connection, uid, call, body):
     """One Trading API call with the user's OAuth token. Returns the answer's root element (without
     namespaces) and its warnings; eBay's errors become an EbayError."""
     config = require_config(connection, for_users=True)
@@ -343,10 +343,7 @@ def trading_call(connection, uid, call, body, image=None):
                 f'<ErrorLanguage>{marketplace(config)["language"]}</ErrorLanguage><WarningLevel>High</WarningLevel>{body}</{call}Request>')
     url = f'{hosts(config)["api"]}/ws/api.dll'
     try:
-        if image:
-            response = http("POST", url, headers=headers, files={"XML Payload": (None, document.encode("utf-8"), "text/xml;charset=utf-8"), "image": image}, timeout=90)
-        else:
-            response = http("POST", url, headers={**headers, "Content-Type": "text/xml;charset=utf-8"}, data=document.encode("utf-8"))
+        response = http("POST", url, headers={**headers, "Content-Type": "text/xml;charset=utf-8"}, data=document.encode("utf-8"))
     except requests.RequestException as error:
         raise EbayError(f"eBay ist nicht erreichbar ({error.__class__.__name__}).", 502)
     try:
@@ -1023,6 +1020,29 @@ def listing_fees(root):
     return round(total, 2)
 
 
+MEDIA_IMAGE_UPLOAD = "/commerce/media/v1_beta/image/create_image_from_file"
+
+
+def upload_picture(connection, uid, name, payload, content_type):
+    """Puts a picture on eBay's picture servers (EPS) and returns its URL for a listing's
+    PictureURL. Through the Media API with the user's token (scope sell.inventory): the Trading
+    API's UploadSiteHostedPictures, used before, was switched off in October 2026 and answers 404."""
+    config = require_config(connection, for_users=True)
+    token = user_token(connection, uid)
+    try:
+        # files= makes the multipart/form-data body (and its boundary); the field must be "image".
+        response = http("POST", f'{hosts(config)["api"]}{MEDIA_IMAGE_UPLOAD}', timeout=90,
+                        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                        files={"image": (name, payload, content_type)})
+    except requests.RequestException as error:
+        raise EbayError(f"eBay ist nicht erreichbar ({error.__class__.__name__}).", 502)
+    body = response_json(response)
+    url = body.get("imageUrl")
+    if response.status_code not in (200, 201) or not url:
+        raise EbayError("eBay hat das Bild nicht angenommen: " + rest_error(body, f"HTTP {response.status_code}"), 502)
+    return url
+
+
 def upload_card_picture(connection, uid, variant_id):
     """The card's image on eBay's picture servers: listings need a public HTTPS image, and this
     server is usually not one."""
@@ -1038,13 +1058,7 @@ def upload_card_picture(connection, uid, variant_id):
             buffer = io.BytesIO()
             image.convert("RGB").save(buffer, "JPEG", quality=92)
         payload, content_type = buffer.getvalue(), "image/jpeg"
-    root, _ = trading_call(connection, uid, "UploadSiteHostedPictures",
-                           f"<PictureName>{xml_escape(variant_id[:80])}</PictureName><PictureSet>Supersize</PictureSet>",
-                           image=("card.jpg" if content_type == "image/jpeg" else "card.png", payload, content_type))
-    url = text(root, "SiteHostedPictureDetails/FullURL")
-    if not url:
-        raise EbayError("eBay hat das Kartenbild nicht angenommen.", 502)
-    return url
+    return upload_picture(connection, uid, "card.jpg" if content_type == "image/jpeg" else "card.png", payload, content_type)
 
 
 @app.post("/api/ebay/drafts/<int:draft_id>/verify")

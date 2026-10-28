@@ -79,7 +79,8 @@ class FakeEbay:
                 return trading(call, f"<Errors><SeverityCode>Error</SeverityCode><LongMessage>{self.fail[call]}</LongMessage></Errors>").__class__(
                     content=f'<{call}Response xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><SeverityCode>Error</SeverityCode><LongMessage>{self.fail[call]}</LongMessage></Errors></{call}Response>'.encode())
             if call == "UploadSiteHostedPictures":
-                return trading(call, "<SiteHostedPictureDetails><FullURL>https://i.ebayimg.com/card.jpg</FullURL></SiteHostedPictureDetails>")
+                # Switched off by eBay in October 2026: an HTML error page, no XML.
+                return Response(404, content=b"<html><body>Not Found</body></html>")
             if call == "GetItem":
                 return trading(call, "<Item><PictureDetails>" + "".join(f"<PictureURL>{url}</PictureURL>" for url in self.item_pictures) + "</PictureDetails></Item>")
             if call == "ReviseFixedPriceItem":
@@ -90,6 +91,12 @@ class FakeEbay:
                 body = kwargs["data"].decode()
                 name = next(name for name in self.selling if f"<{name}><Include>true" in body)
                 return trading(call, self.selling[name])
+        if url.endswith("/commerce/media/v1_beta/image/create_image_from_file"):
+            assert method == "POST" and kwargs["headers"]["Authorization"].startswith("Bearer ")
+            if "image" not in kwargs.get("files", {}):
+                return Response(400, {"errors": [{"errorId": 190205, "message": "The image file is required."}]})
+            return Response(201, {"imageUrl": "https://i.ebayimg.com/card.jpg", "maxDimensionImageUrl": "https://i.ebayimg.com/card-max.jpg",
+                                  "expirationDate": "2026-11-27T00:00:00.000Z"})
         if method == "GET" and url in self.picture_files:
             return Response(content=self.picture_files[url])
         raise AssertionError(f"unexpected request {method} {url}")
@@ -292,6 +299,26 @@ def ready_draft(client, monkeypatch, tmp_path):
     client.put("/api/ebay/preset", json={"game_id": "vcard", "fulfillment_policy_id": "fulfillment-1", "payment_policy_id": "payment-1",
                                           "return_policy_id": "return-1", "postal_code": "10115", "price_fallback": "2,50"})
     return client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["ids"][0]
+
+
+def test_the_card_picture_goes_up_through_the_media_api(client, configured, monkeypatch, tmp_path):
+    """eBay switched the Trading API's UploadSiteHostedPictures off in October 2026 (it answers
+    404); pictures go to the Media API, as a multipart "image" with the user's bearer token."""
+    draft_id = ready_draft(client, monkeypatch, tmp_path)
+    assert client.post(f"/api/ebay/drafts/{draft_id}/verify").get_json()["ok"] is True
+    uploads = [call for call in configured.calls if call[1].endswith("/image/create_image_from_file")]
+    assert len(uploads) == 1
+    method, url, sent = uploads[0]
+    assert (method, url) == ("POST", "https://api.ebay.com/commerce/media/v1_beta/image/create_image_from_file")
+    assert sent["headers"]["Authorization"] == "Bearer token" and "Content-Type" not in sent["headers"]
+    assert sent["files"]["image"][0] == "card.png" and sent["files"]["image"][2] == "image/png"
+    assert not any(call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "UploadSiteHostedPictures" for call in configured.calls)
+    # eBay's own reason comes through when it refuses a picture.
+    original = deckledger.ebay.http
+    refusal = Response(400, {"errors": [{"errorId": 190203, "longMessage": "The supplied image is in a format that is not supported."}]})
+    monkeypatch.setattr(deckledger.ebay, "http", lambda method, url, **kwargs: refusal if url.endswith("/image/create_image_from_file") else original(method, url, **kwargs))
+    refused = client.post(f"/api/ebay/drafts/{draft_id}/verify")
+    assert refused.status_code == 502 and "format that is not supported" in refused.get_json()["error"]
 
 
 def test_publishing_a_draft(client, configured, monkeypatch, tmp_path):
@@ -769,7 +796,7 @@ def test_listings_go_out_with_the_own_photos(client, configured, monkeypatch, tm
     upload_photo(client), upload_photo(client)
     draft = client.get("/api/ebay/drafts").get_json()["drafts"][0]
     assert len(draft["photos"]) == 2, "drafts show the card's photos"
-    uploads = lambda: [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "UploadSiteHostedPictures"]
+    uploads = lambda: [call for call in configured.calls if call[1].endswith("/image/create_image_from_file")]
     assert client.post(f"/api/ebay/drafts/{draft_id}/verify").get_json()["ok"] is True
     assert len(uploads()) == 2 and all(call[2]["files"]["image"][2] == "image/jpeg" for call in uploads())
     verified = [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "VerifyAddFixedPriceItem"][0][2]["data"].decode()
@@ -809,7 +836,7 @@ def test_pictures_of_a_running_listing_can_be_fetched_edited_and_put_back(client
     client.patch(f"/api/ebay/photos/{second_id}", json={"crop": {"x": 0, "y": 0, "w": 1, "h": 0.6}})
     assert client.post("/api/ebay/listings/111/revise", json={"parts": ["pictures"]}).get_json()["revised"] is True
     calls = lambda name: [call for call in configured.calls if call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == name]
-    assert len(calls("UploadSiteHostedPictures")) == 1
+    assert len([call for call in configured.calls if call[1].endswith("/image/create_image_from_file")]) == 1
     document = calls("ReviseFixedPriceItem")[0][2]["data"].decode()
     assert document.index(f"<PictureURL>{first}</PictureURL>") < document.index("<PictureURL>https://i.ebayimg.com/card.jpg</PictureURL>")
     assert query("SELECT image_url FROM ebay_listings WHERE item_id='111'")[0]["image_url"] == first

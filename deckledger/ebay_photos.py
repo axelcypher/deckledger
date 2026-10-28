@@ -6,8 +6,9 @@ and made again and serve every listing of that card. Each keeps the uploaded ori
 listed is cut from it on the server by the crop the user chose (fractions of the upright,
 rotated original), so the crop can be changed any time without uploading again.
 
-On eBay a photo is uploaded once (UploadSiteHostedPictures) and its URL reused while eBay keeps
-it: a picture no listing uses expires after 30 days, so an older upload is made again.
+On eBay a photo is uploaded once (Media API, deckledger/ebay.py upload_picture) and its URL reused
+while eBay keeps it: a picture no listing uses expires after 30 days, so an older upload is made
+again.
 
 The pictures a listing already has on eBay can be fetched as photos of its card, to crop, sort or
 replace them and put them back on that listing.
@@ -120,8 +121,7 @@ def own_photo(photo_id):
 def listing_pictures(connection, uid, variant_id, upload_card_picture):
     """The eBay picture URLs for a listing of this card: the user's photos in their order, else
     the catalogue image."""
-    from .ebay import EbayError, text, trading_call
-    from xml.sax.saxutils import escape as xml_escape
+    from .ebay import EbayError, upload_picture
 
     rows = connection.execute("SELECT * FROM ebay_photos WHERE user_id=? AND variant_id=? ORDER BY position,id", (uid, variant_id)).fetchall()
     if not rows:
@@ -135,12 +135,7 @@ def listing_pictures(connection, uid, variant_id, upload_card_picture):
         path = photo_file(row["id"])
         if not path.is_file():
             raise EbayError("Ein Foto dieser Karte fehlt auf dem Server. Lade es bitte neu hoch.")
-        root, _ = trading_call(connection, uid, "UploadSiteHostedPictures",
-                               f'<PictureName>{xml_escape(f"{variant_id}-{row["id"]}"[:80])}</PictureName><PictureSet>Supersize</PictureSet>',
-                               image=(f'photo-{row["id"]}.jpg', path.read_bytes(), "image/jpeg"))
-        url = text(root, "SiteHostedPictureDetails/FullURL")
-        if not url:
-            raise EbayError("eBay hat ein Foto nicht angenommen.", 502)
+        url = upload_picture(connection, uid, f'photo-{row["id"]}.jpg', path.read_bytes(), "image/jpeg")
         connection.execute("UPDATE ebay_photos SET eps_url=?,eps_uploaded_at=? WHERE id=?", (url, now_iso(), row["id"]))
         connection.commit()
         urls.append(url)
