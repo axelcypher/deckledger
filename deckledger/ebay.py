@@ -58,8 +58,10 @@ PUBLIC_KEYS = {}
 PRESET_SETTING = "ebayPreset"
 CONFIG_DEFAULTS = {"client_id": "", "client_secret": "", "ru_name": "", "environment": "production", "marketplace": "EBAY_DE"}
 ENVIRONMENTS = {
-    "production": {"auth": "https://auth.ebay.com/oauth2/authorize", "api": "https://api.ebay.com", "apiz": "https://apiz.ebay.com"},
-    "sandbox": {"auth": "https://auth.sandbox.ebay.com/oauth2/authorize", "api": "https://api.sandbox.ebay.com", "apiz": "https://apiz.sandbox.ebay.com"},
+    "production": {"auth": "https://auth.ebay.com/oauth2/authorize", "api": "https://api.ebay.com", "apiz": "https://apiz.ebay.com",
+                   "apim": "https://apim.ebay.com"},
+    "sandbox": {"auth": "https://auth.sandbox.ebay.com/oauth2/authorize", "api": "https://api.sandbox.ebay.com", "apiz": "https://apiz.sandbox.ebay.com",
+                "apim": "https://apim.sandbox.ebay.com"},
 }
 MARKETPLACES = {
     "EBAY_DE": {"label": "eBay.de", "site_id": 77, "site": "Germany", "currency": "EUR", "country": "DE", "domain": "www.ebay.de", "language": "de_DE"},
@@ -1026,12 +1028,13 @@ MEDIA_IMAGE_UPLOAD = "/commerce/media/v1_beta/image/create_image_from_file"
 def upload_picture(connection, uid, name, payload, content_type):
     """Puts a picture on eBay's picture servers (EPS) and returns its URL for a listing's
     PictureURL. Through the Media API with the user's token (scope sell.inventory): the Trading
-    API's UploadSiteHostedPictures, used before, was switched off in October 2026 and answers 404."""
+    API's UploadSiteHostedPictures, used before, was switched off in October 2026 and answers 404.
+    The Media API's images live on the apim host; api.ebay.com answers 404 for this path."""
     config = require_config(connection, for_users=True)
     token = user_token(connection, uid)
     try:
         # files= makes the multipart/form-data body (and its boundary); the field must be "image".
-        response = http("POST", f'{hosts(config)["api"]}{MEDIA_IMAGE_UPLOAD}', timeout=90,
+        response = http("POST", f'{hosts(config)["apim"]}{MEDIA_IMAGE_UPLOAD}', timeout=90,
                         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
                         files={"image": (name, payload, content_type)})
     except requests.RequestException as error:

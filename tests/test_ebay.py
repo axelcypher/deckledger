@@ -92,6 +92,9 @@ class FakeEbay:
                 name = next(name for name in self.selling if f"<{name}><Include>true" in body)
                 return trading(call, self.selling[name])
         if url.endswith("/commerce/media/v1_beta/image/create_image_from_file"):
+            if not url.startswith("https://apim.ebay.com/"):
+                # Like eBay: the Media API's image calls exist only on the apim host.
+                return Response(404, content=b"")
             assert method == "POST" and kwargs["headers"]["Authorization"].startswith("Bearer ")
             if "image" not in kwargs.get("files", {}):
                 return Response(400, {"errors": [{"errorId": 190205, "message": "The image file is required."}]})
@@ -309,7 +312,7 @@ def test_the_card_picture_goes_up_through_the_media_api(client, configured, monk
     uploads = [call for call in configured.calls if call[1].endswith("/image/create_image_from_file")]
     assert len(uploads) == 1
     method, url, sent = uploads[0]
-    assert (method, url) == ("POST", "https://api.ebay.com/commerce/media/v1_beta/image/create_image_from_file")
+    assert (method, url) == ("POST", "https://apim.ebay.com/commerce/media/v1_beta/image/create_image_from_file")
     assert sent["headers"]["Authorization"] == "Bearer token" and "Content-Type" not in sent["headers"]
     assert sent["files"]["image"][0] == "card.png" and sent["files"]["image"][2] == "image/png"
     assert not any(call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "UploadSiteHostedPictures" for call in configured.calls)
