@@ -40,6 +40,12 @@ describe('finish', () => {
     assert.equal(run(`artUrl('a b/c')`), '/art/a%20b%2Fc.svg?v=6&size=thumb');
     assert.equal(run(`artUrl('x','full')`), '/art/x.svg?v=6');
   });
+
+  test('the foil mask is the variant\'s, also for rows with an id of their own', () => {
+    const mask = variant => run(`finishThumb(${JSON.stringify(variant)},'/art/x.svg')`).match(/--foil-mask:url\('([^']+)'\)/)[1];
+    assert.equal(mask({ id: 'v-1' }), '/foil-mask/v-1.webp?v=2');
+    assert.equal(mask({ id: 72, variant_id: 'v-2' }), '/foil-mask/v-2.webp?v=2');
+  });
 });
 
 describe('text and money', () => {

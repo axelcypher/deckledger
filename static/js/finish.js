@@ -33,9 +33,10 @@ function finishPresentation(variant={}){
 }
 function finishThumb(variant,src,alt='',className=''){
   const visual=finishPresentation(variant);
-  // Callers pass differently-shaped variant objects (.id from physicalVariants, .variant_id
-  // from search results) -- same fallback pattern already used at every artUrl() call site.
-  const maskUrl=foilMaskUrl(variant.id||variant.variant_id);
+  // Callers pass differently-shaped variant objects: .variant_id from search results, sheets,
+  // deals and eBay drafts (whose own .id is the row's, not the variant's), only .id from
+  // physicalVariants -- so .variant_id wins.
+  const maskUrl=foilMaskUrl(variant.variant_id||variant.id);
   return `<span class="card-finish-frame finish-thumb ${visual.effect} ${className}" style="--foil-mask:url('${maskUrl}')"><img loading="lazy" src="${src}" alt="${escapeHtml(alt)}"><div class="foil-fx foil-fx-a" aria-hidden="true"></div><div class="foil-fx foil-fx-b" aria-hidden="true"></div><div class="foil-fx foil-fx-c" aria-hidden="true"></div></span>`;
 }
 
