@@ -1,235 +1,151 @@
 # DeckLedger
 
-Self-hosted, multi-user collection manager for trading card games. This repository contains a runnable MVP based on `tcg_collection_planning.md`.
+Self-hosted, multi-user collection manager for trading card games: Disney Lorcana, One Piece, hololive OCG and VCard TCG. It keeps the catalogue, each account's collection, watchlists and decks, and the selling side (trade and sale sheets, deals, eBay) in one Flask app with an SQLite database, shipped as a single container image (`ghcr.io/axelcypher/deckledger`). In use.
 
-## Start
+## Features
 
-```bash
-docker compose up --build -d
-```
-
-Open <http://localhost:18081> and sign in as `admin` / `admin`. Change that password
-under **Admin → Benutzer** right away and create the other accounts there. There is no demo
-account; a database that still has the old `demo` / `deckledger` one gets it locked.
-
-## Included in the MVP
-
-- Local accounts with user/admin roles
-- Global collection dashboard for Lorcana, One Piece, hololive OCG and VCard TCG
-- Set-first catalogue navigation with filters, sorting, language selection and zoom
-- Variant-aware card details, source links and relationships
-- Persistent collection quantities, conditions and watchlist entries
-- Explicit Edit Mode and Quick Entry
-- Global card, set and collector-number search; every search box takes the text as typed or as a regular expression, ignoring case, so `PL9|PL10` or `PL(9|10)` finds both
-- Text-list import with preview, matching and undo
-- JSON and CSV export
-- SQLite persistence in the `deckledger_data` Docker volume
-- Provider-backed real card images cached in the persistent volume
-- Direct source links from every displayed market price
-- Daily Cardmarket prices for Lorcana and unambiguous One Piece products
-- Language-separated hololive prices: TCGplayer/TCGCSV for EN and Yuyutei retail for JP
-- Persistent global TCG context across collection, search, watchlists and decks
-- Multiple named watchlists per TCG with catalogue-style filters and sorting
-- Saved decklists with module-defined zones, formats and official-rule validation
-- Trade and sale sheets, for what is offered (WTS, WTT or both) and for what is looked for (WTB, WTTF or both; picked from the watchlists or the whole catalogue): pick cards from the collection, set quantities and price labels, and download the sheet as an image collage on a playmat-style background, with a ready-to-paste text list for the post; the background is one of the drawn mats or a picture of your own (uploaded in the sheet editor, per account); holo and other foil prints are marked in the image with a rainbow sheen and an iridescent frame, and VCard's print-file images are trimmed to the cut card
+- Local accounts with user and admin roles; optional sign-in through one OAuth2/OIDC provider
+- Set-first catalogue for all four games with filters, sorting, language selection and zoom, imported from the publishers' and community sources and refreshed automatically
+- Variant-aware card details (finishes, editions, promos linked to their base card), source links and real card images cached locally
+- Collection with quantities, conditions and graded copies; an explicit edit mode; multi-select for one manual price, a watchlist, a sheet, eBay drafts or removal (with undo)
+- Search over cards, sets and collector numbers; every search box takes plain text or a regular expression, ignoring case (`PL9|PL10` finds both)
+- Several named watchlists per game; holding or right-clicking a heart puts the card on any of them or on a new one
+- Decklists with game-defined zones, formats and official-rule validation
+- Market prices with history and a source link: Cardmarket for Lorcana and One Piece, TCGplayer through TCGCSV for hololive EN, Yuyutei for hololive JP, converted to EUR at the ECB rate; a manual price for any card
+- Trade and sale sheets (WTS, WTT, WTB, WTTF) downloaded as an image collage with a text list for the post; comments on linked posts and matching posts in subreddits land in an inbox
 - Deals: what was sold, bought or traded, with whom and at what price, booked into the collection and kept as a history
-- JSON backups carry collection, decks, watchlists, sheets and deals, and restore all five
-- Holding (or right-clicking) any heart opens the card's watchlists: put it on any of them or on a new one
-- Multi-select in the collection: one manual price for many cards (or remove theirs), put them on a watchlist or a sheet, make eBay drafts, or take them out of the collection (with undo)
-- eBay: connect a seller account, follow any eBay listing in a card's price tab as its price source, make listing drafts from a sheet or the collection with one listing template per game (item specifics such as manufacturer, foil, 1st Edition and year filled in; HTML descriptions), check and publish them, and see the account's own listings and sales (tab "eBay" next to Sheets; its settings open from the gear there)
+- eBay: connect a seller account, follow listings as price sources, listing drafts with one template per game and own photos, publishing, the account's listings, sales and statistics
+- Public profile: chosen games of a collection at `/u/<address>`, readable without signing in, without prices
+- Text-list import with preview, matching and undo; JSON and CSV export; JSON backup and restore of collection, decks, watchlists, sheets and deals
+- Installable web app that keeps working when the server is out of reach
 
-There is no synthetic card, collection, deck, watchlist or price seed. On the first start, DeckLedger imports and validates the current EN/DE Lorcana catalogue from LorcanaJSON (including Ravensburger image URLs) plus the EN/JP official One Piece and hololive catalogues and the official VCard TCG card database. The normalized catalogue remains in SQLite and exact card images are cached locally on first display. Missing market observations remain empty and are never presented as `0.00` or estimated from fabricated data.
+## Requirements
 
-Promotional reprints are linked to their base gameplay identity and remain assigned to their physical promo group. To refresh from all live card sources, run:
+- Docker with Compose - runs the container ([compose.yaml](compose.yaml))
+- Python 3.13 - development and the test suite (the image is `python:3.13-slim`); Linux or macOS, because the app and the job scripts use `fcntl`
+- Node.js 22 or newer - the frontend tests use Node's own test runner (CI uses Node 24)
+- Chrome or Chromium - the browser smoke tests; without it they are skipped locally
+
+## Setup
+
+1. Clone the repository:
+
+    ```bash
+    git clone https://github.com/axelcypher/deckledger.git
+    cd deckledger
+    ```
+
+2. Set a strong `SECRET_KEY` in the environment or in a `.env` file next to `compose.yaml` (Compose falls back to a fixed development key otherwise):
+
+    ```dotenv
+    SECRET_KEY=<long random string>
+    ```
+
+3. Build and start:
+
+    ```bash
+    docker compose up --build -d
+    ```
+
+4. Open <http://localhost:18081> and sign in as `admin` / `admin`. Change that password under **Admin → Benutzer** right away and create the other accounts there.
+
+The first start creates the database in the `deckledger_data` volume and imports the catalogues in the background; the app serves while that runs. There is no synthetic seed: no demo account, cards, collections or prices. A database that still has the old `demo` / `deckledger` account gets it locked.
+
+## Configuration
+
+| Setting | Where | Description | Default | Required |
+| --- | --- | --- | --- | --- |
+| `SECRET_KEY` | env | Signs the session cookies | a fixed development key | yes, outside a local test |
+| `DATABASE_PATH` | env | SQLite file; every cache (card images, thumbnails, sheet renders, uploaded backgrounds, card backs, eBay photos) lives in folders next to it | `deckledger.db` in the repo root; `/data/deckledger.db` in the image | no |
+| `PUBLIC_DIR` | env | Folder with set visuals, card backs and foil assets | `public/` in the repo root | no |
+| `TRUST_PROXY_HEADERS` | env | `true`, `1` or `yes`: honour `X-Forwarded-Proto` / `X-Forwarded-Host` | off | behind a TLS-terminating proxy |
+| `OAUTH_CONFIG_PATH` | env | SSO config file that replaces the Admin UI settings | `/config/oauth.json` | no |
+| `PUBLIC_PROFILE_URL` | env | Base URL public profile links are built on | the address the settings page was opened on | no |
+| `CATALOG_REFRESH_HOURS` | env | Age of a game's last successful import that triggers a new one | `24` | no |
+| `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | env or **Admin → eBay** | Keys of the eBay application; when `EBAY_CLIENT_ID` is set, the environment wins and the Admin card is read-only | empty | for eBay |
+| `EBAY_ENVIRONMENT` | env | `production` or `sandbox` | `production` | no |
+| `EBAY_MARKETPLACE` | env | `EBAY_DE`, `EBAY_AT`, `EBAY_FR`, `EBAY_IT`, `EBAY_ES`, `EBAY_GB` or `EBAY_US` | `EBAY_DE` | no |
+| `EBAY_DELETION_ENDPOINT` | env | Full URL of the account-deletion endpoint when the public host differs from the admin page's host | `https://<host>/ebay/account-deletion` | no |
+| `EBAY_VERIFICATION_TOKEN` | env | Replaces the generated verification token for account-deletion notices | generated | no |
+| SSO settings | **Admin → Single Sign-On** or `oauth.json` | See below | off | no |
+
+### Single sign-on (OAuth2 / OIDC)
+
+DeckLedger can sign users in through one external OAuth2/OIDC identity provider (Google, Authentik, Keycloak, Authelia, Okta or any other OIDC-compatible one), next to local username and password accounts. It is configured one of two ways:
+
+- **Admin → Single Sign-On**: stored in the database, effective immediately.
+- **A config file**: shape as in [oauth.json.example](oauth.json.example), mounted read-only at `/config/oauth.json` (or `OAUTH_CONFIG_PATH`):
+
+    ```yaml
+    services:
+      deckledger:
+        volumes:
+          - deckledger_data:/data
+          - ./public:/app/public:ro
+          - ./oauth.json:/config/oauth.json:ro
+    ```
+
+    The file always wins when it is present: the Admin UI then shows every field read-only. Change the file and run `docker compose restart deckledger`.
+
+Required are `client_id`, `client_secret` and either `discovery_url` (OIDC) or all three of `authorize_url`, `token_url` and `userinfo_url` (plain OAuth2). `account_matching` decides what happens on the first login of an identity DeckLedger has not seen, each level including the ones before it:
+
+- `manual` (safest): the identity must already be linked; a user links their own account under **Einstellungen → Konto** while signed in with a password.
+- `email`: an identity whose email matches an unlinked local account (admins included) is linked to it, unless the provider reports the address as unverified (`email_verified: false`).
+- `auto_provision` (default): an identity whose email belongs to no account gets a new `user` account (never `admin`). An unverified address that matches an existing account is turned away.
+
+Most providers require an `https://` redirect URI. Behind a TLS-terminating reverse proxy set `TRUST_PROXY_HEADERS=true`, and only when the proxy is the sole way to reach the container: otherwise a direct client can spoof those headers.
+
+### eBay
+
+eBay needs an application from the eBay Developer Program. Enter its client id, client secret and RuName under **Admin → eBay** (or set the `EBAY_*` variables). The RuName's accept and decline URL is `https://<host>/ebay/callback`. Client id and secret alone are enough to follow listings as prices; connecting accounts and publishing need the RuName too. Drafts stay in DeckLedger until they are published, because eBay's API cannot create Seller Hub drafts. Listing statistics need the scope `sell.analytics.readonly`; accounts connected before it was requested reconnect once.
+
+eBay unlocks production keys only once the application listens for deleted eBay accounts. Under **Application Keys → Notifications → Marketplace Account Deletion** enter the endpoint URL and verification token shown under **Admin → eBay**. The endpoint is `https://<public host>/ebay/account-deletion`; it needs no login and must be reachable by eBay over HTTPS, so exposing just that path is enough. If the public host differs from the one the admin page is opened on, set `EBAY_DELETION_ENDPOINT`.
+
+### Set visuals
+
+Files in `public/sets/` override provider-fetched set images and generated wordmarks. Name them after the internal set id (`one-piece-op-01.webp`, `lorcana-1.png`) or the set code; AVIF, WebP, PNG, JPEG and SVG work. `compose.yaml` mounts `public/` read-only, so adding a file needs no image rebuild (see [public/sets/README.md](public/sets/README.md)).
+
+## Usage
+
+### Background jobs
+
+The container's [docker-entrypoint.sh](docker-entrypoint.sh) runs the migrations, then starts gunicorn and these loops:
+
+| Job | When | What |
+| --- | --- | --- |
+| `catalog_sync.py --if-needed` | at start, then every six hours with `--max-age-hours $CATALOG_REFRESH_HOURS` | imports a game whose provider code has not been imported yet; the six-hourly run also retries failed imports and re-imports those older than `CATALOG_REFRESH_HOURS` |
+| `price_sync.py --if-needed` | at start, then every six hours | downloads the price feeds and stores prices only when a feed has published new data |
+| `post_watch.py` | every minute | reads one Reddit feed: a linked post's comments or a subreddit's new posts |
+| `ebay_sync.py` | every ten minutes | re-reads followed eBay listings and connected accounts' listings and sales when due |
+
+A failing job leaves the last stored catalogue and prices in use. Catalogue and prices can also be refreshed by hand:
 
 ```bash
 docker compose exec deckledger python catalog_sync.py
-```
-
-The catalogue is re-imported automatically once a game's last successful import is older than `CATALOG_REFRESH_HOURS` (default 24, checked every six hours), so new sets and cards appear without a manual run. Each game imports on its own; a card that disappears from a source stays in the catalogue for as long as a collection, deck or watchlist still uses it. The provider code under `providers/` is what runs, unless an admin has replaced it with their own in the Admin UI.
-
-Prices refresh automatically on startup and every six hours when a provider has published new daily data. A manual refresh is available in every card's market tab or through:
-
-```bash
 docker compose exec deckledger python price_sync.py
 ```
 
-Price history stores changes, not days: a sync that finds the same price as last time writes nothing, and readers carry a price forward until the next change. Every calendar month that has aged out of the last three months is additionally folded into one time-weighted average per card, provider and metric. An existing day-by-day history is converted once, on the first price sync after the update.
+The catalogues come from LorcanaJSON (Lorcana EN/DE, with Ravensburger image URLs), the official One Piece and hololive card lists (EN/JP) and the official VCard TCG set pages; VCard's 1-of-1 God Rares are left out (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`). The code under `providers/` is what runs, unless an admin has replaced it under **Admin → Katalog-Provider**. A card that disappears from a source stays in the catalogue for as long as a collection, deck or watchlist still uses it. Missing market prices stay empty; they are never shown as `0.00` or estimated. A manual price ("Eigener Preis" in a card's market tab) is one per card, shared by all accounts, and wins over the feeds until it is removed. VCard has no price feed, so its prices are entered by hand.
 
-Cardmarket product IDs are persisted separately from internal variant IDs. One Piece Western and Japanese expansions are resolved and priced separately: the Western expansion is anchored by Bandai's official release date, while the corresponding Japanese match must use a distinct Cardmarket expansion ID with the same set/number/name fingerprint. Ambiguous matches remain empty; the importer never resolves them by card name alone.
+### Verkauf & Tausch
 
-VCard TCG (Gamer Supps) is imported from the public set pages of vcardtcg.com. Every card is tracked per edition and finish (Unlimited/Limited and 1st Edition, each regular and Holo). The 1-of-1 God Rares are left out by default (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`). No marketplace price feed carries VCard yet, so its prices are entered by hand. Its card images are the publisher's print files; the 3 mm bleed is cut off once, for every view.
+The page has two tabs: **Verkäufe** (the eBay listings, the inbox and the deals) and **Sheets**.
 
-A price can be entered by hand for any card in its market tab ("Eigener Preis"). It is stored like a provider's price, with its own history, counts in every total, and takes precedence over the feeds until it is removed. Prices belong to the catalogue: there is one manual price per card, shared by all accounts.
+- **Sheets** are the shop window: pick cards from the collection (or, for wanted cards, from the watchlists or the whole catalogue), set quantities and price labels, choose a drawn playmat or an uploaded picture as background, and download the collage with a text list for the post.
+- **Posts and the inbox**: paste the link of a post into the sheet editor ("Posts zu diesem Sheet") and its new comments land in the inbox ("Eingang"). The gear on the Sheets tab opens the Reddit settings: your Reddit name (your own posts and answers are skipped) and, per game, the subreddits whose new posts are matched against your sheets ("Fremde Posts" in the sheet editor narrows that per sheet). Reddit is read through its public feeds, without an account or API key, and nothing is posted. Reddit allows about one anonymous request a minute per public IP address, which is why `post_watch.py` reads one feed per run.
+- **Deals** ("Vorgänge") record what was given and got, with partner, platform, money and shipping. Their status books the collection: **Offen** books nothing, **Reserviert** marks the cards on every sheet that offers them, **Abgeschlossen** takes the given cards out and, once **Empfang bestätigen** is clicked, the received cards in; cancelling a finished deal takes its booking back. eBay sales are booked as finished deals.
 
-hololive mappings are language-locked: EN variants use TCGplayer's daily USD export through TCGCSV; JP variants use Yuyutei's JPY retail listings. Original quotes and the daily ECB exchange rate are retained, while EUR conversions are used for collection totals. Ambiguous set/number/rarity matches remain empty.
+### Offline use
 
-Set visuals placed in `public/sets` always override provider-fetched images and
-generated wordmarks. Prefer the internal set ID as filename, for example
-`one-piece-op-01.webp`; AVIF, WebP, PNG, JPEG, and SVG are supported. The public
-folder is mounted read-only into the container, so adding an asset needs no
-image rebuild.
+The app is installable and keeps working when the server cannot be reached: pages and what was looked at recently come from the service worker's cache (marked as a saved copy), and quantity changes are queued and sent once the server answers again. **Einstellungen → Offline verfügbar machen** saves a whole account on purpose (collection, watchlists, deck and sheet overviews, the details and thumbnails of every owned or watched card, optionally full-size images) in a cache of its own that is never trimmed and belongs to that account.
 
-The fixed "Verkaufsliste" that older versions kept among the watchlists has been
-replaced by the trade sheets. On the first start after the update every such list
-that holds cards becomes a WTS sheet of the same name with the same cards and
-quantities; a backup that still contains one restores it as a sheet as well. What
-that list collected automatically is now the "Über Playset" source when adding cards
-to a sheet.
+### Accounts and users
 
-## Posts and the inbox
+- Every user changes their own name, username, email and password under **Einstellungen → Konto**; a password change needs the current one, except for an account without a local password yet (for example one created by SSO).
+- Admins manage accounts under **Admin → Benutzer**: create, rename, change role, reset a password, detach an SSO identity, delete an account with all its data. The last admin can be neither demoted nor deleted, and nobody deletes their own account there.
+- **Einstellungen → Öffentliches Profil** switches on a public link to chosen games of the collection.
 
-A sheet usually ends up as a post. Paste the link of that post into the sheet editor ("Posts zu diesem Sheet") and DeckLedger reads its comments from then on; new ones appear in the inbox ("Eingang") above the sheets, with a counter on the menu entry. Each comment shows which cards of the sheet it names: certain when the name or name and number fit one card, marked with a question mark when the words fit several. "Erledigt" files a comment away; a post that stays quiet for 30 days is no longer read, and can be ended or resumed by hand.
-
-The other direction works without a post of your own. Under **Settings → Reddit** every account lists, per game, the subreddits to search. Their new posts are read and those that fit one of your sheets are filed in the same inbox as a find ("Fund"): for a sheet of offers the posts that want one of its cards, for a sheet of wanted cards the posts that have one. Which is which comes from the conventions of trade subreddits, `[H] … [W] …` in the title or a post tagged WTS or WTB; a card that is merely mentioned is reported as such. A sheet is searched for in all subreddits of its game unless its editor says otherwise ("Fremde Posts": off, or only some of them). Posts older than a week, your own posts and posts already linked to a sheet are left out.
-
-Reddit is the only source so far, read through its public feeds: no Reddit account, no API key, and nothing is ever posted or answered from here. The price of that is Reddit's limit of about one anonymous request a minute, counted per public IP address, so everything in the household that reads Reddit without a login shares it. The container therefore runs `post_watch.py` once a minute and reads one feed per run, the one that has waited longest: a linked post's comments, or a subreddit's new posts, which are read at most every five minutes. With five linked posts and three subreddits each is read about every eight minutes. "Jetzt prüfen" reads one at once and says how long to wait when the minute is not over.
-
-Your own posts and answers are not news: enter your Reddit name under **Settings → Reddit** and what that name writes is skipped. Name and subreddits are settings of the account; nothing is tied to one user or one subreddit.
-
-## Deals
-
-A sheet is the shop window; a deal ("Vorgang", the second tab of **Verkauf & Tausch**) is the business done. It needs no Reddit: the partner and the platform are free text, a link to the post, thread or message is optional. A deal is entered by hand or started from an entry of the inbox, which fills in the partner, the link and the cards the entry names.
-
-A deal has two sides, what you give and what you get, each with cards at a price per copy, and beside them the money received, the money paid and the shipping. Its status moves the collection:
-
-- **Offen**: nothing is booked.
-- **Reserviert**: the cards you give stay in the collection but are spoken for. Every sheet of offers that lists them says so, in its entries, in the text for the post and in the picture (a "RESERVED" band over the card, with the number when only some copies are reserved). Another deal with the same card shows how many copies are still free.
-- **Abgeschlossen**: the cards you give leave the collection and every sheet that offers them. The cards you get are on their way ("Unterwegs"): they enter the collection, and leave the sheets of wanted cards, only when you confirm their arrival with **Empfang bestätigen**.
-- **Abgebrochen**: before the deal was finished nothing was booked; cancelling a finished deal ("Stornieren") takes its booking in the collection back. Sheets are left as they are.
-
-A finished deal is the record and is no longer edited, apart from its note. It keeps each card's name, set, number and price as they were, so the history survives changes to the catalogue. The list filters by status and searches partner, platform and cards; it adds up income, expenses and shipping of what is finished. A card's detail view lists the deals it was part of: to whom it went or from whom it came, when, and at what price.
-
-Cards that were never entered in the collection can be sold all the same; the deal's history then notes how many copies it could not take out. Deals are part of the JSON backup and are restored as a record, without booking anything a second time.
-
-## Offline use
-
-The app is installable and keeps working when the server cannot be reached: the page and what was looked at recently come from the service worker's cache (marked as a saved copy), and quantity changes are queued on the device and sent once the server answers again.
-
-What was "looked at recently" is limited and gets trimmed. **Settings → Offline verfügbar machen** fetches a whole account on purpose: the collection and watchlists of every game, the deck and sheet overviews, and for every owned or watched card its details and thumbnail, optionally the full-size images. That copy lives in a cache of its own that is never trimmed, belongs to the account that saved it (another account signing in on the same browser removes it), and is refreshed with the same button.
-
-## Account settings
-
-Every signed-in user can update their own display name, username, email
-address and password from **Settings → Kontodaten / Passwort**. Changing a
-password always requires the current one, except for an account that has no
-local password yet (e.g. one created through SSO auto-provisioning below) —
-that account can set its first password directly.
-
-## User management
-
-Admins manage accounts under **Admin → Benutzer**: create accounts, change
-name, username, email and role, reset a password, detach an SSO identity, and
-delete an account together with its collection, decks, lists and sheets. The
-last remaining admin can be neither demoted nor deleted, and nobody deletes
-their own account there. A deleted account's open sessions stop working
-immediately.
-
-## OAuth / SSO login
-
-DeckLedger supports logging in through one external OAuth2/OIDC identity
-provider (Google, Authentik, Keycloak, Authelia, Okta, or any other
-OIDC-compatible IdP), in addition to local username/password accounts. It can
-be configured two ways:
-
-- **Web UI**: sign in as an admin and open **Admin → Single Sign-On (OAuth)**.
-  Settings are stored in the database and take effect immediately, no restart
-  needed.
-- **Config file mounted into the container**: create a JSON file (see
-  `oauth.json.example` in this repository for the shape) and mount it
-  read-only at `/config/oauth.json`:
-
-  ```yaml
-  services:
-    deckledger:
-      volumes:
-        - deckledger_data:/data
-        - ./public:/app/public:ro
-        - ./oauth.json:/config/oauth.json:ro
-  ```
-
-  **The config file always wins when it's present.** In that case, the Admin
-  UI shows every SSO field read-only with a note pointing at the file — edit
-  the file and restart the container (`docker compose restart deckledger`) to
-  change anything. The mount path can be moved with the `OAUTH_CONFIG_PATH`
-  environment variable; without a file at that path, settings come from the
-  database and the Admin UI is fully editable.
-
-Only `client_id`, `client_secret`, and either `discovery_url` (OIDC) or all
-three of `authorize_url`/`token_url`/`userinfo_url` (plain OAuth2) are
-required; the rest have sane defaults. `account_matching` controls how a
-first-time login from an identity DeckLedger hasn't seen before is resolved,
-each level including the ones before it:
-
-- `manual` (safest): the identity must already be linked. A user links their
-  own account themselves from **Settings → Single Sign-On** while signed in
-  with a password.
-- `email`: additionally, if the provider's email matches an existing local
-  account's email (admin accounts included) and that account isn't linked to
-  anything yet, it's linked automatically on first login. The provider has to
-  report the address as verified.
-- `auto_provision`: additionally, an identity whose email belongs to no
-  account gets a brand-new local account (`user` role, never `admin`) created
-  automatically. An unverified address that matches an existing account is
-  turned away instead of getting a second account next to it.
-
-Running behind a TLS-terminating reverse proxy (Traefik, Nginx, Caddy, …)?
-Most OAuth/OIDC providers require an `https://` redirect URI. Set
-`TRUST_PROXY_HEADERS=true` so DeckLedger honors the proxy's
-`X-Forwarded-Proto`/`X-Forwarded-Host` headers when building that URL — only
-enable this when the proxy is the sole way to reach the container, since it
-otherwise lets a direct client spoof those headers.
-
-## Code layout
-
-`app.py` is only the entry point (`gunicorn app:app`). The application is the `deckledger` package:
-
-| Module | What it holds |
-| --- | --- |
-| `config`, `web`, `schema` | paths and constants; the Flask app, request guards and login decorators; seed data and bringing the database up to date at start-up |
-| `migrations/` | the database schema, as numbered migrations |
-| `games/` | everything that differs per game, one module each (`lorcana`, `one_piece`, `hololive`, `vcard`) plus the `Game` description they fill in |
-| `catalog`, `collection`, `watchlists`, `decks`, `sheets` | the views of the same names |
-| `prices`, `images`, `assets` | price lookup and manual prices; card images, thumbnails, trimming, foil masks; logos, set visuals, card backs |
-| `auth`, `account`, `admin`, `pages`, `backup` | sign-in and SSO; a user's own settings; the admin API; page shell and dashboard data; import, export and restore |
-
-Modules import each other in one direction only (the order `deckledger/__init__.py` lists them in). No module outside `games/` branches on a game's id: it asks `games.game(game_id)` for the playset size, the rarity ladder, the deck rules, where images and prices come from. Adding a game is one module there, its provider under `providers/`, and an icon. The frontend receives the rules it needs (playset size, copy limits, icon) with each game.
-
-### Database schema
-
-The schema is what the migrations in `deckledger/migrations/` produce, applied in order; nothing else creates or alters tables (a test enforces it). The table `schema_migrations` records which ones a database has had, so each runs exactly once, in a transaction of its own: it happens completely or leaves no trace, and the next start picks up where it stopped. `/health` reports `schema_version` and `schema_expected`.
-
-- `m0001_baseline` is the schema as it stood when migrations were introduced. It also brings a database of any earlier version to that same state, so every installation continues from one known point.
-- To change the schema, add `mNNNN_<what>.py` with `NAME` and `apply(connection, context)` and list it in `MIGRATIONS`. A released migration is never edited.
-- Before an existing database is migrated, a copy is written next to it (`deckledger.db.before-migration-NNNN`); the two newest are kept. It needs as much free space as the database itself.
-- A database written by a newer version than the running image is refused at start-up rather than opened: roll the image forward again, or restore the copy.
-
-The frontend has no build step. `static/js/` holds plain scripts that share one global scope and are loaded in a fixed order (`core.js` first, `main.js` last, see `templates/index.html`): `core` (state, API client, navigation), `finish`, `filters`, `catalog`, `offline`, `collection`, `watchlist`, `decks`, `card-modal`, `dashboard`, `settings`, `admin`, `import`, `sheets`, `main` (wiring and start-up). Each file gets its own content-hashed URL, so a changed file is the only one a browser fetches again.
-
-The catalogue and price jobs (`catalog_sync.py`, `price_sync.py`), the sheet renderer (`sheet_render.py`) and the providers stay standalone scripts and modules next to the package.
-
-## Tests
-
-```bash
-pip install -r requirements-dev.txt
-python -m pytest
-```
-
-The suite runs against a throwaway database with a small built-in catalogue and never touches the network. It covers the backup round trip, import undo, what a catalogue sync may and may not delete, provider seeding, the collection endpoint, the VCard provider and deck rules, price lookup, and the cross-site/session checks. The container workflow runs it before building an image.
-
-The frontend has three kinds of tests, all run by Node's own test runner (Node 22 or newer, no packages to install):
-
-```bash
-node --test "tests/frontend/*.test.mjs"
-```
-
-- `unit.test.mjs` loads the scripts from `static/js` into a bare JavaScript context and checks the logic that needs no page: foil classification (against the same cases as the sheet renderer), set grouping and sorting, copy limits, the URLs the views request, the ordering of quantity changes.
-- `service-worker.test.mjs` runs the service worker against fake caches, a scripted network and hand-fired timers: network first with a marked fallback, giving up on a server that does not answer, the offline save as a fallback, what is kept and what is trimmed.
-- `smoke.test.mjs` drives the real app in a headless Chrome against the test catalogue: every view for every game, adding cards with quick clicks, a card and a manual price, a deck, a sheet, the offline queue, saving the collection for offline use and reading it back without the server, the phone layout, the admin view. Any error in the browser console fails a test. `CHROME_BIN` overrides where Chrome is looked for, `DECKLEDGER_PYTHON` which interpreter starts the app; without Chrome these tests are skipped locally.
-
-The workflow runs all of them after the Python suite.
-
-## Operations
+### Operations
 
 ```bash
 docker compose ps
@@ -238,52 +154,40 @@ docker compose stop
 docker compose down
 ```
 
-`docker compose down` keeps the named data volume. Use a strong `SECRET_KEY` environment variable before exposing the application outside a local test environment.
+`docker compose down` keeps the `deckledger_data` volume; it holds the database and every cache, so it is what to back up. `GET /health` answers with the database name, `schema_version` and `schema_expected`. Before an existing database is migrated, a copy is written next to it (`deckledger.db.before-migration-NNNN`, the two newest kept); a database written by a newer version than the running image is refused at start-up.
 
-## Deployment repository update
+## Development
 
-After a successful image publication from `main` or a `v*` tag, the container
-workflow can update an image variable in a tracked environment file in another
-repository. The written value is only the immutable image tag without registry
-or image name, for example `sha-99fc47d723e19fd5d0bfea747318416cfaec03eee`.
+Without Docker (Linux or macOS):
 
-Configure these GitHub repository variables in DeckLedger:
+```bash
+pip install -r requirements-dev.txt
+python app.py
+```
 
-- `DECKLEDGER_DEPLOY_REPOSITORY` (required): target in `owner/repository` form
-- `DECKLEDGER_DEPLOY_BRANCH` (optional, default `main`)
-- `DECKLEDGER_DEPLOY_ENV_FILE` (optional, default `.env`)
-- `DECKLEDGER_DEPLOY_IMAGE_KEY` (optional, default `DECKLEDGER_IMAGE_VERSION`)
+`python app.py` starts Flask's debug server on port 8080 with `deckledger.db` in the repo root; `python catalog_sync.py --provider <id>` imports one game's catalogue into it.
 
-Add `DECKLEDGER_DEPLOY_TOKEN` as a repository secret. It must be a fine-grained
-personal access token with read/write access to repository contents in the
-target repository. The deployment-update job stays disabled until
-`DECKLEDGER_DEPLOY_REPOSITORY` is configured.
+- Code layout: `app.py` is only the entry point; the application is the `deckledger` package, the job scripts, sheet renderer and providers sit next to it. Module docs: [docs/code/](docs/code/architecture.md).
+- Schema changes: add `deckledger/migrations/mNNNN_<what>.py` with `NAME` and `apply(connection, context)` and list it in `MIGRATIONS`. A released migration is never edited; nothing else creates or alters tables (a test enforces it).
+- Python tests: `python -m pytest` - runs against a throwaway database with a small built-in catalogue, never touches the network.
+- Frontend tests: `node --test "tests/frontend/*.test.mjs"` - script logic in a bare JavaScript context, the service worker against fake caches, and smoke tests that drive the real app in headless Chrome (`CHROME_BIN` sets the browser, `DECKLEDGER_PYTHON` the interpreter that starts the app).
+- Lint / format: none configured.
 
-eBay needs an application from the eBay Developer Program. An admin enters its client id, client
-secret and RuName under **Admin → eBay** (or sets `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`,
-`EBAY_RU_NAME`, optionally `EBAY_ENVIRONMENT` and `EBAY_MARKETPLACE`). The RuName's accept and
-decline URL is `https://<host>/ebay/callback`. Client id and secret alone are enough to follow
-listings as prices; connecting accounts and publishing need the RuName too. Drafts stay in
-DeckLedger until published — eBay's API cannot create Seller Hub drafts. `ebay_sync.py` runs every
-ten minutes in the container and re-reads followed listings (every six hours) and connected
-accounts' listings (every 30 minutes).
+## Release
 
-Listings show their watchers and, once the account granted DeckLedger its sales statistics
-(`sell.analytics.readonly`; accounts connected earlier reconnect once), views, impressions and
-click-through rate of the last 90 days; "Statistik" sorts them, also by DeckLedger's own popularity
-measure. Linking a listing to a card suggests cards of the collection whose name is in the title.
-Active listings can take over the current preset ("Vorlage anwenden": title, description, item
-specifics, shipping; price, quantity and pictures stay). Sale sheets take quantity and price of their cards from the account's active listings (switchable
-per sheet), drop cards whose listing sold out, and mark cards on eBay in the sheet image. Shipping
-and returns go into each listing straight from the preset, or through business policies where the
-account has them (private accounts usually do not).
+[.github/workflows/container-image.yml](.github/workflows/container-image.yml) runs on every push to `main`, on `v*` tags, on pull requests and by hand. It runs both test suites, then builds the image and, except for pull requests, pushes it to `ghcr.io/axelcypher/deckledger` with the tags `main`, `latest`, `sha-<commit>` and, for a `v*` tag, the semver tags, and attests it. There is no version number in the code; images are identified by their `sha-<commit>` tag.
 
-eBay unlocks production keys only once the application listens for deleted eBay accounts. Under
-**Application Keys → Notifications → Marketplace Account Deletion** enter the endpoint URL and
-verification token shown under **Admin → eBay**. The endpoint is `https://<public
-host>/ebay/account-deletion`; it needs no login and must be reachable by eBay over HTTPS, so
-exposing just that path is enough. If the public host differs from the one the admin page is opened
-on, set `EBAY_DELETION_ENDPOINT` to the full URL (it is part of the challenge hash);
-`EBAY_VERIFICATION_TOKEN` replaces the generated token. Notices naming a known account (a connected
-seller, a buyer in the sales) are checked against eBay's signature, then that account's tokens and
-the buyer name are removed.
+After a published build from `main` or a `v*` tag, the job `update-deployment-repository` writes that tag into an env file of another repository. It stays off until the repository variable `DECKLEDGER_DEPLOY_REPOSITORY` is set:
+
+| Variable / secret | Description | Default |
+| --- | --- | --- |
+| `DECKLEDGER_DEPLOY_REPOSITORY` | Target repository, `owner/repository` | none (job disabled) |
+| `DECKLEDGER_DEPLOY_BRANCH` | Branch to commit to | `main` |
+| `DECKLEDGER_DEPLOY_ENV_FILE` | Env file in the target repository | `.env` |
+| `DECKLEDGER_DEPLOY_IMAGE_KEY` | Variable that receives the tag | `DECKLEDGER_IMAGE_VERSION` |
+| `DECKLEDGER_DEPLOY_TOKEN` (secret) | Fine-grained token with read/write access to the target's contents | none |
+
+## Documentation
+
+- Module docs for agents: [docs/code/](docs/code/architecture.md)
+- Detailed docs: vault note `homelab-docs/projects/deckledger.md`
