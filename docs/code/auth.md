@@ -16,7 +16,7 @@
 
 - Error codes (`OAUTH_ERROR_MESSAGES`): `not_configured`, `state_mismatch`, `provider_error`, `no_account`, `already_linked`. A login-flow failure redirects to `/login?error=<code>`; a link-flow failure to `/?oauth_error=<code>` (shown as a toast by static/js/main.js); a successful link to `/?linked=1`.
 - Link flow: refused with `already_linked` when another account has the identity; otherwise sets `oauth_provider`/`oauth_subject` on the signed-in account and its email only if it had none.
-- `resolve_oauth_config()` - `OAUTH_CONFIG_DEFAULTS` overlaid by the JSON file at `OAUTH_CONFIG_PATH` when it exists (`source: "file"`; an unreadable or invalid file gives the defaults), else by `app_settings` key `oauth_config` (`source: "database"`). Read fresh on every call. Without a file it needs an app context (uses `db()`). Also used by `pages.py` (bootstrap) and `admin.py`.
+- `resolve_oauth_config()` - `OAUTH_CONFIG_DEFAULTS` overlaid by the JSON file at `OAUTH_CONFIG_PATH` when it exists (`source: "file"`; an unreadable or invalid file gives the defaults), else by `app_settings` key `oauth_config` (`source: "database"`). With `OAUTH_CLIENT_ID` in the environment, `oauth_environment()` (`OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET`/`OAUTH_DISCOVERY_URL`, see `OAUTH_ENVIRONMENT` in config.py; empty values and `<no value>` count as unset) is laid over the database settings with `enabled: true` (`source: "environment"`, `environment_fields`). Read fresh on every call. Without a file it needs an app context (uses `db()`). Also used by `pages.py` (bootstrap) and `admin.py`.
 - `resolve_oauth_identity(config, subject, email, display_name, email_verified=True)` - for the login flow; returns a `users` row or None and commits what it changes. Chain, each step only if the previous found nothing:
   1. the account linked to (`generic`, subject);
   2. with `account_matching` `email` or `auto_provision` and an email: the unlinked account with that email (case-insensitive) gets linked - unless the email is unverified, then None;
@@ -68,7 +68,7 @@ Every route is `@admin_required` (401 without a session, 403 for a non-admin on 
 | POST | `/api/admin/games/<id>/manual-cards` | Create or update a manual card (identity, printing, variant; optionally a new set). 201 with the three ids. |
 | DELETE | `/api/admin/games/<id>/manual-cards/<identity_id>` | Deletes a manual card and every collection, deck, list, sheet, price and eBay draft/tracked reference to it. |
 | GET | `/api/admin/oauth` | Resolved SSO config without `client_secret`, plus `client_secret_set`, `config_path`, `source`. |
-| POST | `/api/admin/oauth` | Saves SSO settings into `app_settings.oauth_config`. |
+| POST | `/api/admin/oauth` | Saves SSO settings into `app_settings.oauth_config`; refused (400) while a config file is mounted. With credentials in the environment, `enabled`, `client_id`, `client_secret` and `discovery_url` from the form are ignored. |
 
 Invariants and error modes:
 

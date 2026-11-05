@@ -28,6 +28,8 @@ OAUTH_CONFIG_PATH = os.environ.get("OAUTH_CONFIG_PATH", "/config/oauth.json")
 # client, not a multi-provider table) -- kept as a named constant purely so users.oauth_provider
 # reads as "which identity system", not a magic string repeated at every call site.
 OAUTH_PROVIDER_KEY = "generic"
+# The SSO settings an environment can supply (e.g. from a Vault-rendered secrets file), by variable.
+OAUTH_ENVIRONMENT = {"client_id": "OAUTH_CLIENT_ID", "client_secret": "OAUTH_CLIENT_SECRET", "discovery_url": "OAUTH_DISCOVERY_URL"}
 OAUTH_CONFIG_DEFAULTS = {
     "enabled": False, "provider_name": "SSO", "client_id": "", "client_secret": "",
     "discovery_url": "", "authorize_url": "", "token_url": "", "userinfo_url": "",

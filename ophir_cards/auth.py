@@ -1,6 +1,7 @@
 """Signing in: local passwords and the optional OAuth/OIDC provider."""
 
 import json
+import os
 from pathlib import Path
 
 from flask import redirect, render_template, request, session, url_for
@@ -9,16 +10,27 @@ from werkzeug.security import check_password_hash
 from catalog_provider_contract import slug
 from oauth_client import OAuthConfigError, build_authorization_request, exchange_code, extract_identity, fetch_userinfo, id_token_claims
 
-from .config import OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, OAUTH_PROVIDER_KEY, jload, now_iso
+from .config import OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, OAUTH_ENVIRONMENT, OAUTH_PROVIDER_KEY, jload, now_iso
 from .web import app, db
 from .schema import ensure_user_lists
+
+
+def oauth_environment():
+    """The client credentials and discovery URL the environment supplies, once OAUTH_CLIENT_ID is
+    set; {} otherwise. A value a secrets template rendered for a key missing in Vault ("<no value>")
+    counts as unset."""
+    values = {field: os.environ.get(name, "").strip() for field, name in OAUTH_ENVIRONMENT.items()}
+    values = {field: value for field, value in values.items() if value and value != "<no value>"}
+    return values if values.get("client_id") else {}
 
 
 def resolve_oauth_config():
     # File wins whenever it's mounted -- the Admin UI shows those fields read-only in that
     # case (see api_admin_oauth). Without a mounted file, settings live in app_settings and
     # are read fresh on every call (no in-process caching of this dict) so an Admin UI save
-    # takes effect on the very next login click, no restart needed.
+    # takes effect on the very next login click, no restart needed. Client credentials in the
+    # environment (OAUTH_CLIENT_ID, ...) replace those of app_settings and switch SSO on; the
+    # rest (button label, endpoints, claims, account matching) stays with the Admin UI.
     path = Path(OAUTH_CONFIG_PATH)
     if path.is_file():
         try:
@@ -28,6 +40,10 @@ def resolve_oauth_config():
         return {**OAUTH_CONFIG_DEFAULTS, **file_config, "source": "file"}
     row = db().execute("SELECT value FROM app_settings WHERE key='oauth_config'").fetchone()
     stored = jload(row["value"], {}) if row else {}
+    environment = oauth_environment()
+    if environment:
+        return {**OAUTH_CONFIG_DEFAULTS, **stored, **environment, "enabled": True, "source": "environment",
+                "environment_fields": sorted(environment)}
     return {**OAUTH_CONFIG_DEFAULTS, **stored, "source": "database"}
 
 

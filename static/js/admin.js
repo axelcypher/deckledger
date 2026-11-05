@@ -67,14 +67,15 @@ async function renderAdmin(){
   content.innerHTML='<div class="page-loader"><span></span><p>Admin-Bereich wird geladen …</p></div>';
   const [games,providers,oauth,users]=await Promise.all([api('/api/admin/games'),api('/api/admin/providers'),api('/api/admin/oauth'),api('/api/admin/users')]);
   if(stale())return;
-  const oauthLocked=oauth.source==='file',ro=oauthLocked?'disabled':'';
+  // From the environment: client ID, secret and discovery URL are fixed and SSO is on; the rest stays editable.
+  const oauthLocked=oauth.source==='file',oauthEnv=oauth.source==='environment',ro=oauthLocked?'disabled':'',envRo=oauthLocked||oauthEnv?'disabled':'';
   content.innerHTML=`<div class="page-head compact-page-head"><div><span class="eyebrow">VERWALTUNG</span><h1>Admin</h1><p>Benutzer, TCGs, Katalog-Provider und Zuordnungen verwalten.</p></div></div>
     <details class="settings-section oauth-admin-card ${oauthLocked?'is-locked':''}">
       <summary class="oauth-admin-summary">
         <div class="oauth-admin-head">
           <div class="oauth-admin-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.2c0 4.8-3.2 8.3-8 10-4.8-1.7-8-5.2-8-10V6l8-3.2Z"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2v4"/></svg></div>
           <div class="oauth-admin-title"><span>AUTHENTIFIZIERUNG</span><h2>Single Sign-On</h2><p>OAuth 2.0 und OpenID Connect für einen externen Identity Provider.</p></div>
-          <div class="oauth-admin-state"><span class="oauth-status ${oauth.enabled?'is-active':'is-inactive'}"><i></i>${oauth.enabled?'Aktiv':'Inaktiv'}</span><span class="oauth-source-badge">${oauthLocked?'Config-Datei':'In der App'}</span></div>
+          <div class="oauth-admin-state"><span class="oauth-status ${oauth.enabled?'is-active':'is-inactive'}"><i></i>${oauth.enabled?'Aktiv':'Inaktiv'}</span><span class="oauth-source-badge">${oauthLocked?'Config-Datei':oauthEnv?'Umgebung':'In der App'}</span></div>
           <span class="oauth-collapse-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5"/></svg></span>
         </div>
       </summary>
@@ -83,16 +84,16 @@ async function renderAdmin(){
       <div class="admin-form oauth-admin-form">
         <label class="oauth-toggle-row">
           <span class="oauth-toggle-copy"><b>SSO-Anmeldung</b><small>${oauth.enabled?'Der externe Login wird auf der Anmeldeseite angeboten.':'Die lokale Anmeldung bleibt aktiv; SSO ist derzeit ausgeblendet.'}</small></span>
-          <span class="oauth-toggle-control"><input type="checkbox" id="oauth-enabled" ${oauth.enabled?'checked':''} ${ro}><span aria-hidden="true"></span></span>
+          <span class="oauth-toggle-control"><input type="checkbox" id="oauth-enabled" ${oauth.enabled?'checked':''} ${envRo}><span aria-hidden="true"></span></span>
         </label>
 
         <div class="oauth-form-group">
           <div class="oauth-form-group-head"><span>01</span><div><b>Identity Provider</b><small>Bezeichnung und Zugangsdaten der registrierten Anwendung.</small></div></div>
           <div class="admin-form-grid oauth-provider-grid">
             <label class="oauth-field"><span>Button-Beschriftung</span><input id="oauth-provider-name" value="${escapeHtml(oauth.provider_name||'')}" placeholder="z. B. Mit Authentik anmelden" ${ro}></label>
-            <label class="oauth-field"><span>Client-ID</span><input id="oauth-client-id" value="${escapeHtml(oauth.client_id||'')}" autocomplete="off" ${ro}></label>
-            <label class="oauth-field"><span>Client-Secret</span><input id="oauth-client-secret" type="password" autocomplete="new-password" placeholder="${oauth.client_secret_set?'••••••••  ·  leer lassen zum Beibehalten':'Client-Secret'}" ${ro}></label>
-            <label class="oauth-field oauth-field-wide"><span>Discovery-URL <em>empfohlen</em></span><input id="oauth-discovery-url" value="${escapeHtml(oauth.discovery_url||'')}" placeholder="https://idp.example.com/.well-known/openid-configuration" ${ro}></label>
+            <label class="oauth-field"><span>Client-ID</span><input id="oauth-client-id" value="${escapeHtml(oauth.client_id||'')}" autocomplete="off" ${envRo}></label>
+            <label class="oauth-field"><span>Client-Secret</span><input id="oauth-client-secret" type="password" autocomplete="new-password" placeholder="${oauth.client_secret_set?(oauthEnv?'••••••••  ·  aus der Umgebung':'••••••••  ·  leer lassen zum Beibehalten'):'Client-Secret'}" ${envRo}></label>
+            <label class="oauth-field oauth-field-wide"><span>Discovery-URL <em>empfohlen</em></span><input id="oauth-discovery-url" value="${escapeHtml(oauth.discovery_url||'')}" placeholder="https://idp.example.com/.well-known/openid-configuration" ${envRo}></label>
           </div>
         </div>
 

@@ -188,3 +188,27 @@ def test_an_id_token_for_someone_else_or_out_of_date_is_not_used():
     assert oauth_client.id_token_claims(config, {"id_token": "not.a-token"}) == {}
     assert oauth_client.id_token_claims(config, {"id_token": "a.%%%.c"}) == {}
     assert oauth_client.id_token_claims(config, {"access_token": "only"}) == {} and oauth_client.id_token_claims(config, "plain") == {}
+
+
+def test_sso_credentials_from_the_environment_replace_the_stored_ones(admin, monkeypatch):
+    stored = {"enabled": False, "provider_name": "Authentik", "client_id": "old", "client_secret": "old-secret",
+              "discovery_url": "https://old.example/.well-known/openid-configuration", "account_matching": "email"}
+    query("INSERT INTO app_settings(key,value) VALUES('oauth_config',?)", (json.dumps(stored),))
+    assert admin.get("/api/admin/oauth").get_json()["source"] == "database"
+
+    monkeypatch.setenv("OAUTH_CLIENT_ID", "ophir")
+    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "from-vault")
+    monkeypatch.setenv("OAUTH_DISCOVERY_URL", "<no value>")  # what the template renders for a missing key
+    shown = admin.get("/api/admin/oauth").get_json()
+    assert shown["source"] == "environment" and shown["enabled"] is True
+    assert shown["client_id"] == "ophir" and shown["client_secret_set"] and "client_secret" not in shown
+    assert shown["discovery_url"] == stored["discovery_url"], "a key missing in Vault keeps the stored value"
+    assert shown["provider_name"] == "Authentik" and shown["account_matching"] == "email"
+    with ophir_cards.app.test_request_context():
+        assert ophir_cards.auth.resolve_oauth_config()["client_secret"] == "from-vault"
+
+    # The form still saves what is not the environment's, and nothing that is.
+    assert admin.post("/api/admin/oauth", json={**stored, "provider_name": "Ophir SSO", "client_id": "typed", "client_secret": "typed", "enabled": False}).status_code == 200
+    saved = json.loads(query("SELECT value FROM app_settings WHERE key='oauth_config'")[0]["value"])
+    assert saved["provider_name"] == "Ophir SSO"
+    assert (saved["client_id"], saved["client_secret"], saved["enabled"]) == ("old", "old-secret", False)

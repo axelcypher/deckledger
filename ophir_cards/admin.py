@@ -11,11 +11,11 @@ from werkzeug.security import generate_password_hash
 
 from catalog_provider_contract import digest, slug
 
-from .config import CARD_BACK_UPLOAD_DIR, OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, ROOT, jload, now_iso
+from .config import CARD_BACK_UPLOAD_DIR, OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, OAUTH_ENVIRONMENT, ROOT, jload, now_iso
 from .games import GAMES
 from .web import admin_required, app, db, user_id
 from .schema import default_provider_code, ensure_user_lists
-from .auth import resolve_oauth_config
+from .auth import oauth_environment, resolve_oauth_config
 from .sheets import remove_user_backgrounds
 from .ebay_photos import remove_user_photos
 
@@ -473,16 +473,18 @@ def admin_save_oauth():
     row = db().execute("SELECT value FROM app_settings WHERE key='oauth_config'").fetchone()
     current = jload(row["value"], {}) if row else {}
     config = {**OAUTH_CONFIG_DEFAULTS, **current}
-    for key in ("enabled",):
-        config[key] = bool(p.get(key))
+    # With client credentials in the environment those and the on/off switch are not the form's.
+    from_environment = bool(oauth_environment())
+    if not from_environment:
+        config["enabled"] = bool(p.get("enabled"))
     for key in ("provider_name", "client_id", "discovery_url", "authorize_url", "token_url", "userinfo_url",
                 "scopes", "username_claim", "email_claim", "subject_claim", "account_matching"):
-        if key in p:
+        if key in p and not (from_environment and key in OAUTH_ENVIRONMENT):
             config[key] = str(p[key] or "").strip()
     # Blank client_secret in the payload means "leave the stored secret unchanged" -- the GET
     # response above never sends the real secret back, so the form field is blank by default
     # and a save that doesn't touch it must not wipe it out.
-    if p.get("client_secret"):
+    if p.get("client_secret") and not from_environment:
         config["client_secret"] = p["client_secret"]
     db().execute(
         "INSERT INTO app_settings(key,value) VALUES('oauth_config',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

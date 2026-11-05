@@ -62,6 +62,7 @@ The first start creates the database in the `deckledger_data` volume and imports
 | `PUBLIC_DIR` | env | Folder with set visuals, card backs and foil assets | `public/` in the repo root | no |
 | `TRUST_PROXY_HEADERS` | env | `true`, `1` or `yes`: honour `X-Forwarded-For` / `-Proto` / `-Host` / `-Prefix` | off | behind a TLS-terminating proxy |
 | `OAUTH_CONFIG_PATH` | env | SSO config file that replaces the Admin UI settings | `/config/oauth.json` | no |
+| `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_DISCOVERY_URL` | env | SSO client credentials and discovery URL; with `OAUTH_CLIENT_ID` set they win over the Admin UI and SSO is on | empty | no |
 | `PUBLIC_PROFILE_URL` | env | Base URL public profile links are built on, with the path when the app is served under one (`https://ophir.example.org/cards`) | the address the settings page was opened on | no |
 | `CATALOG_REFRESH_HOURS` | env | Age of a game's last successful import that triggers a new one | `24` | no |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | env or **Admin → eBay** | Keys of the eBay application; when `EBAY_CLIENT_ID` is set, the environment wins and the Admin card is read-only | empty | for eBay |
@@ -81,9 +82,10 @@ Behind a reverse proxy the app can also run under a path, for example `ophir.exa
 
 ### Single sign-on (OAuth2 / OIDC)
 
-Ophir Cards can sign users in through one external OAuth2/OIDC identity provider (Google, Authentik, Keycloak, Authelia, Okta or any other OIDC-compatible one), next to local username and password accounts. It is configured one of two ways:
+Ophir Cards can sign users in through one external OAuth2/OIDC identity provider (Google, Authentik, Keycloak, Authelia, Okta or any other OIDC-compatible one), next to local username and password accounts. It is configured one of three ways:
 
 - **Admin → Single Sign-On**: stored in the database, effective immediately.
+- **Environment variables** `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_DISCOVERY_URL` (for example from a secrets file): once `OAUTH_CLIENT_ID` is set they replace the client credentials and discovery URL of the Admin UI and switch SSO on. Those fields are then read-only there; the button label, manual endpoints, claims and account matching stay editable.
 - **A config file**: shape as in [oauth.json.example](oauth.json.example), mounted read-only at `/config/oauth.json` (or `OAUTH_CONFIG_PATH`):
 
     ```yaml
