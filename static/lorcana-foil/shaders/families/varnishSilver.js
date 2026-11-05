@@ -4,7 +4,7 @@
 import { f, v4, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/varnishSilver.frag'),
+  loadSource: fragLoader(new URL('../varnishSilver.frag', import.meta.url).href),
   roles: {
     varnishSurface: { asset: 'VarnishSurface' },
     varnishShine: { asset: 'VarnishShine' },

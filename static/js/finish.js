@@ -1,10 +1,10 @@
 // How a card's finish looks: image URLs, foil classes, the official Lorcana foil layers.
 
-const artUrl = (variantId, size='thumb') => `/art/${encodeURIComponent(variantId)}.svg?v=6${size==='thumb'?'&size=thumb':''}`;
+const artUrl = (variantId, size='thumb') => `${APP_BASE}/art/${encodeURIComponent(variantId)}.svg?v=6${size==='thumb'?'&size=thumb':''}`;
 // Luminance mask derived server-side from THIS card's own art (app.py: /foil-mask/<id>.webp,
 // cached_foil_mask) -- used to confine the mobile card-modal's foil/prismatic/aurora shimmer
 // to the card's own non-black regions instead of washing over the whole rectangle.
-const foilMaskUrl = variantId => `/foil-mask/${encodeURIComponent(variantId)}.webp?v=2`;
+const foilMaskUrl = variantId => `${APP_BASE}/foil-mask/${encodeURIComponent(variantId)}.webp?v=2`;
 function finishPresentation(variant={}){
   const finish=String(variant.finish||'').trim();
   const descriptor=`${finish} ${variant.variant_code||''} ${variant.rarity||''}`.toLowerCase();
@@ -96,7 +96,7 @@ async function hydrateOfficialFoilLayers(variantId, container){
   if(!base&&!top&&!top2)return;
   let data;
   try{
-    data=await (await fetch(`/api/foil-layer-meta/${encodeURIComponent(variantId)}`)).json();
+    data=await (await fetch(appUrl(`/api/foil-layer-meta/${encodeURIComponent(variantId)}`))).json();
   }catch{
     return;
   }

@@ -22,7 +22,7 @@ function openAdminPriceSources(games){
       <button class="close-button" type="button" data-price-source-close aria-label="Dialog schließen">×</button>
     </div>
     <div class="price-source-list">${games.map(g=>`<div class="price-source-row" data-price-source-game="${g.id}">
-      <div class="price-source-game"><span class="price-source-game-logo"><img src="/game-logo/${g.id}" alt=""></span><div><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.id)}</small></div></div>
+      <div class="price-source-game"><span class="price-source-game-logo"><img src="${APP_BASE}/game-logo/${g.id}" alt=""></span><div><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.id)}</small></div></div>
       <label><span>Preisquelle</span><select class="select-control" data-price-method>${PRICE_METHOD_OPTIONS.map(([value,label])=>`<option value="${value}" ${(g.price_method||'')===value?'selected':''}>${label}</option>`).join('')}</select></label>
       <label class="price-source-market-id"><span>Cardmarket Spiel-ID</span><input type="number" min="1" inputmode="numeric" data-cardmarket-game-id value="${g.cardmarket_game_id||''}" placeholder="z. B. 19"></label>
     </div>`).join('')}</div>
@@ -260,7 +260,7 @@ def fetch_catalog() -&gt; dict:
   $$('[data-card-back]',content).forEach(input=>input.onchange=async e=>{
     const file=e.target.files[0]; if(!file)return;
     const form=new FormData(); form.append('file',file);
-    const response=await fetch(`/api/admin/games/${input.dataset.cardBack}/card-back`,{method:'POST',body:form});
+    const response=await fetch(appUrl(`/api/admin/games/${input.dataset.cardBack}/card-back`),{method:'POST',body:form});
     if(response.ok)toast('Kartenrückseite hochgeladen'); else toast('Upload fehlgeschlagen');
   });
   $$('[data-edit-user]',content).forEach(button=>button.onclick=()=>$(`[data-user-editor="${button.dataset.editUser}"]`,content).classList.toggle('hidden'));

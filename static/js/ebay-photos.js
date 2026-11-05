@@ -37,7 +37,7 @@ function bindEbayPhotoStrip(strip){
       const saved=await openEbayCropper({src,title:files.length>1?`Foto ${index+1} von ${files.length} zuschneiden`:'Foto zuschneiden',
         save:async crop=>{
           const form=new FormData();form.append('variant_id',variantId);form.append('file',file);form.append('crop',JSON.stringify(crop));
-          const response=await fetch('/api/ebay/photos',{method:'POST',body:form}),created=await response.json().catch(()=>({}));
+          const response=await fetch(appUrl('/api/ebay/photos'),{method:'POST',body:form}),created=await response.json().catch(()=>({}));
           if(!response.ok)throw new Error(created.error||`Upload fehlgeschlagen (${response.status})`);
         }});
       URL.revokeObjectURL(src);

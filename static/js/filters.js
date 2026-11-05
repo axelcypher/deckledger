@@ -22,7 +22,7 @@ const OP_COLOR_FILTERS=[['Red','#c42536'],['Green','#168b64'],['Blue','#297eb5']
 const OP_TYPE_FILTERS=[['Leader','Leader'],['Stage','Stage'],['Character','Character'],['Event','Event'],['DON!!','DON']];
 const OP_ATTRIBUTE_FILTERS=[['Slash','Slasher','#297eb5'],['Strike','Strike','#e6d93b'],['Special','Special','#9749a3'],['Ranged','Ranged','#c42536'],['Wisdom','Wisdom','#168b64']];
 function opColorIcon(color,rotation){
-  return `<span class="op-color-glyph" style="--op-color:${color};--op-rotation:${rotation}deg"><img src="/op-filter-icon/color.svg?v=2" alt="" aria-hidden="true"></span>`;
+  return `<span class="op-color-glyph" style="--op-color:${color};--op-rotation:${rotation}deg"><img src="${APP_BASE}/op-filter-icon/color.svg?v=2" alt="" aria-hidden="true"></span>`;
 }
 function opFilterPanel(filters){
   const selected=(key,value)=>(filters[key]||[]).includes(String(value));
@@ -30,7 +30,7 @@ function opFilterPanel(filters){
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${pills(OP_TYPE_FILTERS,'types')}</div></div>
     <div class="op-filter-group op-costs"><span>Kosten</span><div>${Array.from({length:10},(_,index)=>index+1).map(cost=>`<button type="button" class="op-filter-chip op-cost-chip ${selected('costs',cost)?'active':''}" data-op-filter="costs" data-value="${cost}" aria-label="Kosten ${cost}" title="Kosten ${cost}">${cost}</button>`).join('')}</div></div>
     <div class="op-filter-group op-colors"><span>Farbe</span><div>${OP_COLOR_FILTERS.map(([name,color],index)=>`<button type="button" class="op-color-filter ${selected('colors',name)?'active':''}" data-op-filter="colors" data-value="${name}" aria-label="${name}" title="${name}">${opColorIcon(color,index*60)}</button>`).join('')}</div></div>
-    <div class="op-filter-group op-attributes"><span>Attribut</span><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${selected('attributes',value)?'active':''}" data-op-filter="attributes" data-value="${value}" aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`;
+    <div class="op-filter-group op-attributes"><span>Attribut</span><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`${APP_BASE}/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${selected('attributes',value)?'active':''}" data-op-filter="attributes" data-value="${value}" aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`;
 }
 
 const LORCANA_TYPE_FILTERS=[['Character','Charakter'],['Action','Aktion'],['Item','Gegenstand'],['Location','Ort']];
@@ -62,16 +62,16 @@ function lorcanaRarityPopup(filters,prefix,scope='card'){
   return `<div class="toolbar-filter-anchor rarity-filter-anchor">
     <button type="button" class="secondary-button" data-filter-toggle="${popupId}" aria-expanded="false">Seltenheit ▾</button>
     <div class="toolbar-filter-popup align-left rarity-popup hidden" id="${popupId}">
-      ${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" ${filterData(scope,'rarities',key)} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}
+      ${LORCANA_RARITY_FILTERS.map(([key,label,file])=>`<button type="button" class="op-image-filter ${active('rarities',key)?'active':''}" ${filterData(scope,'rarities',key)} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><img src="${APP_BASE}/lorcana-filter-icon/${file}?v=1" alt="${escapeHtml(label)}"></button>`).join('')}
     </div>
   </div>`;
 }
 function lorcanaCardFilterGroups(filters,scope='card'){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `
-    <div class="op-filter-group game-costs"><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" ${filterData(scope,'costs',cost)} aria-label="Kosten ${cost===7?'7+':cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inks"><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" ${filterData(scope,'colors',value)} title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inkability"><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" ${filterData(scope,'inkwell','true',true)} title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" ${filterData(scope,'inkwell','false',true)} title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
+    <div class="op-filter-group game-costs"><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" ${filterData(scope,'costs',cost)} aria-label="Kosten ${cost===7?'7+':cost}"><img src="${APP_BASE}/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inks"><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" ${filterData(scope,'colors',value)} title="${label}" aria-label="${label}"><img src="${APP_BASE}/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inkability"><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" ${filterData(scope,'inkwell','true',true)} title="Tintbar" aria-label="Tintbar"><img src="${APP_BASE}/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" ${filterData(scope,'inkwell','false',true)} title="Nicht tintbar" aria-label="Nicht tintbar"><img src="${APP_BASE}/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
 }
 function lorcanaCardFilterBar(filters,prefix,scope='card'){
   return `${lorcanaRarityPopup(filters,prefix,scope)}${lorcanaCardFilterGroups(filters,scope)}`;
@@ -110,7 +110,7 @@ function hololiveCardFilterBar(filters,prefix,rarityOptions,scope='card'){
 const VCARD_ELEMENT_FILTERS=[['Fire','#e2572b'],['Water','#2f8fd8'],['Grass','#3aa65a'],['Electric','#e9c530'],['Platinum','#b9c2cc'],['Divine','#f1e2a6'],['Chaos','#7a3fb4']];
 // VCard's own element crests (from vcardtcg.com), not the recoloured One Piece glyph.
 function vcardElementIcon(name){
-  return `<img class="vcard-element-glyph" src="/static/assets/vcard/elements/${name.toLowerCase()}.png" alt="" aria-hidden="true" loading="lazy">`;
+  return `<img class="vcard-element-glyph" src="${APP_BASE}/static/assets/vcard/elements/${name.toLowerCase()}.png" alt="" aria-hidden="true" loading="lazy">`;
 }
 const VCARD_TYPE_FILTERS=[['VT','VT'],['Mascot','Mascot'],['Support','Support'],['World','World']];
 const VCARD_POWER_LEVELS=[8,9,10];
@@ -155,9 +155,9 @@ function deckFilterPills(items,key,filters){
 function lorcanaFilterPanel(filters){
   const active=(key,value)=>(filters[key]||[]).includes(String(value));
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${deckFilterPills(LORCANA_TYPE_FILTERS,'types',filters)}</div></div>
-    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-deck-filter="costs" data-value="${cost}" aria-label="Kosten ${cost===7?'7+':cost}"><img src="/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inks"><span>Tintenfarbe</span><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-deck-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
-    <div class="op-filter-group lorcana-inkability"><span>Tintbarkeit</span><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
+    <div class="op-filter-group game-costs"><span>Kosten</span><div>${Array.from({length:7},(_,i)=>i+1).map(cost=>`<button type="button" class="op-number-filter lorcana-cost-filter ${active('costs',cost)?'active':''}" data-deck-filter="costs" data-value="${cost}" aria-label="Kosten ${cost===7?'7+':cost}"><img src="${APP_BASE}/lorcana-filter-icon/cost.png?v=2" alt="" aria-hidden="true"><span>${cost===7?'7+':cost}</span></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inks"><span>Tintenfarbe</span><div>${LORCANA_INK_FILTERS.map(([value,label])=>`<button type="button" class="lorcana-color-filter ${active('colors',value)?'active':''}" data-deck-filter="colors" data-value="${value}" title="${label}" aria-label="${label}"><img src="${APP_BASE}/lorcana-filter-icon/${value.toLowerCase()}.svg?v=1" alt="" aria-hidden="true"></button>`).join('')}</div></div>
+    <div class="op-filter-group lorcana-inkability"><span>Tintbarkeit</span><div><button type="button" class="lorcana-icon-filter ${filters.inkwell==='true'?'active':''}" data-single-filter="inkwell" data-value="true" title="Tintbar" aria-label="Tintbar"><img src="${APP_BASE}/lorcana-filter-icon/inkable.png?v=2" alt="" aria-hidden="true"></button><button type="button" class="lorcana-icon-filter ${filters.inkwell==='false'?'active':''}" data-single-filter="inkwell" data-value="false" title="Nicht tintbar" aria-label="Nicht tintbar"><img src="${APP_BASE}/lorcana-filter-icon/uninkable.png?v=1" alt="" aria-hidden="true"></button></div></div>`;
 }
 function hololiveFilterPanel(filters){
   return `<div class="op-filter-group op-types"><span>Kartentyp</span><div>${deckFilterPills(HOLOLIVE_KIND_FILTERS,'kinds',filters)}</div></div>

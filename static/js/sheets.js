@@ -34,7 +34,7 @@ async function renderSheets(){
     content.innerHTML=`${salesHeaderHtml(overview,'sheets',sheets.length)}
       <div class="sheet-section-head sheets-list-head page-section-head"><b>Sheets</b><span>${sheets.length}</span><button class="secondary-button" id="new-sheet">＋ Neues Sheet</button>${salesToolsHtml(overview.listings.status,'sheets')}</div>
       ${sheets.length?`<section class="sheet-overview-grid">${sheets.map(sheet=>`<button class="sheet-overview-card" data-sheet="${sheet.id}">
-        <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
+        <div class="sheet-overview-art">${sheet.card_count?`<img loading="lazy" src="${APP_BASE}/api/trade-sheets/${sheet.id}/image/1.jpg?scale=0.3&v=${encodeURIComponent(sheet.updated_at)}" alt="">`:'<span>Noch keine Karten</span>'}</div>
         <div class="sheet-overview-copy"><span class="sheet-kind sheet-kind-${sheet.kind.toLowerCase().replace('/','-')}">${escapeHtml(sheet.kind)}</span><h3>${escapeHtml(sheet.name)}</h3><small>${sheet.card_count} Karten · ${sheet.copies} Exemplare</small></div></button>`).join('')}</section>`
       :`<div class="deck-empty"><span>▦</span><h2>Dein erstes Sheet</h2><p>Wähle Karten aus deiner Sammlung, lege Menge und Preis fest und lade die fertige Collage herunter.</p><button class="primary-button" id="first-sheet">Sheet erstellen</button></div>`}`;
     const create=async()=>{const created=await post('/api/trade-sheets',{game_id:game.id,name:'Neues Sheet',kind:'WTS'});state.sheetId=created.id;renderSheets()};
@@ -64,7 +64,7 @@ async function renderSheets(){
         <label>Raster<select id="sheet-layout" class="select-control">${options.layouts.map(layout=>`<option value="${layout}">${layout==='auto'?'Automatisch nach Anzahl':layout.replace('x',' × ')}</option>`).join('')}</select></label>
         ${sheet.kind.split('/').includes('WTS')?`<label class="sheet-ebay-sync" title="Karten mit aktivem eBay-Angebot übernehmen Menge und Preis von dort; ausverkaufte verlassen das Sheet.">eBay-Abgleich<span class="sheet-ebay-sync-row"><span class="oauth-toggle-control"><input type="checkbox" id="sheet-ebay-sync" ${sheet.ebay_sync?'checked':''}><span aria-hidden="true"></span></span>Menge &amp; Preis</span></label>`:''}
       </div>
-      <div class="sheet-backgrounds" role="radiogroup" aria-label="Hintergrund">${options.backgrounds.map(bg=>`<button type="button" role="radio" aria-checked="${sheet.background===bg.id}" data-sheet-background="${bg.id}" class="${sheet.background===bg.id?'active':''}" title="${escapeHtml(bg.label)}"><img src="/api/trade-sheets/backgrounds/${bg.id}.jpg" alt=""><span>${escapeHtml(bg.label)}</span>${bg.custom?`<i class="sheet-background-delete" role="button" tabindex="0" data-delete-background="${bg.id}" title="Hintergrund löschen" aria-label="Hintergrund ${escapeHtml(bg.label)} löschen">×</i>`:''}</button>`).join('')}<label class="sheet-background-upload" title="Eigenes Bild als Hintergrund hochladen (JPEG, PNG, WebP)"><input type="file" id="sheet-background-file" accept="image/jpeg,image/png,image/webp" hidden><b>＋</b><span>Eigenes Bild</span></label></div>
+      <div class="sheet-backgrounds" role="radiogroup" aria-label="Hintergrund">${options.backgrounds.map(bg=>`<button type="button" role="radio" aria-checked="${sheet.background===bg.id}" data-sheet-background="${bg.id}" class="${sheet.background===bg.id?'active':''}" title="${escapeHtml(bg.label)}"><img src="${APP_BASE}/api/trade-sheets/backgrounds/${bg.id}.jpg" alt=""><span>${escapeHtml(bg.label)}</span>${bg.custom?`<i class="sheet-background-delete" role="button" tabindex="0" data-delete-background="${bg.id}" title="Hintergrund löschen" aria-label="Hintergrund ${escapeHtml(bg.label)} löschen">×</i>`:''}</button>`).join('')}<label class="sheet-background-upload" title="Eigenes Bild als Hintergrund hochladen (JPEG, PNG, WebP)"><input type="file" id="sheet-background-file" accept="image/jpeg,image/png,image/webp" hidden><b>＋</b><span>Eigenes Bild</span></label></div>
       <div id="sheet-preview" class="sheet-preview"></div>
       <div class="sheet-text"><div class="sheet-section-head"><b>Text für den Post</b><button class="secondary-button" id="sheet-copy-text">Kopieren</button></div><textarea id="sheet-text" readonly rows="6"></textarea></div>
       <div id="sheet-posts" class="sheet-posts"></div>
@@ -124,7 +124,7 @@ async function renderSheets(){
     const file=event.target.files[0];if(!file)return;
     const form=new FormData();form.append('file',file);
     try{
-      const response=await fetch('/api/trade-sheets/backgrounds',{method:'POST',body:form}),created=await response.json().catch(()=>({}));
+      const response=await fetch(appUrl('/api/trade-sheets/backgrounds'),{method:'POST',body:form}),created=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(created.error||`Upload fehlgeschlagen (${response.status})`);
       await api(`/api/trade-sheets/${state.sheetId}`,{method:'PATCH',body:JSON.stringify({background:created.id})});
       sheetView.options=null;toast('Hintergrund hinzugefügt');renderSheets();
@@ -175,7 +175,7 @@ function applySheetPayload(payload,immediate=false){
 
 function renderSheetPreview(){
   const box=$('#sheet-preview'),payload=sheetView.payload;if(!box||!payload)return;
-  const stamp=encodeURIComponent(payload.sheet.updated_at),base=`/api/trade-sheets/${payload.sheet.id}/image`;
+  const stamp=encodeURIComponent(payload.sheet.updated_at),base=`${APP_BASE}/api/trade-sheets/${payload.sheet.id}/image`;
   box.innerHTML=payload.pages.length?payload.pages.map((page,index)=>`<figure class="sheet-page"><img src="${base}/${index+1}.jpg?scale=0.6&v=${stamp}" alt="Vorschau Seite ${index+1}" loading="lazy">
       <figcaption><span>${payload.pages.length>1?`Seite ${index+1} von ${payload.pages.length} · `:''}${page.columns} × ${page.rows} · ${page.count} Karten</span><a class="secondary-button" href="${base}/${index+1}.jpg?download=1" download>JPG</a><a class="secondary-button" href="${base}/${index+1}.png?download=1" download>PNG</a></figcaption></figure>`).join('')
     :'<div class="sheet-preview-empty">Die Vorschau erscheint, sobald Karten auf dem Sheet liegen.</div>';

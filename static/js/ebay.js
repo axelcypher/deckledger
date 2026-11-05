@@ -110,7 +110,7 @@ async function renderEbayAccount(modal){
       ?`<div class="dl-account-row"><span class="user-settings-status is-connected"><i></i>Verbunden</span><div><b>${escapeHtml(status.username||'eBay-Konto')}</b><small>${escapeHtml(status.marketplace_label)}${status.environment==='sandbox'?' · Sandbox':''} · abgeglichen ${ebayDate(status.listings_synced_at)}</small>${status.last_error?`<small class="sheet-warning">${escapeHtml(status.last_error)}</small>`:''}</div>
           <button class="secondary-button" id="ebay-disconnect">Trennen</button><button class="primary-button" id="ebay-sync-now">Jetzt abgleichen</button></div>`
       :`<div class="dl-account-row"><span class="user-settings-status"><i></i>${status.expired?'Abgelaufen':'Nicht verbunden'}</span><div><small>${status.expired?'eBay erneuert die Verbindung nach 18 Monaten nicht von selbst. ':''}Du meldest dich bei eBay an und erlaubst Ophir Cards den Zugriff auf deine Angebote. Dein eBay-Passwort sieht Ophir Cards nie.</small></div>
-          <a class="primary-button" href="/ebay/connect">Mit ${escapeHtml(status.marketplace_label)} verbinden</a></div>`;
+          <a class="primary-button" href="${APP_BASE}/ebay/connect">Mit ${escapeHtml(status.marketplace_label)} verbinden</a></div>`;
   $('#ebay-disconnect',body)?.addEventListener('click',async()=>{
     if(!confirm('Verbindung zu eBay trennen? Bisher abgeglichene Angebote und Verkäufe bleiben sichtbar.'))return;
     try{await post('/api/ebay/disconnect',{});toast('eBay-Verbindung getrennt');ebaySettingsState.policies=null;renderEbayAccount(modal);renderEbayPreset(modal)}catch(error){toast(error.message)}
@@ -625,7 +625,7 @@ function openEbayStats(listings){
   const status=listings.status;
   const modal=openSettingsModal({id:'ebay-stats-modal',eyebrow:'EBAY',title:'Angebotsstatistik',
     intro:'Beobachter, Aufrufe und Impressionen deiner Angebote. Die Beliebtheit ist ein eigenes Maß von Ophir Cards: ein Beobachter zählt wie zehn Aufrufe, ein Verkauf wie 25, hundert Impressionen wie ein Aufruf – eBay selbst verrät keinen Suchrang.',
-    body:`${status.stats_need_reconnect?`<p class="dl-hint">Aufrufe und Impressionen liefert eBay erst, wenn du Ophir Cards den Zugriff auf deine Verkaufsstatistik erlaubst. <a href="/ebay/connect">eBay neu verbinden</a></p>`:''}
+    body:`${status.stats_need_reconnect?`<p class="dl-hint">Aufrufe und Impressionen liefert eBay erst, wenn du Ophir Cards den Zugriff auf deine Verkaufsstatistik erlaubst. <a href="${APP_BASE}/ebay/connect">eBay neu verbinden</a></p>`:''}
       <div class="ebay-stats-tiles" id="ebay-stats-tiles"></div>
       <div class="ebay-stats-controls"><div class="deal-filter-chips">${[['active','Aktiv'],['all','Alle']].map(([id,label])=>`<button type="button" class="community-chip" data-ebay-stats-status="${id}">${label}</button>`).join('')}</div>
         <label class="dl-field"><span>Sortieren nach</span><select class="dl-control" id="ebay-stats-sort">${EBAY_STAT_SORTS.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label></div>

@@ -4,7 +4,7 @@
 import { f, v2, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/tempest.frag'),
+  loadSource: fragLoader(new URL('../tempest.frag', import.meta.url).href),
   roles: {
     pattern: { asset: 'TempestPatterns' },
     gradient: { asset: 'RainbowGradientTempestGlitter' },

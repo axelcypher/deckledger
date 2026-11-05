@@ -52,13 +52,14 @@ def index():
 
 @app.get("/service-worker.js")
 def service_worker():
-    # Served at root (not /static/service-worker.js) so its default scope
-    # covers the whole app, not just /static/. Not behind @login_required --
+    # Served at the app's root (not /static/service-worker.js) so its default scope
+    # covers the whole app, not just /static/ -- and no more than the app when a proxy
+    # serves it under a path like /cards. Not behind @login_required --
     # the browser fetches/updates service workers independent of app auth,
     # and gating this would make it 302 to /login instead of registering.
     path = Path(app.static_folder) / "service-worker.js"
     response = compress_file(send_file(path, mimetype="application/javascript", conditional=True, etag=True, max_age=0), path)
-    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Service-Worker-Allowed"] = f"{request.script_root}/"
     return response
 
 

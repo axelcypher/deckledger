@@ -4,7 +4,7 @@ import { f, v2, v4, fragLoader } from './_shared.js';
 import { hasKeyword } from '../../presetResolver.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/satin.frag'),
+  loadSource: fragLoader(new URL('../satin.frag', import.meta.url).href),
   roles: {
     satinNoise: { asset: 'SatinFoilNoise' },
     // Satin_None references RainbowGradientSatin; Satin_HighGloss references

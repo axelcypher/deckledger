@@ -15,8 +15,10 @@
 // _SecondTopLayerMask, _MainTex) are used directly by name -- confirmed present under those
 // exact keys across the materials inspected while building this.
 
-const PRESETS_URL = '/assets/lorcana/foil-presets.json';
-const TEXTURE_BASE_URL = '/assets/lorcana/foil/';
+// The app's /assets/ route, found from this module's own address (<app>/static/lorcana-foil/) so it
+// also holds when the app is served under a path like /cards.
+const PRESETS_URL = new URL('../../assets/lorcana/foil-presets.json', import.meta.url).href;
+const TEXTURE_BASE_URL = new URL('../../assets/lorcana/foil/', import.meta.url).href;
 
 let presetsPromise = null;
 

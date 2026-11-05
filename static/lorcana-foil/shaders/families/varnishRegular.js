@@ -3,7 +3,7 @@
 import { f, v4, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/varnishRegular.frag'),
+  loadSource: fragLoader(new URL('../varnishRegular.frag', import.meta.url).href),
   roles: {
     varnishSurface: { asset: 'VarnishSurface' },
     varnishShine: { asset: 'VarnishShine' },

@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- Where the app is served: empty at the root of its host, "/cards" behind a proxy that serves it
+       under that path. The scripts put it in front of every address they build. -->
+  <meta name="app-base" content="{{ request.script_root }}">
   <meta name="theme-color" content="#090909">
   {# Shared by link, not meant to be found: search engines are asked to leave it out. #}
   <meta name="robots" content="noindex, nofollow">

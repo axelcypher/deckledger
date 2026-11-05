@@ -18,8 +18,9 @@ class FakeCache {
 
 let worker;
 
-// A worker with empty caches, a network the test scripts and timers the test fires by hand.
-function startWorker() {
+// A worker with empty caches, a network the test scripts and timers the test fires by hand,
+// registered for the app at the root of its host or under a path (`base`, e.g. '/cards').
+function startWorker({ base = '' } = {}) {
   const stores = new Map();
   const handlers = {};
   const timers = [];
@@ -43,6 +44,7 @@ function startWorker() {
     addEventListener: (type, handler) => { handlers[type] = handler; },
     skipWaiting: async () => {},
     clients: { claim: async () => {} },
+    registration: { scope: `${ORIGIN}${base}/` },
   };
   sandbox.self = sandbox;
   const { run } = loadScripts(['service-worker.js'], sandbox);
@@ -76,7 +78,7 @@ describe('API answers', () => {
     const response = await worker.get('/api/bootstrap');
     assert.deepEqual(await response.json(), { fresh: true });
     assert.equal(response.headers.get('X-Ophir-Stale'), null);
-    assert.ok(await (await worker.cache('ophir-api-v2')).match('/api/bootstrap'));
+    assert.ok(await (await worker.cache('ophir-cards-api-v2')).match('/api/bootstrap'));
   });
 
   test('fall back to the kept copy, marked as stale, when the server cannot be reached', async () => {
@@ -126,7 +128,7 @@ describe('API answers', () => {
     await worker.get('/api/bootstrap');
     worker.network.answer = () => json({ error: 'broken' }, { status: 500 });
     await worker.get('/api/bootstrap');
-    assert.deepEqual(await (await (await worker.cache('ophir-api-v2')).match('/api/bootstrap')).json(), { version: 1 });
+    assert.deepEqual(await (await (await worker.cache('ophir-cards-api-v2')).match('/api/bootstrap')).json(), { version: 1 });
   });
 
   test('what was saved for offline use is used when nothing else is kept', async () => {
@@ -139,7 +141,7 @@ describe('API answers', () => {
   test('only the newest answers are kept', async () => {
     worker.network.answer = url => json({ url });
     for (let index = 0; index < 160; index++) await worker.get(`/api/search?q=${index}`);
-    const kept = (await (await worker.cache('ophir-api-v2')).keys()).map(entry => entry.url);
+    const kept = (await (await worker.cache('ophir-cards-api-v2')).keys()).map(entry => entry.url);
     assert.equal(kept.length, 150);
     assert.ok(kept.at(-1).endsWith('q=159') && !kept.some(url => url.endsWith('q=5')));
   });
@@ -186,7 +188,7 @@ describe('static files and the page', () => {
     worker.network.answer = () => new Response('script');
     await worker.get('/static/js/core.js?v=old');
     await worker.get('/static/js/core.js?v=new');
-    const kept = (await (await worker.cache('ophir-shell-v2')).keys()).map(entry => entry.url);
+    const kept = (await (await worker.cache('ophir-cards-shell-v2')).keys()).map(entry => entry.url);
     assert.deepEqual(kept, [`${ORIGIN}/static/js/core.js?v=new`]);
   });
 
@@ -219,8 +221,40 @@ describe('static files and the page', () => {
 
 describe('updates', () => {
   test('caches of an older worker are removed, the offline save is not', async () => {
-    for (const name of ['ophir-shell-v1', 'ophir-api-v1', 'ophir-api-v2', 'deckledger-shell-v2', 'deckledger-api-v2', 'deckledger-images-v2', 'deckledger-offline-v1', 'something-else']) await worker.cache(name);
+    for (const name of ['ophir-cards-shell-v1', 'ophir-cards-api-v2', 'ophir-shell-v2', 'ophir-api-v2', 'deckledger-shell-v2', 'deckledger-api-v2', 'deckledger-images-v2', 'deckledger-offline-v1']) await worker.cache(name);
     await worker.lifecycle('activate');
-    assert.deepEqual([...worker.stores.keys()].sort(), ['deckledger-offline-v1', 'ophir-api-v2']);
+    assert.deepEqual([...worker.stores.keys()].sort(), ['deckledger-offline-v1', 'ophir-cards-api-v2']);
+  });
+
+  test('caches of other apps on the same host are left alone', async () => {
+    for (const name of ['ophir-figures-shell-v1', 'something-else']) await worker.cache(name);
+    await worker.lifecycle('activate');
+    assert.deepEqual([...worker.stores.keys()].sort(), ['ophir-figures-shell-v1', 'something-else']);
+  });
+});
+
+describe('served under a path (ophir.<domain>/cards)', () => {
+  beforeEach(() => { worker = startWorker({ base: '/cards' }); });
+
+  test('API answers and static files under the path are handled as before', async () => {
+    worker.network.answer = () => json({ fresh: true });
+    await worker.get('/cards/api/bootstrap');
+    assert.ok(await (await worker.cache('ophir-cards-api-v2')).match('/cards/api/bootstrap'));
+    worker.network.answer = () => new Response('script');
+    await worker.get('/cards/static/js/core.js?v=abc');
+    assert.ok(await (await worker.cache('ophir-cards-shell-v2')).match('/cards/static/js/core.js?v=abc'));
+  });
+
+  test("another app's API on the same host is not taken for this one", async () => {
+    worker.network.answer = () => json({ other: true });
+    assert.equal(await worker.get('/figures/api/bootstrap'), undefined);
+    assert.equal(worker.network.calls.length, 0);
+  });
+
+  test('a card image that was saved without the large one falls back to its thumbnail', async () => {
+    worker.network.answer = () => image();
+    await worker.get('/cards/art/v1.svg?v=6&size=thumb');
+    worker.network.answer = () => { throw new TypeError('offline'); };
+    assert.equal(await (await worker.get('/cards/art/v1.svg?v=6')).text(), 'image-bytes');
   });
 });

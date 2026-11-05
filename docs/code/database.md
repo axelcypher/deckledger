@@ -50,7 +50,7 @@ Imports nothing from the package; safe to import from anywhere.
   - `after_request` `compress_answer` - gzip (level 5) for 200 answers of type JSON or HTML from 2 KiB.
   - `errorhandler(sqlite3.IntegrityError)` - rolls back; `/api/...` gets 400 JSON, anything else re-raises.
 - JSON answers go through `OrjsonProvider` (sorted keys). It falls back to Flask's own provider for debug pretty-printing, `sort_keys` off, or values orjson cannot write. Visible differences: non-ASCII as UTF-8, NaN as `null`, number-like keys sorted as text.
-- Settings: `SECRET_KEY` from env (fallback: a fixed development key); `TRUST_PROXY_HEADERS` in (`1`, `true`, `yes`) wraps the app in `ProxyFix(x_for=1, x_proto=1, x_host=1)`; `SESSION_COOKIE_SAMESITE = "Lax"`. Sessions are Flask's signed cookies; there is no server-side session store.
+- Settings: `SECRET_KEY` from env (fallback: a fixed development key); `TRUST_PROXY_HEADERS` in (`1`, `true`, `yes`) wraps the app in `ProxyFix(x_for=1, x_proto=1, x_host=1, x_prefix=1)`, so `X-Forwarded-Prefix` becomes `request.script_root`; `SESSION_COOKIE_SAMESITE = "Lax"`. Sessions are Flask's signed cookies (`AppSessionInterface`: cookie `ophir_cards_session`, path `request.script_root or "/"`, salt `ophir-cards-session`); there is no server-side session store.
 
 | Method | Path | Auth | What it does |
 | --- | --- | --- | --- |

@@ -34,16 +34,17 @@ function stop(child) {
   child.kill();
 }
 
-export async function startServer() {
+/** The app on a free port; with basePath (e.g. '/cards') served under that path, as behind a proxy. */
+export async function startServer({ basePath = '' } = {}) {
   const port = await freePort();
   const python = process.env.OPHIR_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
   const output = [];
-  const child = spawn(python, [path.join(HERE, 'serve.py'), String(port)], {
+  const child = spawn(python, [path.join(HERE, 'serve.py'), String(port), ...(basePath ? [basePath] : [])], {
     cwd: path.resolve(HERE, '..', '..'), env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONUTF8: '1' },
   });
   child.stdout.on('data', chunk => output.push(String(chunk)));
   child.stderr.on('data', chunk => output.push(String(chunk)));
-  const base = `http://127.0.0.1:${port}`;
+  const base = `http://127.0.0.1:${port}${basePath}`;
   for (let attempt = 0; attempt < 120; attempt++) {
     if (child.exitCode !== null) break;
     try { if ((await fetch(`${base}/health`)).ok) return { base, output, stop: () => stop(child) }; } catch {}
@@ -82,6 +83,8 @@ export async function startBrowser({ width = 1400, height = 950, mobile = false 
   // Everything that would show up red in the browser console: uncaught errors, rejected
   // promises nobody handled, console.error, and answers from the server with a 5xx status.
   const problems = [];
+  // Every address the page asked for, to check that nothing misses the path the app is served under.
+  const requests = [];
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
     if (message.id && pending.has(message.id)) { pending.get(message.id)(message); pending.delete(message.id); return; }
@@ -90,6 +93,8 @@ export async function startBrowser({ width = 1400, height = 950, mobile = false 
       problems.push(`exception: ${details.exception?.description || details.text}`);
     } else if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
       problems.push(`console.error: ${message.params.args.map(arg => arg.value ?? arg.description).join(' ')}`);
+    } else if (message.method === 'Network.requestWillBeSent') {
+      requests.push(message.params.request.url);
     } else if (message.method === 'Network.responseReceived' && message.params.response.status >= 500) {
       problems.push(`HTTP ${message.params.response.status}: ${message.params.response.url}`);
     }
@@ -103,6 +108,7 @@ export async function startBrowser({ width = 1400, height = 950, mobile = false 
 
   const page = {
     problems,
+    requests,
     send,
     /** Runs an expression in the page (it may be a promise) and returns its JSON-able value. */
     async evaluate(expression) {

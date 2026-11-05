@@ -33,7 +33,7 @@ function renderDashboard(){
     </section>
     <section class="game-grid">${games.map(g=>`
       <button class="game-tile" data-game="${g.id}" style="--accent:${g.accent}">
-        <div class="game-visual"><img class="game-logo" src="/game-logo/${g.id}" alt="${escapeHtml(g.name)} Logo"></div>
+        <div class="game-visual"><img class="game-logo" src="${APP_BASE}/game-logo/${g.id}" alt="${escapeHtml(g.name)} Logo"></div>
         <div class="game-info">
           <div class="game-main-stat"><b>${money(g.value)}</b><span>Sammlungswert</span></div>
           <div class="progress-track"><span style="width:${g.completion}%"></span></div>

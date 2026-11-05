@@ -14,8 +14,9 @@
 import { loadPresets, getMaterial, getShaderFamily, resolveMaterialName, effectTextureUrl, findTextureByAssetName, getNamedSlot, floatValue, vec2Value, colorValue, hexToVec4 } from './presetResolver.js';
 import { SHADER_FAMILIES } from './shaders/families/index.js';
 
-const COMMON_GLSL_URL = '/static/lorcana-foil/shaders/common.glsl';
-const VERTEX_URL = '/static/lorcana-foil/shaders/fullscreen.vert';
+// Next to this module, wherever the app is served from (the root of its host or a path like /cards).
+const COMMON_GLSL_URL = new URL('./shaders/common.glsl', import.meta.url).href;
+const VERTEX_URL = new URL('./shaders/fullscreen.vert', import.meta.url).href;
 
 let sourceCache = null; // {common, vertex} -- fetched once, reused for every program compile
 async function loadSharedSources() {

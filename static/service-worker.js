@@ -3,20 +3,28 @@
 // content hash in their ?v= param (asset_url() in app.py), so a changed file
 // always arrives under a new URL without anyone having to bump a number.
 const CACHE_VERSION = 'v2';
-const SHELL_CACHE = `ophir-shell-${CACHE_VERSION}`;
-const API_CACHE = `ophir-api-${CACHE_VERSION}`;
-const IMAGE_CACHE = `ophir-images-${CACHE_VERSION}`;
+// Where the app is served: '' at the root of its host, '/cards' when a reverse proxy serves it
+// under that path. The worker is registered with the app's root as its scope.
+const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
+// Other Ophir apps can share the host (ophir.<domain>/cards, /figures, ...) and with it the
+// origin's caches: every cache of this app carries its name, and only those are ever purged.
+const SHELL_CACHE = `ophir-cards-shell-${CACHE_VERSION}`;
+const API_CACHE = `ophir-cards-api-${CACHE_VERSION}`;
+const IMAGE_CACHE = `ophir-cards-images-${CACHE_VERSION}`;
 // What the user saved for offline use on purpose (static/js/offline.js). Written by the page,
 // only read here, never trimmed, and kept across changes of CACHE_VERSION. It keeps the app's old
 // name (DeckLedger) so the rename to Ophir Cards did not throw away what users had saved.
 const SAVED_CACHE = 'deckledger-offline-v1';
 const KNOWN_CACHES = [SHELL_CACHE, API_CACHE, IMAGE_CACHE, SAVED_CACHE];
+// This app's caches under any version, including the names it used before (DeckLedger, and plain
+// "ophir-" before a second Ophir app could share the host).
+const OWN_CACHE = /^(?:ophir-cards|ophir|deckledger)-(?:shell|api|images)-/;
 
 // Deliberately NOT precaching "/" here -- if install ever runs while logged
 // out, fetching "/" resolves to the login page, not the app shell, and we'd
 // cache the wrong thing under the app's URL. It gets cached lazily on first
 // authenticated visit via the networkFirst runtime handler below instead.
-const PRECACHE_ASSETS = ['/static/manifest.json'];
+const PRECACHE_ASSETS = [`${BASE}/static/manifest.json`];
 
 // How long the network may take before a saved copy is shown instead. The
 // page shell is a few KB, so a server that has not delivered it after 3 s is
@@ -54,7 +62,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => !KNOWN_CACHES.includes(key)).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => OWN_CACHE.test(key) && !KNOWN_CACHES.includes(key)).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -63,10 +71,10 @@ function isImageRequest(url) {
   return /\/(art|set-logo|card-back|lorcana-filter-icon|op-filter-icon|icons)\//.test(url.pathname);
 }
 function isStaticAsset(url) {
-  return url.pathname.startsWith('/static/');
+  return url.pathname.startsWith(`${BASE}/static/`);
 }
 function isApiRequest(url) {
-  return url.pathname.startsWith('/api/');
+  return url.pathname.startsWith(`${BASE}/api/`);
 }
 
 async function saved(request) {
@@ -78,7 +86,7 @@ async function saved(request) {
 // better than a broken picture in the detail view.
 async function savedThumbnail(request) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith('/art/') || url.searchParams.has('size')) return undefined;
+  if (!url.pathname.startsWith(`${BASE}/art/`) || url.searchParams.has('size')) return undefined;
   url.searchParams.set('size', 'thumb');
   return await (await caches.open(IMAGE_CACHE)).match(url.href) || await saved(url.href);
 }

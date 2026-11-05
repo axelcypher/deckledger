@@ -79,7 +79,7 @@ function deckContentCard(c,forceGrid=false,coverVariantId=null){
 
 function deckOverviewCard(deck,game,formats){
   const profile=formats.find(item=>item.id===deck.format_id)||formats[0];
-  const backUrl=`/card-back/${game.id}`;
+  const backUrl=`${APP_BASE}/card-back/${game.id}`;
   const cover=deck.cover_variant_id?`<img loading="lazy" src="${artUrl(deck.cover_variant_id)}" alt="">`:'';
   const missingLabel=deck.missing_copies?`${deck.missing_copies} fehlen`:deck.required_copies?'Vollständig':'Leer';
   const missingClass=deck.missing_copies?'missing':deck.required_copies?'complete':'';
@@ -208,7 +208,7 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
     :isVcard?`<div class="op-filter-group op-types"><div>${deckFilterPills(VCARD_TYPE_FILTERS,'types',f)}</div></div>`:'';
   const deckSecondaryTypes=isHololive?`<div class="op-filter-group"><div>${deckFilterPills(HOLOLIVE_BLOOM_FILTERS,'bloomLevels',f)}</div></div>`:'';
   const sharedGameFilters=isOnePiece?opCardFilterGroups(f,'deck'):isLorcana?lorcanaCardFilterGroups(f,'deck'):isHololive?hololiveCardFilterGroups(f,'deck'):isVcard?vcardCardFilterGroups(f,'deck'):'';
-  const deckAttributes=isOnePiece?`<div class="op-filter-group op-attributes"><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${(f.attributes||[]).includes(value)?'active':''}" ${filterData('deck','attributes',value)} aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`:'';
+  const deckAttributes=isOnePiece?`<div class="op-filter-group op-attributes"><div>${OP_ATTRIBUTE_FILTERS.map(([value,label,color])=>{const iconUrl=`${APP_BASE}/op-filter-icon/attribute-${value.toLowerCase()}.svg?v=2`;return `<button type="button" class="op-image-filter ${(f.attributes||[]).includes(value)?'active':''}" ${filterData('deck','attributes',value)} aria-label="${label}" title="${label}"><span class="op-attribute-glyph" style="--op-attribute-color:${color};--op-attribute-icon:url('${iconUrl}')"><img src="${iconUrl}" alt="${label}"></span></button>`}).join('')}</div></div>`:'';
   const filters=`<div class="op-catalog-filterbar catalog-filter-mobile deck-catalog-filter-mobile">
     <div class="deck-catalog-filter-row deck-catalog-filter-primary">
       <div class="filter-search"><span>⌕</span><input id="deck-q" value="${escapeHtml(f.q)}" placeholder="Karten suchen"></div>
@@ -281,8 +281,8 @@ async function renderDeckbuilder(preserve=false,catalogPosition=null){
   // needed for the file download itself.
   $('#deck-transfer-export-choice').onclick=()=>{
     closeOverlay('deck-transfer-modal');
-    $('#deck-export-list').href=`/api/decks/${state.deckId}/export/list.txt`;
-    $('#deck-export-missing').href=`/api/decks/${state.deckId}/export/missing.txt`;
+    $('#deck-export-list').href=appUrl(`/api/decks/${state.deckId}/export/list.txt`);
+    $('#deck-export-missing').href=appUrl(`/api/decks/${state.deckId}/export/missing.txt`);
     openOverlay('deck-export-modal');
   };
   let timer;$('#deck-q').oninput=e=>{clearTimeout(timer);f.q=e.target.value;timer=setTimeout(()=>reRenderPreservingFocus('#deck-q',()=>renderDeckbuilder(true)),250)};

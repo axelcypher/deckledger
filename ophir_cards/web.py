@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import orjson
 from flask import Flask, g, jsonify, redirect, request, session, url_for
 from flask.json.provider import DefaultJSONProvider
+from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import migrations, search
@@ -66,7 +67,27 @@ if os.environ.get("TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
     # spoof them) -- needed behind a TLS-terminating reverse proxy so url_for(_external=True) in
     # the OAuth redirect_uri comes out as https://, matching what's registered with the IdP,
     # instead of the plain http:// Flask would otherwise infer from the proxy's own request.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    # X-Forwarded-Prefix: a proxy that serves the app under a path (ophir.<domain>/cards, Traefik's
+    # StripPrefix sends it) makes that path the app's root, so url_for(), redirects and
+    # request.script_root (which the pages hand to their scripts) all carry it. Without the
+    # header the app stays at the root of its host, so both kinds of address work side by side.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+
+class AppSessionInterface(SecureCookieSessionInterface):
+    """Flask's signed cookie session, kept to this app on a host it shares with other Ophir apps
+    (ophir.<domain>/cards next to /figures): its own cookie name, sent only to the app's own path,
+    and its own signing salt -- the apps may get the same SECRET_KEY, and a cookie another app
+    signed must never open a session here."""
+
+    salt = "ophir-cards-session"
+
+    def get_cookie_path(self, app):
+        return request.script_root or "/"
+
+
+app.session_interface = AppSessionInterface()
+app.config["SESSION_COOKIE_NAME"] = "ophir_cards_session"
 # Explicit instead of relying on each browser's own default for cookies without the attribute.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 

@@ -1,7 +1,10 @@
 """Serves the app for the browser tests (tests/frontend/*.test.mjs): the working tree, a throwaway
 database and the same small catalogue the Python tests use.
 
-    python tests/frontend/serve.py <port>
+    python tests/frontend/serve.py <port> [<base path>]
+
+With a base path (e.g. /cards) the app is served under it, the way a reverse proxy serves it as
+ophir.<domain>/cards; everything outside it answers 404.
 """
 import sys
 from datetime import datetime, timezone
@@ -43,4 +46,13 @@ for game_id in conftest.ophir_cards.games.GAMES:
     (conftest.ophir_cards.config.IMAGE_CACHE / f"brand-{game_id}.img").write_bytes(PIXEL)
     (conftest.ophir_cards.config.IMAGE_CACHE / f"brand-{game_id}.mime").write_text("image/png")
 
-conftest.ophir_cards.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)
+base_path = sys.argv[2] if len(sys.argv) > 2 else ""
+if base_path:
+    from werkzeug.exceptions import NotFound
+    from werkzeug.middleware.dispatcher import DispatcherMiddleware
+    from werkzeug.serving import run_simple
+
+    # SCRIPT_NAME carries the path, as ProxyFix makes it from X-Forwarded-Prefix behind Traefik.
+    run_simple("127.0.0.1", int(sys.argv[1]), DispatcherMiddleware(NotFound(), {base_path: conftest.ophir_cards.app}), threaded=True)
+else:
+    conftest.ophir_cards.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)

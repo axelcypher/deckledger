@@ -65,7 +65,7 @@
   <script>
     // The service worker keeps API answers as an offline fallback. Whoever reaches the login
     // page is signed out, so the previous user's cached answers must not outlive that session.
-    if ('caches' in window) caches.keys().then(keys => keys.filter(key => /^(?:ophir|deckledger)-api-/.test(key)).forEach(key => caches.delete(key)));
+    if ('caches' in window) caches.keys().then(keys => keys.filter(key => /^(?:ophir-cards|ophir|deckledger)-api-/.test(key)).forEach(key => caches.delete(key)));
   </script>
 </body>
 </html>

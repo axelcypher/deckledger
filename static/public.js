@@ -2,9 +2,11 @@
 // without signing in. Its own small script -- the app's scripts expect a signed-in user. The
 // address says what is shown: #<game> for its sets, #<game>/<set> for the cards of a set.
 
+// '' at the root of the host, '/cards' behind a proxy that serves the app under that path.
+const APP_BASE=document.querySelector('meta[name="app-base"]')?.content||'';
 const view=document.getElementById('content');
 const slug=view.dataset.slug;
-const base=`/u/${encodeURIComponent(slug)}`;
+const base=`${APP_BASE}/u/${encodeURIComponent(slug)}`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>Number(value||0).toLocaleString('de-DE');
 const percent=(part,whole)=>whole?Math.round(part/whole*100):0;
@@ -13,7 +15,7 @@ const cache=new Map();
 let profile=null,cardMode='all';
 
 async function load(url){
-  if(!cache.has(url))cache.set(url,fetch(url).then(async response=>{
+  if(!cache.has(url))cache.set(url,fetch(APP_BASE+url).then(async response=>{
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||`Fehler ${response.status}`);
     return data;

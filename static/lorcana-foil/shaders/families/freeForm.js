@@ -3,7 +3,7 @@
 import { f, v2, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/freeForm.frag'),
+  loadSource: fragLoader(new URL('../freeForm.frag', import.meta.url).href),
   roles: {
     pattern: { slot: '_Texture' }, // FreeForm1Pattern or FreeForm2Pattern, per-material
     gradient: { asset: 'RainbowGradientFreeForm' },

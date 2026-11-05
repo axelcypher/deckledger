@@ -5,7 +5,7 @@
 import { f, v2, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/defaultHolo.frag'),
+  loadSource: fragLoader(new URL('../defaultHolo.frag', import.meta.url).href),
   roles: {
     // Slot key confirmed as literally "_Texture" on all three materials (not "_FoilPattern" --
     // that clean name belongs to the Lore family's shader graph, a different one).

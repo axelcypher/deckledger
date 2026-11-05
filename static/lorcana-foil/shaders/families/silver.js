@@ -6,7 +6,7 @@
 import { f, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/silver.frag'),
+  loadSource: fragLoader(new URL('../silver.frag', import.meta.url).href),
   roles: {
     silverShine: { asset: 'SilverShine' },
   },

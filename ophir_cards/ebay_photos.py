@@ -20,7 +20,7 @@ import re
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 
-from flask import jsonify, request, send_file
+from flask import has_request_context, jsonify, request, send_file
 
 from .config import EBAY_PHOTO_DIR, jload, now_iso
 from .web import app, db, login_required, user_id
@@ -97,8 +97,10 @@ def store_original(payload, photo_id):
 def photo_payload(row):
     # Changes with every new crop, also twice in one second, so the browser fetches the new picture.
     version = hashlib.sha1(f'{row["crop"]}|{row["updated_at"] or row["created_at"]}'.encode()).hexdigest()[:10]
+    # The page uses these as they are: with the path a proxy may serve the app under (/cards).
+    base = f'{request.script_root if has_request_context() else ""}/api/ebay/photos/{row["id"]}'
     return {"id": row["id"], "variant_id": row["variant_id"], "position": row["position"], "crop": parse_crop(row["crop"]),
-            "url": f'/api/ebay/photos/{row["id"]}/image?v={version}', "original_url": f'/api/ebay/photos/{row["id"]}/original'}
+            "url": f'{base}/image?v={version}', "original_url": f'{base}/original'}
 
 
 def card_photos(connection, uid, variant_ids):

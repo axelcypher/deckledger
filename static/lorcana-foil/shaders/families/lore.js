@@ -13,7 +13,7 @@ import { f, v2, v4, boolf, fragLoader } from './_shared.js';
 import { hasKeyword } from '../../presetResolver.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/lore.frag'),
+  loadSource: fragLoader(new URL('../lore.frag', import.meta.url).href),
   roles: {
     pattern: { slot: '_FoilPattern' },
     gradient: { slot: '_FoilColorGradient' },

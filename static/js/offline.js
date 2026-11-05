@@ -135,7 +135,7 @@ async function saveForOffline({fullImages=false,onProgress=()=>{}}={}){
     saved.add(new URL(url,location.origin).href);
     return image?null:response.json();
   };
-  const data=async url=>{progress.total++;report();const result=await keep(url);progress.done++;report();return result};
+  const data=async url=>{progress.total++;report();const result=await keep(appUrl(url));progress.done++;report();return result};
   let skipped=0;
   try{
     const boot=await data('/api/bootstrap');
@@ -147,7 +147,7 @@ async function saveForOffline({fullImages=false,onProgress=()=>{}}={}){
       collect((await data(collectionUrl(game.id,defaultCollectionFilters(game.id)))).cards);
       for(const list of await data(`/api/watchlists?game_id=${game.id}`))collect((await data(watchlistCardsUrl(list.id,defaultWatchFilters(game.id)))).cards);
     }
-    const queue=[...[...identities].map(identity=>[`/api/cards/${identity}`,false]),...[...variants].flatMap(variant=>[[artUrl(variant),true],...(fullImages?[[artUrl(variant,'full'),true]]:[])])];
+    const queue=[...[...identities].map(identity=>[appUrl(`/api/cards/${identity}`),false]),...[...variants].flatMap(variant=>[[artUrl(variant),true],...(fullImages?[[artUrl(variant,'full'),true]]:[])])];
     progress.total+=queue.length;report();
     // A card whose image or details cannot be fetched right now is skipped, not a reason to stop.
     const worker=async()=>{

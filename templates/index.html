@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- Where the app is served: empty at the root of its host, "/cards" behind a proxy that serves it
+       under that path. The scripts put it in front of every address they build. -->
+  <meta name="app-base" content="{{ request.script_root }}">
   <meta name="theme-color" content="#090909">
   <title>Ophir Cards</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
@@ -101,18 +104,18 @@
           <button class="nav-item" data-route="settings" role="menuitem"><span class="nav-icon">⚙</span><span>Einstellungen</span></button>
           <button class="nav-item" id="importexport-open" role="menuitem"><span class="nav-icon">⇅</span><span>Import / Export</span></button>
           <button class="nav-item admin-only" data-route="admin" role="menuitem"><span class="nav-icon">⚙</span><span>Admin</span></button>
-          <form action="/logout" method="post" class="user-popup-logout"><button class="nav-item" role="menuitem"><span class="nav-icon">↗</span><span>Abmelden</span></button></form>
+          <form action="{{ url_for('logout') }}" method="post" class="user-popup-logout"><button class="nav-item" role="menuitem"><span class="nav-icon">↗</span><span>Abmelden</span></button></form>
         </div>
         <button id="user-avatar" class="avatar" title="Menü öffnen" aria-haspopup="true" aria-expanded="false">AM</button>
         <div class="user-menu-info"><strong id="user-name">Alex Morgan</strong><small id="user-role">Sammler</small></div>
-        <form action="/logout" method="post"><button title="Abmelden">↗</button></form>
+        <form action="{{ url_for('logout') }}" method="post"><button title="Abmelden">↗</button></form>
       </div>
     </aside>
 
     <header class="topbar">
       <h1 class="mobile-topbar-title">Übersicht</h1>
       <div id="global-game-picker" class="global-game-picker" title="TCG auswählen">
-        <span id="global-game-icon" class="global-game-icon" style="--tcg-icon:url('/static/tcg-icons/generic.svg?v=3')" aria-hidden="true"></span>
+        <span id="global-game-icon" class="global-game-icon" style="--tcg-icon:url('{{ url_for('static', filename='tcg-icons/generic.svg') }}?v=3')" aria-hidden="true"></span>
         <select id="global-game-filter" class="global-game-filter" aria-label="Aktives TCG"></select>
       </div>
       <button id="global-search-open" class="global-search"><span>⌕</span><span>Karten, Sets oder Nummern suchen …</span><kbd>⌘ K</kbd></button>
@@ -170,7 +173,7 @@
       </div>
       <div id="importexport-export-section" class="hidden">
         <p class="muted">Lade deine vollständige Sammlung jederzeit in einem portablen Format herunter.</p>
-        <div class="export-options"><a href="/api/export.json" class="export-card"><span class="file-icon">{ }</span><div><b>JSON Export</b><small>Volle Datentreue für Backups</small></div><span>↓</span></a><a href="/api/export.csv" class="export-card"><span class="file-icon">CSV</span><div><b>CSV Export</b><small>Für Tabellen und andere Tracker</small></div><span>↓</span></a></div>
+        <div class="export-options"><a href="{{ request.script_root }}/api/export.json" class="export-card"><span class="file-icon">{ }</span><div><b>JSON Export</b><small>Volle Datentreue für Backups</small></div><span>↓</span></a><a href="{{ request.script_root }}/api/export.csv" class="export-card"><span class="file-icon">CSV</span><div><b>CSV Export</b><small>Für Tabellen und andere Tracker</small></div><span>↓</span></a></div>
       </div>
     </div>
   </div>

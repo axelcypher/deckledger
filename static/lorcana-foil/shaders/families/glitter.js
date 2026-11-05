@@ -2,7 +2,7 @@
 import { f, fragLoader } from './_shared.js';
 
 export default {
-  loadSource: fragLoader('/static/lorcana-foil/shaders/glitter.frag'),
+  loadSource: fragLoader(new URL('../glitter.frag', import.meta.url).href),
   roles: {
     glitter: { asset: 'GlitterPattern' },
     gradient: { asset: 'RainbowGradientTempestGlitter' },

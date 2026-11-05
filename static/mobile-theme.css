@@ -274,8 +274,8 @@
   body.dark.mobile-modern .stage-platform-wrap::after {
     content: ""; position: absolute; inset: 0; z-index: 1;
     background: #d8b97b; mix-blend-mode: multiply; opacity: .26;
-    mask-image: url(/glass-plate.svg); mask-size: 100% 100%; mask-repeat: no-repeat;
-    -webkit-mask-image: url(/glass-plate.svg); -webkit-mask-size: 100% 100%; -webkit-mask-repeat: no-repeat;
+    mask-image: url(../glass-plate.svg); mask-size: 100% 100%; mask-repeat: no-repeat;
+    -webkit-mask-image: url(../glass-plate.svg); -webkit-mask-size: 100% 100%; -webkit-mask-repeat: no-repeat;
   }
   /* The two "Strahler" (spotlights) from the reference: soft white bloom at the platform's
      left and right edge, at platform height. Correction: dropped the repeating-conic-gradient

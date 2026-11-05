@@ -9,7 +9,7 @@
 | Method | Path | Auth | What it does |
 | --- | --- | --- | --- |
 | GET | `/` | `login_required` | Renders `index.html` with `glass_plate_inline`. |
-| GET | `/service-worker.js` | none | `static/service-worker.js` served from the root, with `Service-Worker-Allowed: /`, ETag, `max-age=0`, gzip. |
+| GET | `/service-worker.js` | none | `static/service-worker.js` served from the app's root, with `Service-Worker-Allowed: <script_root>/`, ETag, `max-age=0`, gzip. |
 | GET | `/api/bootstrap` | `login_required` | Everything the app needs at start (below). |
 | GET | `/api/home-banner` | `login_required` | Dashboard banner slides; `?game_id=` limits it to one game. |
 | GET | `/api/home-recent` | `login_required` | `?game_id=` required (else `[]`): up to 5 distinct owned cards, most recently added first, with their latest price. |
@@ -61,7 +61,7 @@ Invariants:
 | `login.html` | `/login` | `error` (message or None), `oauth_enabled`, `oauth_provider_name`; the form posts `username`/`password` to `/login`; the SSO button links to `url_for('oauth_login')` when enabled. |
 | `public.html` | `/u/<slug>` | `slug` (as `data-slug` on `#content`, read by `static/public.js`), `name` (title), `missing` (404 state; `public.js` not loaded), `theme` (body class and `data-theme`; `auto` follows the visitor's `prefers-color-scheme`, also live). Carries a `robots` meta tag `noindex, nofollow`. |
 
-Client-side bits in the templates: `index.html` and `login.html` pick light/dark from the `ophir_theme` cookie before first paint; `login.html` deletes service-worker caches whose names start with `ophir-api-`.
+Client-side bits in the templates: `index.html` and `public.html` carry `<meta name="app-base" content="{{ request.script_root }}">` (empty at the root of the host, `/cards` under a path), which the scripts put in front of every address; the logout forms and export links are built with `url_for`/`request.script_root`. `index.html` and `login.html` pick light/dark from the `ophir_theme` cookie before first paint; `login.html` deletes service-worker caches whose names start with `ophir-cards-api-` (or the older `ophir-api-`/`deckledger-api-`).
 
 ## Dependencies
 

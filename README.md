@@ -60,9 +60,9 @@ The first start creates the database in the `deckledger_data` volume and imports
 | `SECRET_KEY` | env | Signs the session cookies | a fixed development key | yes, outside a local test |
 | `DATABASE_PATH` | env | SQLite file; every cache (card images, thumbnails, sheet renders, uploaded backgrounds, card backs, eBay photos) lives in folders next to it | `deckledger.db` in the repo root; `/data/deckledger.db` in the image | no |
 | `PUBLIC_DIR` | env | Folder with set visuals, card backs and foil assets | `public/` in the repo root | no |
-| `TRUST_PROXY_HEADERS` | env | `true`, `1` or `yes`: honour `X-Forwarded-Proto` / `X-Forwarded-Host` | off | behind a TLS-terminating proxy |
+| `TRUST_PROXY_HEADERS` | env | `true`, `1` or `yes`: honour `X-Forwarded-For` / `-Proto` / `-Host` / `-Prefix` | off | behind a TLS-terminating proxy |
 | `OAUTH_CONFIG_PATH` | env | SSO config file that replaces the Admin UI settings | `/config/oauth.json` | no |
-| `PUBLIC_PROFILE_URL` | env | Base URL public profile links are built on | the address the settings page was opened on | no |
+| `PUBLIC_PROFILE_URL` | env | Base URL public profile links are built on, with the path when the app is served under one (`https://ophir.example.org/cards`) | the address the settings page was opened on | no |
 | `CATALOG_REFRESH_HOURS` | env | Age of a game's last successful import that triggers a new one | `24` | no |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | env or **Admin → eBay** | Keys of the eBay application; when `EBAY_CLIENT_ID` is set, the environment wins and the Admin card is read-only | empty | for eBay |
 | `EBAY_ENVIRONMENT` | env | `production` or `sandbox` | `production` | no |
@@ -70,6 +70,14 @@ The first start creates the database in the `deckledger_data` volume and imports
 | `EBAY_DELETION_ENDPOINT` | env | Full URL of the account-deletion endpoint when the public host differs from the admin page's host | `https://<host>/ebay/account-deletion` | no |
 | `EBAY_VERIFICATION_TOKEN` | env | Replaces the generated verification token for account-deletion notices | generated | no |
 | SSO settings | **Admin → Single Sign-On** or `oauth.json` | See below | off | no |
+
+### Serving under a path
+
+Behind a reverse proxy the app can also run under a path, for example `ophir.example.org/cards` next to other apps of the Ophir series. The proxy strips the path and passes it on as `X-Forwarded-Prefix` (Traefik's `stripPrefix` middleware does both), and `TRUST_PROXY_HEADERS` must be on. The app then builds every address under that path: links, redirects, scripts, images, the service worker's scope and the web app manifest. Requests without the header are served at the root, so one container can answer on a host of its own and under a path at the same time.
+
+- Each host is its own origin: a sign-in, the offline copy and queued changes are per address.
+- The session cookie is `ophir_cards_session`, limited to the app's path and signed with a salt of its own, so apps on the same host never read each other's sessions, even with the same `SECRET_KEY`.
+- The SSO redirect URI and the eBay callback contain the path too (`https://ophir.example.org/cards/oauth/callback`, `.../cards/ebay/callback`); register them with the provider for every address you sign in on.
 
 ### Single sign-on (OAuth2 / OIDC)
 

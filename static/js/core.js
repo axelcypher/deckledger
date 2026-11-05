@@ -13,6 +13,14 @@ const state = {
   homeBanner:null, homeBannerTimer:null, mobileFiltersOpen:{}, tileEditions:{}
 };
 
+// Where the app is served: '' at the root of its host, '/cards' behind a reverse proxy that serves
+// it under that path (the page's <meta name="app-base">, from request.script_root). api() and
+// post() take app paths ('/api/...') and add it themselves -- so do the offline outbox and the
+// offline save -- and every other address the page builds (images, links, direct fetch() calls)
+// goes through appUrl() or starts with ${APP_BASE}.
+const APP_BASE = document.querySelector('meta[name="app-base"]')?.content || '';
+const appUrl = path => APP_BASE + path;
+
 const $ = (q, root=document) => root.querySelector(q);
 const $$ = (q, root=document) => [...root.querySelectorAll(q)];
 const content = $('#content');
@@ -45,7 +53,7 @@ let serverUnreachable=false;
 const api = async (url, options={}) => {
   let response;
   try{
-    response = await fetch(url,{headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+    response = await fetch(appUrl(url),{headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
   }catch(networkError){
     // fetch() itself throwing (before any Response exists) means the request never reached the
     // server -- offline, DNS hiccup, connection refused. Tagged so callers (the offline outbox)
@@ -54,7 +62,7 @@ const api = async (url, options={}) => {
     error.isNetworkError=true;
     throw error;
   }
-  if (response.status===401) { location.href='/login'; const error=new Error('Nicht angemeldet'); error.isAuthError=true; throw error; }
+  if (response.status===401) { location.href=appUrl('/login'); const error=new Error('Nicht angemeldet'); error.isAuthError=true; throw error; }
   const stale=response.headers.get('X-Ophir-Stale')==='1';
   if(stale!==serverUnreachable){
     serverUnreachable=stale;
@@ -90,7 +98,7 @@ function flushPendingSettings(){
   const settings={};
   for(const [key,{timer,value}] of pendingSettings){clearTimeout(timer);settings[key]=value}
   pendingSettings.clear();
-  fetch('/api/settings',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)}).catch(()=>{});
+  fetch(appUrl('/api/settings'),{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)}).catch(()=>{});
 }
 addEventListener('pagehide',flushPendingSettings);
 // A phone may end an app in the background without a pagehide; being hidden is the last sure moment.
@@ -169,7 +177,7 @@ function setActiveGame(gameId, persist=true) {
   state.activeGameId=gameId; state.game=state.boot.games.find(g=>g.id===gameId) || state.boot.games[0];
   if($('#global-game-filter')) $('#global-game-filter').value=gameId;
   const iconName=state.game.icon||'generic';
-  if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('/static/tcg-icons/${iconName}.svg?v=3')`);
+  if($('#global-game-icon'))$('#global-game-icon').style.setProperty('--tcg-icon',`url('${APP_BASE}/static/tcg-icons/${iconName}.svg?v=3')`);
   if($('#global-game-picker'))$('#global-game-picker').title=`${state.game.short_name} auswählen`;
   state.watchlistId=null; state.watchSelection.clear(); state.watchSelectionMode=false; state.collectionSelection.clear(); state.collectionSelectionMode=false; state.deckId=null; state.sheetId=null; state.dealId=null;
   if(changed||isInitial){

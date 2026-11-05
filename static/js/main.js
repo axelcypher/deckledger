@@ -28,7 +28,7 @@ function wireGlobalEvents(){
   // pay for this (foilInteractionController stays null forever, every call site below no-ops,
   // same fallback-to-CSS path as "WebGL not supported" -- see 12).
   let foilInteractionController=null;
-  import('/static/lorcana-foil/FoilInteractionController.js').then(m=>{foilInteractionController=m.foilInteractionController}).catch(()=>{});
+  import(appUrl('/static/lorcana-foil/FoilInteractionController.js')).then(m=>{foilInteractionController=m.foilInteractionController}).catch(()=>{});
   // Builds the LorcanaFoilInput for whichever card is currently in the modal, reusing the
   // official-layer metadata hydrateOfficialFoilLayers() already fetched (not re-requested per
   // hover). null covers every "nothing to attach WebGL to" case at once: non-Lorcana, no
@@ -298,7 +298,7 @@ init().then(()=>{
 // context (HTTPS or localhost), so this silently no-ops over plain HTTP.
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+    navigator.serviceWorker.register(appUrl('/service-worker.js'),{scope:appUrl('/')}).catch(()=>{});
     // Without this the browser may drop the saved pages, images and queued changes on its own
     // when the device runs low on space.
     navigator.storage?.persist?.().catch(()=>{});
