@@ -37,7 +37,7 @@ Ophir Cards is the trading-card part of the Ophir series and was called DeckLedg
     cd deckledger
     ```
 
-2. Set a strong `SECRET_KEY` in the environment or in a `.env` file next to `compose.yaml` (Compose falls back to a fixed development key otherwise):
+2. Set a strong `SECRET_KEY` in the environment or in a `.env` file next to `compose.yaml`. The container does not start without one:
 
     ```dotenv
     SECRET_KEY=<long random string>
@@ -57,7 +57,7 @@ The first start creates the database in the `deckledger_data` volume and imports
 
 | Setting | Where | Description | Default | Required |
 | --- | --- | --- | --- | --- |
-| `SECRET_KEY` | env | Signs the session cookies | a fixed development key | yes, outside a local test |
+| `SECRET_KEY` | env | Signs the session cookies. The container refuses to start without its own key; only `python app.py` falls back to a public development key | none | yes |
 | `DATABASE_PATH` | env | SQLite file; every cache (card images, thumbnails, sheet renders, uploaded backgrounds, card backs, eBay photos) lives in folders next to it | `deckledger.db` in the repo root; `/data/deckledger.db` in the image | no |
 | `PUBLIC_DIR` | env | Folder with set visuals, card backs and foil assets | `public/` in the repo root | no |
 | `TRUST_PROXY_HEADERS` | env | `true`, `1` or `yes`: honour `X-Forwarded-For` / `-Proto` / `-Host` / `-Prefix` | off | behind a TLS-terminating proxy |

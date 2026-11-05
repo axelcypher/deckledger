@@ -190,6 +190,20 @@ def test_an_id_token_for_someone_else_or_out_of_date_is_not_used():
     assert oauth_client.id_token_claims(config, {"access_token": "only"}) == {} and oauth_client.id_token_claims(config, "plain") == {}
 
 
+def test_a_server_without_its_own_secret_key_does_not_start(monkeypatch):
+    import pytest
+
+    from ophir_cards.web import DEVELOPMENT_SECRET_KEY, require_secret_key
+
+    for unusable in (DEVELOPMENT_SECRET_KEY, "", "<no value>"):
+        monkeypatch.setitem(ophir_cards.app.config, "SECRET_KEY", unusable)
+        with pytest.raises(SystemExit):
+            require_secret_key()
+        require_secret_key(debug=True)  # the local debug server only warns
+    monkeypatch.setitem(ophir_cards.app.config, "SECRET_KEY", "a-long-random-key-of-this-server")
+    require_secret_key()
+
+
 def test_sso_credentials_from_the_environment_replace_the_stored_ones(admin, monkeypatch):
     stored = {"enabled": False, "provider_name": "Authentik", "client_id": "old", "client_secret": "old-secret",
               "discovery_url": "https://old.example/.well-known/openid-configuration", "account_matching": "email"}
