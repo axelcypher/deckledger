@@ -6,13 +6,13 @@ developer program (client id, client secret and the "RuName" that names the addr
 user back to). An admin enters those once (Admin -> eBay) or the container gets them as
 EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_RU_NAME.
 
-* Connecting: the user signs in at eBay and allows DeckLedger access (OAuth authorization code).
+* Connecting: the user signs in at eBay and allows Ophir Cards access (OAuth authorization code).
   The refresh token is kept per user in ebay_accounts; access tokens live two hours and are
   renewed on demand.
 * Own listings: the Trading API's GetMyeBaySelling lists active, sold and unsold listings. The
   background job (ebay_sync.py) asks every LISTING_SYNC_MINUTES; "Jetzt abgleichen" asks at once.
 * Drafts: made from cards (a sheet, the collection's selection) with the user's preset
-  ("Angebotsvorlage"). They stay in DeckLedger until the user publishes one; publishing uploads
+  ("Angebotsvorlage"). They stay in Ophir Cards until the user publishes one; publishing uploads
   the card image (Media API, upload_picture) and lists it (AddFixedPriceItem) with the seller's
   business policies. eBay's own API cannot create drafts in Seller Hub.
 * Tracked listings: any listing URL entered in a card's price tab is read through the Browse API
@@ -488,7 +488,7 @@ def admin_save_ebay():
 # eBay only hands out production keys to applications that listen for "this eBay account was
 # deleted": the developer portal registers an endpoint URL and a verification token, checks the
 # endpoint once with a challenge, and from then on posts every deleted account on all of eBay --
-# thousands a day. Only those naming an account DeckLedger knows (a connected seller, a buyer in
+# thousands a day. Only those naming an account Ophir Cards knows (a connected seller, a buyer in
 # the sales) are verified against eBay's signature and acted on; everything else is just
 # acknowledged.
 
@@ -561,7 +561,7 @@ def ebay_account_deletion():
     connection.execute("UPDATE deals SET partner='' WHERE partner=? AND id IN (SELECT deal_id FROM ebay_sales WHERE buyer=?)", (username, username))
     connection.execute("UPDATE ebay_sales SET buyer='' WHERE buyer=?", (username,))
     connection.commit()
-    app.logger.info("eBay account deletion: removed what DeckLedger stored about an eBay account")
+    app.logger.info("eBay account deletion: removed what Ophir Cards stored about an eBay account")
     return "", 204
 
 
@@ -1553,7 +1553,7 @@ def market_ratio(listing):
 
 
 def popularity(listing):
-    """DeckLedger's measure of how much interest a listing draws -- eBay does not say where it
+    """Ophir Cards' measure of how much interest a listing draws -- eBay does not say where it
     ranks one: a watcher counts like ten views, a sale like twenty-five, a hundred impressions
     like one view."""
     return round((listing.get("view_count") or 0) + 10 * (listing.get("watch_count") or 0)

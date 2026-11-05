@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 import sheet_render
-from conftest import ELSA, EMBER8, deckledger
+from conftest import ELSA, EMBER8, ophir_cards
 
 
 def print_file(path, size, image_format="PNG"):
@@ -23,9 +23,9 @@ def print_file(path, size, image_format="PNG"):
 def scans(tmp_path, monkeypatch):
     """Stands in for the download: every card's image is a print file from the temp folder."""
     for name in ("IMAGE_TRIM_CACHE", "IMAGE_THUMB_CACHE", "IMAGE_FOIL_MASK_CACHE", "IMAGE_LOCK_CACHE"):
-        monkeypatch.setattr(deckledger.images, name, tmp_path / name.lower())
+        monkeypatch.setattr(ophir_cards.images, name, tmp_path / name.lower())
     source = print_file(tmp_path / "source.img", (690, 940))
-    monkeypatch.setattr(deckledger.images, "cached_real_image", lambda row, variant_id: (source, "image/png", f"key-{row['game_id']}"))
+    monkeypatch.setattr(ophir_cards.images, "cached_real_image", lambda row, variant_id: (source, "image/png", f"key-{row['game_id']}"))
     return tmp_path
 
 
@@ -65,16 +65,16 @@ def test_trimming_happens_once(client, scans, monkeypatch):
 
 def test_an_image_without_bleed_is_remembered_and_served_as_it_is(client, scans, monkeypatch):
     source = print_file(scans / "cut.img", (630, 880))
-    monkeypatch.setattr(deckledger.images, "cached_real_image", lambda row, variant_id: (source, "image/png", "cut-key"))
+    monkeypatch.setattr(ophir_cards.images, "cached_real_image", lambda row, variant_id: (source, "image/png", "cut-key"))
     assert Image.open(io.BytesIO(client.get(f"/art/{EMBER8}.svg").get_data())).size == (630, 880)
-    assert (deckledger.images.IMAGE_TRIM_CACHE / "cut-key.keep").exists()
+    assert (ophir_cards.images.IMAGE_TRIM_CACHE / "cut-key.keep").exists()
     monkeypatch.setattr(sheet_render, "trim_bleed", lambda *args: (_ for _ in ()).throw(AssertionError("opened again")))
     assert client.get(f"/art/{EMBER8}.svg").status_code == 200
 
 
 def test_a_jpeg_scan_stays_a_jpeg(client, scans, monkeypatch):
     source = print_file(scans / "photo.img", (690, 940), "JPEG")
-    monkeypatch.setattr(deckledger.images, "cached_real_image", lambda row, variant_id: (source, "image/jpeg", "photo-key"))
+    monkeypatch.setattr(ophir_cards.images, "cached_real_image", lambda row, variant_id: (source, "image/jpeg", "photo-key"))
     response = client.get(f"/art/{EMBER8}.svg")
     assert response.mimetype == "image/jpeg" and Image.open(io.BytesIO(response.get_data())).size == (630, 880)
 
@@ -95,10 +95,10 @@ def test_a_publishers_placeholder_counts_as_a_missing_scan(tmp_path, monkeypatch
     import hashlib
 
     placeholder, scan = b"?" * 2000, b"S" * 3000
-    vcard = dataclasses.replace(deckledger.games.vcard.GAME, image_placeholders=((len(placeholder), hashlib.sha256(placeholder).hexdigest()),))
-    monkeypatch.setattr(deckledger.images, "game_rules", lambda game_id: vcard)
+    vcard = dataclasses.replace(ophir_cards.games.vcard.GAME, image_placeholders=((len(placeholder), hashlib.sha256(placeholder).hexdigest()),))
+    monkeypatch.setattr(ophir_cards.images, "game_rules", lambda game_id: vcard)
     for name in ("IMAGE_CACHE", "IMAGE_SOURCE_CACHE", "IMAGE_LOCK_CACHE"):
-        monkeypatch.setattr(deckledger.images, name, tmp_path / name.lower())
+        monkeypatch.setattr(ophir_cards.images, name, tmp_path / name.lower())
     served = {"https://cdn.example/unlimited.png": placeholder, "https://cdn.example/first.png": scan}
 
     class Answer:
@@ -109,16 +109,16 @@ def test_a_publishers_placeholder_counts_as_a_missing_scan(tmp_path, monkeypatch
         def read(self, limit):
             return self.payload
 
-    monkeypatch.setattr(deckledger.images, "urlopen", lambda request, timeout: Answer(served[request.full_url]))
+    monkeypatch.setattr(ophir_cards.images, "urlopen", lambda request, timeout: Answer(served[request.full_url]))
     row = {"game_id": "vcard", "variant_attributes": json.dumps({
         "imageUrl": "https://cdn.example/unlimited.png", "imageFallbackUrls": ["https://cdn.example/first.png"]})}
 
-    assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == scan
+    assert ophir_cards.images.cached_real_image(row, "v")[0].read_bytes() == scan
     # A placeholder already in the cache from before is removed and the scan served instead.
-    stale = deckledger.images.IMAGE_SOURCE_CACHE / f"{hashlib.sha256(b'https://cdn.example/unlimited.png').hexdigest()}.img"
+    stale = ophir_cards.images.IMAGE_SOURCE_CACHE / f"{hashlib.sha256(b'https://cdn.example/unlimited.png').hexdigest()}.img"
     stale.write_bytes(placeholder)
     stale.with_suffix(".mime").write_text("image/png")
-    assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == scan
+    assert ophir_cards.images.cached_real_image(row, "v")[0].read_bytes() == scan
     assert not stale.exists()
 
 
@@ -129,22 +129,22 @@ def test_a_failed_download_is_not_tried_again_on_every_view(tmp_path, monkeypatc
     import time
     from urllib.error import URLError
     for name in ("IMAGE_CACHE", "IMAGE_SOURCE_CACHE", "IMAGE_LOCK_CACHE"):
-        monkeypatch.setattr(deckledger.images, name, tmp_path / name.lower())
+        monkeypatch.setattr(ophir_cards.images, name, tmp_path / name.lower())
     asked = []
 
     def down(request, timeout):
         asked.append(request.full_url)
         raise URLError("timed out")
 
-    monkeypatch.setattr(deckledger.images, "urlopen", down)
+    monkeypatch.setattr(ophir_cards.images, "urlopen", down)
     row = {"game_id": "vcard", "variant_attributes": json.dumps({"imageUrl": "https://cdn.example/scan.png"})}
     with pytest.raises(URLError):
-        deckledger.images.cached_real_image(row, "v")
-    assert deckledger.images.cached_real_image(row, "v") is None
+        ophir_cards.images.cached_real_image(row, "v")
+    assert ophir_cards.images.cached_real_image(row, "v") is None
     assert asked == ["https://cdn.example/scan.png"]
     # Once the pause is over the source is asked again, and an image that arrives is kept.
     for marker in (tmp_path / "image_lock_cache").glob("*.miss"):
-        past = time.time() - deckledger.images.MISS_RETRY_SECONDS - 1
+        past = time.time() - ophir_cards.images.MISS_RETRY_SECONDS - 1
         os.utime(marker, (past, past))
 
     class Answer:
@@ -153,6 +153,6 @@ def test_a_failed_download_is_not_tried_again_on_every_view(tmp_path, monkeypatc
         def read(self, limit):
             return b"S" * 3000
 
-    monkeypatch.setattr(deckledger.images, "urlopen", lambda request, timeout: asked.append(request.full_url) or Answer())
-    assert deckledger.images.cached_real_image(row, "v")[0].read_bytes() == b"S" * 3000
+    monkeypatch.setattr(ophir_cards.images, "urlopen", lambda request, timeout: asked.append(request.full_url) or Answer())
+    assert ophir_cards.images.cached_real_image(row, "v")[0].read_bytes() == b"S" * 3000
     assert len(asked) == 2 and not list((tmp_path / "image_lock_cache").glob("*.miss"))

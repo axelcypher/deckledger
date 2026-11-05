@@ -61,7 +61,7 @@ jobs:
       - name: Run frontend tests
         run: node --test "tests/frontend/*.test.mjs"
         env:
-          DECKLEDGER_PYTHON: python
+          OPHIR_PYTHON: python
 
   build:
     name: Build container image
@@ -159,7 +159,7 @@ jobs:
           token: ${{ secrets.DECKLEDGER_DEPLOY_TOKEN }}
           path: deployment-repository
 
-      - name: Update DeckLedger image in environment file
+      - name: Update Ophir Cards image in environment file
         working-directory: deployment-repository
         shell: bash
         run: |
@@ -207,5 +207,5 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: deploy DeckLedger ${GITHUB_SHA::12}"
+          git commit -m "chore: deploy Ophir Cards ${GITHUB_SHA::12}"
           git push origin "HEAD:$TARGET_BRANCH"

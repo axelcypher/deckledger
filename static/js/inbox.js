@@ -1,6 +1,6 @@
 // What happens around a sheet: the inbox of new comments on its posts and of other people's
 // posts that name its cards, the posts linked to a sheet, and the communities that are searched.
-// The server does the reading (deckledger/watcher.py); nothing here talks to Reddit.
+// The server does the reading (ophir_cards/watcher.py); nothing here talks to Reddit.
 
 const INBOX_REFRESH_MS=180000;
 
@@ -135,7 +135,7 @@ async function renderCommunities(){
   if(!$('#reddit-communities')||state.activeGameId!==gameId)return;
   const game=state.boot.games.find(item=>item.id===gameId);
   box.innerHTML=`<div class="settings-field"><span>Subreddits für ${escapeHtml(game?.short_name||gameId)}</span></div>
-    <p class="muted sheet-post-hint">Hier sucht DeckLedger in neuen Posts nach den Karten deiner Sheets: für Angebote, wer sie sucht; für Gesuche, wer sie anbietet. Die Liste gilt für das oben gewählte TCG.</p>
+    <p class="muted sheet-post-hint">Hier sucht Ophir Cards in neuen Posts nach den Karten deiner Sheets: für Angebote, wer sie sucht; für Gesuche, wer sie anbietet. Die Liste gilt für das oben gewählte TCG.</p>
     <div class="community-list">${communities.map(item=>`<div class="community-row" data-community="${item.id}">
         <div class="sheet-post-copy"><b>r/${escapeHtml(item.name)}</b><small>${item.last_checked_at?`geprüft ${escapeHtml(timeAgo(item.last_checked_at))}`:'noch nicht geprüft'}</small>${item.last_error?`<small class="sheet-warning">${escapeHtml(item.last_error)}</small>`:''}</div>
         <button type="button" class="secondary-button" data-community-check="${item.id}">Jetzt prüfen</button>

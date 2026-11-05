@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090909">
-  <title>DeckLedger</title>
+  <title>Ophir Cards</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
   <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-180.png') }}">
@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="{{ asset_url('design-system.css') }}">
 </head>
 <body class="dark mobile-modern">
-  <script>if(/(?:^|; )deckledger_theme=light(?:;|$)/.test(document.cookie))document.body.classList.add('mobile-light');</script>
+  <script>if(/(?:^|; )(?:ophir|deckledger)_theme=light(?:;|$)/.test(document.cookie))document.body.classList.add('mobile-light');</script>
   <!-- Card-reflection plate mask: a solid white visibility field with the plate's front edge
        (id="glass_side") cut out in black. The soft fade is a separate mask on the moving
        reflection image; keeping this SVG mask on its stationary parent prevents parallax from
@@ -78,7 +78,7 @@
           <path class="brand-card-line" d="M16 26.5h12M16 31h8"/>
           <path class="brand-card-spark" d="m27.5 12.2 1.1 2.2 2.2 1.1-2.2 1.1-1.1 2.2-1.1-2.2-2.2-1.1 2.2-1.1 1.1-2.2Z"/>
         </svg>
-        <span class="brand-word"><b>DECK</b><span>LEDGER</span></span>
+        <span class="brand-word"><b>OPHIR</b><span>CARDS</span></span>
       </button>
       <button id="sidebar-collapse" class="sidebar-collapse" title="Seitenleiste einklappen">‹</button>
       <nav class="main-nav" aria-label="Hauptnavigation">

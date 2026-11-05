@@ -202,7 +202,7 @@ function wireGlobalEvents(){
   $('#user-popup').addEventListener('click',e=>{if(e.target.closest('.nav-item')){$('#user-popup').classList.add('hidden');$('#user-avatar').setAttribute('aria-expanded','false')}});
   // Delegated so it keeps working for toolbar filter popups that get rebuilt on every
   // re-render (renderSet/renderAllCards replace #content wholesale on each filter change).
-  document.addEventListener('deckledger-filter-toggle',event=>{
+  document.addEventListener('ophir-filter-toggle',event=>{
     if(event.detail?.key)state.mobileFiltersOpen[event.detail.key]=Boolean(event.detail.open);
   });
   document.addEventListener('click',e=>{
@@ -281,7 +281,7 @@ async function init(){
     if(params.has('linked')){toast('SSO-Verbindung hergestellt');state.boot.user.oauth_linked=true;history.replaceState(null,'',location.pathname)}
     else if(params.has('oauth_error')){toast(OAUTH_ERROR_MESSAGES[params.get('oauth_error')]||'SSO-Verknüpfung fehlgeschlagen.');history.replaceState(null,'',location.pathname)}
     else if(params.has('ebay'))handleEbayReturn();
-  }catch(error){content.innerHTML=`<div class="empty-state"><b>DeckLedger konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
+  }catch(error){content.innerHTML=`<div class="empty-state"><b>Ophir Cards konnte nicht geladen werden</b><span>${escapeHtml(error.message)}</span></div>`}}
 
 // The outbox is replayed once the signed-in user is known (see queueOfflineMutation), in case
 // the app was reopened after being offline and is already back online.

@@ -1,4 +1,4 @@
-"""Keeps the eBay side current (see deckledger/ebay.py): re-reads the listings followed for card
+"""Keeps the eBay side current (see ophir_cards/ebay.py): re-reads the listings followed for card
 prices and every connected account's own listings and sales, each when it is due. The container
 starts this every ten minutes; runs do not overlap.
 
@@ -11,8 +11,8 @@ import os
 import sqlite3
 import sys
 
-from deckledger.config import DB_PATH
-from deckledger.ebay import run_due
+from ophir_cards.config import DB_PATH
+from ophir_cards.ebay import run_due
 
 LOCK_PATH = os.path.join(os.path.dirname(DB_PATH), "ebay-sync.lock")
 

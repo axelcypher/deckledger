@@ -36,7 +36,7 @@ function stop(child) {
 
 export async function startServer() {
   const port = await freePort();
-  const python = process.env.DECKLEDGER_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  const python = process.env.OPHIR_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
   const output = [];
   const child = spawn(python, [path.join(HERE, 'serve.py'), String(port)], {
     cwd: path.resolve(HERE, '..', '..'), env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONUTF8: '1' },

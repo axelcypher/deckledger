@@ -260,7 +260,7 @@
     border:2px solid transparent;border-radius:24px;background:linear-gradient(var(--surface-2),var(--surface-2)) padding-box,linear-gradient(130deg,#8c6b2c 0%,#f2d78d 20%,#9c762f 44%,#f7e0a3 62%,#8c6b2c 100%) border-box;
     box-shadow:var(--mp-shadow-soft);
   }
-  body.dark.mobile-modern .hero-summary:not(deckledger-stat-pill)::before { content:"";position:absolute;inset:-45% auto -45% -18%;width:35%;transform:rotate(-24deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:desktop-border-shine 5.5s linear 2;pointer-events:none; }
+  body.dark.mobile-modern .hero-summary:not(ophir-stat-pill)::before { content:"";position:absolute;inset:-45% auto -45% -18%;width:35%;transform:rotate(-24deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:desktop-border-shine 5.5s linear 2;pointer-events:none; }
   @keyframes desktop-border-shine { to { left:118%; } }
   body.dark.mobile-modern .hero-summary div { position:relative;z-index:1;display:flex;min-width:0;flex-direction:column;justify-content:center;padding:15px 24px;text-align:center; }
   body.dark.mobile-modern .hero-summary div+div { border-left:1px solid var(--line); }
@@ -711,7 +711,7 @@
   body.dark.mobile-modern .content .set-compact-head>.compact-badges { grid-area:badges;display:flex;flex-wrap:wrap;gap:5px;margin:0; }
   body.dark.mobile-modern .content .set-compact-head>.compact-badges:empty { display:none; }
   body.dark.mobile-modern .content .set-compact-head>.compact-badges .badge { white-space:nowrap; }
-  body.dark.mobile-modern .content .set-compact-head>deckledger-stat-pill { grid-area:stats;width:100%;margin:0; }
+  body.dark.mobile-modern .content .set-compact-head>ophir-stat-pill { grid-area:stats;width:100%;margin:0; }
   body.dark.mobile-modern .content .set-compact-title h1 { display:block;max-width:340px;white-space:normal;line-height:1.1; }
   body.dark.mobile-modern .content .set-compact-title h1>span { display:block;margin-bottom:4px;color:var(--mt-gold,var(--brand));font:750 10px var(--font-ui);letter-spacing:.12em; }
   body.dark.mobile-modern .content .set-compact-title h1>small { display:block;margin-top:5px;color:var(--muted);font:500 11px var(--font-ui); }

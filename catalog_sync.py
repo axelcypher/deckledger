@@ -1,6 +1,6 @@
 """Orchestrates catalog providers and writes their combined output atomically.
 
-Every provider (including the three DeckLedger ships with, under providers/)
+Every provider (including the three Ophir Cards ships with, under providers/)
 is a Tier-2 custom-code provider dispatched through catalog_provider_registry.
 This module only validates, merges, and persists what a run produced -- it
 never fetches or scrapes anything itself. The importer downloads and
@@ -17,8 +17,8 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 
-from deckledger.config import DB_PATH
-import deckledger  # noqa: F401  -- importing the app brings the database to the current schema
+from ophir_cards.config import DB_PATH
+import ophir_cards  # noqa: F401  -- importing the app brings the database to the current schema
 from catalog_provider_contract import fill_missing_printed_card_counts
 from catalog_provider_registry import dispatch_provider, get_provider, load_enabled_providers, mark_provider_result, provider_already_current
 

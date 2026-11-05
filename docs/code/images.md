@@ -4,11 +4,11 @@ Everything a card, set or game looks like: card artwork fetched from the publish
 
 ## Public interface
 
-### deckledger/images.py
+### ophir_cards/images.py
 
 Python functions other modules call:
 
-- `card_image(row, variant_id) -> (path, mime, cache_key) | None` - the image every view should show: `cached_real_image()` plus bleed trimming for games with `Game.image_bleed` (the `cache_key` then gets a `-trim` suffix, so derived files of the untrimmed image are not reused). Used by `deckledger/sheets.py` and `deckledger/ebay.py`.
+- `card_image(row, variant_id) -> (path, mime, cache_key) | None` - the image every view should show: `cached_real_image()` plus bleed trimming for games with `Game.image_bleed` (the `cache_key` then gets a `-trim` suffix, so derived files of the untrimmed image are not reused). Used by `ophir_cards/sheets.py` and `ophir_cards/ebay.py`.
   - `row` must carry `game_id`, optionally `variant_attributes` (the `variants.attributes` JSON), and whatever the game's `remote_image_url` hook reads (`canonical_name`, `collector_number`, `language`, `set_code`, `variant_code`).
   - May download in the request thread (15 s timeout per URL, plus the game hook's own lookups) and may raise `OSError`; callers must catch it.
 - `cached_real_image(row, variant_id)` - the untrimmed source image, same return shape.
@@ -26,11 +26,11 @@ HTTP routes, all `@login_required`:
 
 Real images go out with `Cache-Control: public, max-age=31536000, immutable` and an `X-Image-Source` header (`local-provider-cache`, `local-thumbnail-cache`, `local-foil-mask-cache`, `foil-mask-fallback`, `ravensburger-foil-asset-cache`; `placeholder` for the SVG stand-in).
 
-`deckledger/public_profile.py` serves `card_art` without sign-in on a public profile by calling `card_art.__wrapped__`; `login_required` must stay the view's only wrapper.
+`ophir_cards/public_profile.py` serves `card_art` without sign-in on a public profile by calling `card_art.__wrapped__`; `login_required` must stay the view's only wrapper.
 
-### deckledger/assets.py
+### ophir_cards/assets.py
 
-- `set_visual_version(set_row) -> str` - cache-bust token for set logo URLs: `public-<mtime>-<size>` (hex) for a public override, else `provider-v3`. Used by `deckledger/catalog.py`.
+- `set_visual_version(set_row) -> str` - cache-bust token for set logo URLs: `public-<mtime>-<size>` (hex) for a public override, else `provider-v3`. Used by `ophir_cards/catalog.py`.
 - `public_set_visual(set_row) -> Path | None`, `remote_set_visual(set_row)`, `set_wordmark(set_row)`, `card_back_placeholder(game_row)` - helpers behind the routes.
 
 | Method | Path | Auth | What it does |
@@ -44,7 +44,7 @@ Real images go out with `Cache-Control: public, max-age=31536000, immutable` and
 | GET | `/assets/lorcana/foil/<name>.png` | none | The shared foil effect textures in `public/assets/lorcana/foil/`. |
 | GET | `/assets/lorcana/foil-presets.json` | none | `lorcana_foil_original_presets.json` from the repo root (gzipped when accepted). |
 
-`set_logo` and `game_logo` are also called through `__wrapped__` by `deckledger/public_profile.py`. Card back uploads are written by `deckledger/admin.py` (`POST /api/admin/games/<game_id>/card-back`).
+`set_logo` and `game_logo` are also called through `__wrapped__` by `ophir_cards/public_profile.py`. Card back uploads are written by `ophir_cards/admin.py` (`POST /api/admin/games/<game_id>/card-back`).
 
 ### ravensburger_foil.py (repo root)
 
@@ -69,9 +69,9 @@ Values extracted from the Disney Lorcana TCG Companion app's Unity build (`sourc
 
 ## Dependencies
 
-- `deckledger/config.py` - data-dir cache paths (`IMAGE_*`, `CARD_BACK_UPLOAD_DIR`), `PUBLIC_*`, `ROOT`, `jload`.
-- `deckledger/games` - per-game hooks: `remote_image_url`, `image_bleed`, `image_placeholders`, `official_foil_layers`, `logo_url`, `remote_set_visual`, `bundled_set_logo`.
-- `deckledger/web.py` - `app`, `db`, `login_required`, `compress_file`.
+- `ophir_cards/config.py` - data-dir cache paths (`IMAGE_*`, `CARD_BACK_UPLOAD_DIR`), `PUBLIC_*`, `ROOT`, `jload`.
+- `ophir_cards/games` - per-game hooks: `remote_image_url`, `image_bleed`, `image_placeholders`, `official_foil_layers`, `logo_url`, `remote_set_visual`, `bundled_set_logo`.
+- `ophir_cards/web.py` - `app`, `db`, `login_required`, `compress_file`.
 - `sheet_render.py` - `trim_bleed()`.
 - `ravensburger_foil.py` - official Lorcana foil data.
 - Pillow - trimming, thumbnails, masks, fallback mask.

@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from conftest import ADMIN, EMBER8, EMBER9, TIDE8, deckledger, login, query
+from conftest import ADMIN, EMBER8, EMBER9, TIDE8, ophir_cards, login, query
 
-watcher = deckledger.watcher
+watcher = ophir_cards.watcher
 POST_URL = "https://www.reddit.com/r/vcardtrades/comments/1abc23/wts_ember_and_friends/"
 
 
@@ -173,7 +173,7 @@ def test_a_refusal_is_noted_and_backs_off(client, post, reddit):
     reddit.error = watcher.FeedError("Reddit lässt gerade keine weitere Abfrage zu.", 40)
     failed = client.post(f"/api/sheet-posts/{post}/check")
     assert failed.status_code == 502 and "keine weitere Abfrage" in failed.get_json()["post"]["last_error"]
-    assert 35 < watcher.wait_seconds(sqlite3.connect(deckledger.config.DB_PATH)) <= 42
+    assert 35 < watcher.wait_seconds(sqlite3.connect(ophir_cards.config.DB_PATH)) <= 42
     assert inbox(client)["items"] == []
 
 
@@ -193,7 +193,7 @@ def test_an_unreadable_answer_is_an_error_not_a_crash():
 # ---- the background job --------------------------------------------------------------------------
 
 def run_job():
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     try:
         return watcher.run_due(connection)
     finally:
@@ -333,7 +333,7 @@ def test_unlinking_one_sheet_keeps_the_comments_of_the_others(client, four_sheet
 
 
 def test_comments_filed_once_per_sheet_are_merged(tmp_path):
-    migrations = deckledger.migrations
+    migrations = ophir_cards.migrations
     connection = sqlite3.connect(tmp_path / "before.db")
     connection.row_factory = sqlite3.Row
     migrations.migrate(connection, migrations=migrations.MIGRATIONS[:7], log=lambda message: None)
@@ -357,7 +357,7 @@ def test_a_community_is_read_without_holding_the_database(client, sheet, reddit,
     free = []
 
     def fetch(url):
-        probe = sqlite3.connect(deckledger.config.DB_PATH, timeout=0)
+        probe = sqlite3.connect(ophir_cards.config.DB_PATH, timeout=0)
         try:
             probe.execute("BEGIN IMMEDIATE")
             probe.rollback()
@@ -369,7 +369,7 @@ def test_a_community_is_read_without_holding_the_database(client, sheet, reddit,
         return reddit.payload, reddit.pause
 
     monkeypatch.setattr(watcher, "fetch_feed", fetch)
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     connection.row_factory = sqlite3.Row
     try:
         watcher.check_community(connection, "reddit", "vcardtrades")

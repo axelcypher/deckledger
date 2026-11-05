@@ -7,14 +7,14 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 import price_sync
-from conftest import EMBER8, TIDE8, deckledger, query
+from conftest import EMBER8, TIDE8, ophir_cards, query
 from test_prices_and_assets import observe, price_of
 
 TODAY = date(2026, 10, 1)
 
 
 def connect():
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     connection.row_factory = sqlite3.Row
     return connection
 
@@ -190,7 +190,7 @@ def test_folding_a_month_leaves_the_database_free_while_reading_the_next(monkeyp
     free, average = [], price_sync.month_average
 
     def probing_average(*args):
-        probe = sqlite3.connect(deckledger.config.DB_PATH, timeout=0)
+        probe = sqlite3.connect(ophir_cards.config.DB_PATH, timeout=0)
         try:
             probe.execute("BEGIN IMMEDIATE")
             probe.rollback()

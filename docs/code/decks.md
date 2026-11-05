@@ -33,18 +33,18 @@ Python functions:
 
 Two sources, looked up separately:
 
-- `game(game_id)` (the game module by id, `deckledger/games`): `formats` (each `{id, name, description, zones: [{id, name, target}], rules_url}`), `deck_language`, `deck_catalog_across_printings`, `excluded_deck_set_types` and `playable_types` (filter the builder catalogue and drive `deck_card_error`), `cost_filter_cap`, `auto_fill_zone`, the rarity order. A game an admin created has no module and gets the defaults: no formats, so only zone `main`.
+- `game(game_id)` (the game module by id, `ophir_cards/games`): `formats` (each `{id, name, description, zones: [{id, name, target}], rules_url}`), `deck_language`, `deck_catalog_across_printings`, `excluded_deck_set_types` and `playable_types` (filter the builder catalogue and drive `deck_card_error`), `cost_filter_cap`, `auto_fill_zone`, the rarity order. A game an admin created has no module and gets the defaults: no formats, so only zone `main`.
 - `DECK_RULESETS[games.deck_ruleset]` (a database column an admin can point at any existing ruleset): `validate_deck(deck, cards, counts) -> (errors, warnings)` and, through `zone_for_card_type(ruleset, card_type)`, the zone a card type goes to (`main` when unmapped).
 
 Validation takes the profile from `Game.format(format_id)` (falls back to the game's first format), counts copies per profile zone, then lets the ruleset's `validate_deck` decide; without a ruleset each zone's `target` must be met exactly. Messages are German strings. `Game.auto_fill_zone` (One Piece: the DON!! deck filled to 10 with a standard card) is returned as `default_don` in the deck detail, never stored.
 
 ## Dependencies
 
-- `deckledger/games` - `game()`, `DECK_RULESETS`, `zone_for_card_type`, `rarity_rank`, `rarity_filter_ranks`, `rarity_case_sql`.
-- `deckledger/catalog.py` - `match_collector_number()`, `split_set_prefix()` for the import.
-- `deckledger/search.py` - `card_score_sql()` for the builder search.
-- `deckledger/prices.py` - `latest_price_sql()`.
-- `deckledger/web.py` - `app`, `db`, `login_required`, `user_id`.
+- `ophir_cards/games` - `game()`, `DECK_RULESETS`, `zone_for_card_type`, `rarity_rank`, `rarity_filter_ranks`, `rarity_case_sql`.
+- `ophir_cards/catalog.py` - `match_collector_number()`, `split_set_prefix()` for the import.
+- `ophir_cards/search.py` - `card_score_sql()` for the builder search.
+- `ophir_cards/prices.py` - `latest_price_sql()`.
+- `ophir_cards/web.py` - `app`, `db`, `login_required`, `user_id`.
 - Tables: `decks`, `deck_cards`; read: `games.deck_ruleset`, `collection_entries`, the catalogue and price tables.
 
 ## Decisions and assumptions

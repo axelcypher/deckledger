@@ -1,9 +1,9 @@
 {
   "enabled": true,
   "provider_name": "Authentik",
-  "client_id": "deckledger",
+  "client_id": "ophir-cards",
   "client_secret": "change-me",
-  "discovery_url": "https://auth.example.com/application/o/deckledger/.well-known/openid-configuration",
+  "discovery_url": "https://auth.example.com/application/o/ophir-cards/.well-known/openid-configuration",
   "authorize_url": "",
   "token_url": "",
   "userinfo_url": "",

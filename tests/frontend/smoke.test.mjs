@@ -5,7 +5,7 @@
 //   node --test tests/frontend/
 //
 // Needs Chrome (CHROME_BIN overrides the lookup) and the Python test requirements; set
-// DECKLEDGER_PYTHON when "python" is not the interpreter that has them.
+// OPHIR_PYTHON when "python" is not the interpreter that has them.
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { chromePath, sleep, startBrowser, startServer } from './harness.mjs';
@@ -440,7 +440,7 @@ describe('app in the browser', { skip }, () => {
     await page.evaluate(`document.querySelector('#deal-back').click()`);
     await page.waitFor(`document.querySelector('.deal-row')`, { message: 'the deal in the list' });
     assert.match(await text('.deal-row'), /Verkauf · Kim vom Stammtisch[\s\S]*1× Tide \(PL8\)[\s\S]*\+4,50/);
-    assert.match(await text('deckledger-stat-pill.ebay-summary'), /Einnahmen\s*4,50/i, 'the numbers of the tab count the deal');
+    assert.match(await text('ophir-stat-pill.ebay-summary'), /Einnahmen\s*4,50/i, 'the numbers of the tab count the deal');
     // The card remembers it.
     await page.evaluate(`(state.modalTab='collection',openCard('vcard-card-tide8',${JSON.stringify(TIDE8)}))`);
     await page.waitFor(`document.querySelector('.card-deal')`, { message: 'the deal in the card\'s detail view' });

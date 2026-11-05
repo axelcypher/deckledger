@@ -1,5 +1,5 @@
 """User management by an admin, and what happens to a session once its account is gone."""
-from conftest import ADMIN, EMBER8, deckledger, login, query
+from conftest import ADMIN, EMBER8, ophir_cards, login, query
 
 NEW = {"username": "mia", "display_name": "Mia", "email": "mia@example.com", "password": "geheim-1234", "role": "user"}
 
@@ -45,7 +45,7 @@ def test_edit_role_and_reset_password(admin):
     assert admin.patch(f"/api/admin/users/{user_id}", json={"role": "admin", "display_name": "Mia M.", "password": "neues-passwort"}).status_code == 200
     mia = login(("mia", "neues-passwort"))
     assert mia.get("/api/admin/users").status_code == 200
-    assert deckledger.app.test_client().post("/login", data={"username": "mia", "password": "geheim-1234"}).status_code == 401
+    assert ophir_cards.app.test_client().post("/login", data={"username": "mia", "password": "geheim-1234"}).status_code == 401
 
 
 def test_the_last_admin_cannot_be_removed_or_demoted(admin):

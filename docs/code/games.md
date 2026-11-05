@@ -1,6 +1,6 @@
 # Games
 
-`deckledger/games/` is the per-game rules registry: each supported trading card game describes itself once as a frozen `Game` dataclass, and the rest of the application asks `game(game_id)` instead of branching on a game id.
+`ophir_cards/games/` is the per-game rules registry: each supported trading card game describes itself once as a frozen `Game` dataclass, and the rest of the application asks `game(game_id)` instead of branching on a game id.
 
 ## Public interface
 
@@ -29,7 +29,7 @@
 
 Methods: `rarity_rank(rarity)`; `copy_limit(card_type)` (by type, else `playset_size`); `format(format_id)` (that format, else the first, else `{}`); `deck_card_error(card, adding)` (reason text or None: an excluded set type always, an unplayable card type only when adding); `client_rules()` (`playset_size`, `copy_limits`, `symbol`, `icon`, `tile_editions` - sent to the frontend with each game in `/api/bootstrap`).
 
-Helpers: `fetch_html(url)` (GET with a DeckLedger User-Agent, 18 s timeout, first 2 MB), `generic_market_links` and `any_other_finish` (the defaults).
+Helpers: `fetch_html(url)` (GET with a Ophir Cards User-Agent, 18 s timeout, first 2 MB), `generic_market_links` and `any_other_finish` (the defaults).
 
 Who reads what:
 
@@ -61,14 +61,14 @@ Adding a game: a module here, listed in the tuple that builds `GAMES`, a provide
 
 ## Dependencies
 
-- `deckledger.config` - `jload` (validators of lorcana, one_piece, vcard)
+- `ophir_cards.config` - `jload` (validators of lorcana, one_piece, vcard)
 - `sheet_render` (repository root) - `PRINT_BLEED` for VCard
 - urllib (stdlib) - the hooks' HTTP requests
 - External sites the hooks read: api.lorcast.com, disneylorcana.com, en./www.onepiece-cardgame.com, en./hololive-official-cardgame.com, vcardtcg.com; `market_links` only builds URLs (Cardmarket, TCGplayer, Yuyutei, eBay).
 
 ## Decisions and assumptions
 
-- One module per game holds all of its rules; no module outside `games/` compares a game id (commit 4833e12). tests/test_games.py fails on `game_id == "..."`-style comparisons in `deckledger/*.py`.
+- One module per game holds all of its rules; no module outside `games/` compares a game id (commit 4833e12). tests/test_games.py fails on `game_id == "..."`-style comparisons in `ophir_cards/*.py`.
 - A game without a module gets `Game()` defaults: four-copy playsets, no formats, no deck rules, no remote sources.
 - Ranking always uses the module's `rarity_order`; `rarity_case_sql` inlines those labels as SQL literals, which is safe because they are code constants, never user input.
 - Lorcana maps the English and the official German rarity terms to the same rank because printings carry the label in their own language.

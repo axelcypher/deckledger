@@ -1,7 +1,7 @@
 """Session handling, cross-site writes, access to images and SSO account matching."""
 import json
 
-from conftest import EMBER8, deckledger, query
+from conftest import EMBER8, ophir_cards, query
 
 WRITE = json.dumps({"variant_id": EMBER8, "delta": 1})
 
@@ -56,8 +56,8 @@ def test_image_placeholder_is_not_cached_as_the_real_image(client):
 
 
 def resolve(mode, email, verified=True):
-    with deckledger.app.app_context():
-        row = deckledger.auth.resolve_oauth_identity({"account_matching": mode}, "subject-1", email, "Name", email_verified=verified)
+    with ophir_cards.app.app_context():
+        row = ophir_cards.auth.resolve_oauth_identity({"account_matching": mode}, "subject-1", email, "Name", email_verified=verified)
         return dict(row) if row else None
 
 
@@ -103,13 +103,13 @@ def test_sso_manual_mode_only_accepts_linked_identities():
 def test_a_failed_sso_login_says_why_in_the_log(anonymous, monkeypatch, caplog):
     """Regression: every failure after the return from the provider ended in the same message on
     the login page and nothing in the log, so a wrong secret could not be told from a network problem."""
-    config = {**deckledger.config.OAUTH_CONFIG_DEFAULTS, "enabled": True, "client_id": "id", "client_secret": "secret"}
-    monkeypatch.setattr(deckledger.auth, "resolve_oauth_config", lambda: config)
+    config = {**ophir_cards.config.OAUTH_CONFIG_DEFAULTS, "enabled": True, "client_id": "id", "client_secret": "secret"}
+    monkeypatch.setattr(ophir_cards.auth, "resolve_oauth_config", lambda: config)
 
     def refuse(*args):
-        raise deckledger.auth.OAuthConfigError("invalid_client: Client authentication failed")
+        raise ophir_cards.auth.OAuthConfigError("invalid_client: Client authentication failed")
 
-    monkeypatch.setattr(deckledger.auth, "exchange_code", refuse)
+    monkeypatch.setattr(ophir_cards.auth, "exchange_code", refuse)
     with anonymous.session_transaction() as session:
         session["oauth_state"], session["oauth_code_verifier"] = "state-1", "verifier"
     with caplog.at_level("WARNING"):
@@ -125,21 +125,21 @@ def id_token(claims):
     return f'{part({"alg": "RS256"})}.{part(claims)}.signature'
 
 
-SSO_CONFIG = {"enabled": True, "client_id": "deckledger", "client_secret": "secret", "account_matching": "email"}
+SSO_CONFIG = {"enabled": True, "client_id": "ophir-cards", "client_secret": "secret", "account_matching": "email"}
 
 
 def sso_callback(anonymous, monkeypatch, token, userinfo):
     import oauth_client
 
-    monkeypatch.setattr(deckledger.auth, "resolve_oauth_config", lambda: {**deckledger.config.OAUTH_CONFIG_DEFAULTS, **SSO_CONFIG})
-    monkeypatch.setattr(deckledger.auth, "exchange_code", lambda *args: token)
+    monkeypatch.setattr(ophir_cards.auth, "resolve_oauth_config", lambda: {**ophir_cards.config.OAUTH_CONFIG_DEFAULTS, **SSO_CONFIG})
+    monkeypatch.setattr(ophir_cards.auth, "exchange_code", lambda *args: token)
 
     def fetch(config, token):
         if isinstance(userinfo, Exception):
             raise userinfo
         return userinfo
 
-    monkeypatch.setattr(deckledger.auth, "fetch_userinfo", fetch)
+    monkeypatch.setattr(ophir_cards.auth, "fetch_userinfo", fetch)
     with anonymous.session_transaction() as session:
         session["oauth_state"], session["oauth_code_verifier"] = "state-1", "verifier"
     return anonymous.get("/oauth/callback?code=abc&state=state-1"), oauth_client
@@ -151,8 +151,8 @@ def test_sso_login_works_when_the_provider_refuses_the_userinfo_request(anonymou
     import time
 
     query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
-    token = {"access_token": "at", "id_token": id_token({"sub": "abc-123", "email": "demo@example.com", "email_verified": True, "aud": "deckledger", "exp": time.time() + 300})}
-    refusal = deckledger.auth.OAuthConfigError("Userinfo-Endpunkt antwortet mit 403: Forbidden")
+    token = {"access_token": "at", "id_token": id_token({"sub": "abc-123", "email": "demo@example.com", "email_verified": True, "aud": "ophir-cards", "exp": time.time() + 300})}
+    refusal = ophir_cards.auth.OAuthConfigError("Userinfo-Endpunkt antwortet mit 403: Forbidden")
     with caplog.at_level("WARNING"):
         response, _ = sso_callback(anonymous, monkeypatch, token, refusal)
     assert response.status_code == 302 and response.headers["Location"].endswith("/")
@@ -165,13 +165,13 @@ def test_sso_userinfo_wins_over_the_id_token_and_no_claims_at_all_fail(anonymous
     import time
 
     query("UPDATE users SET email='demo@example.com' WHERE username='demo'")
-    token = {"access_token": "at", "id_token": id_token({"sub": "from-id-token", "aud": "deckledger", "exp": time.time() + 300})}
+    token = {"access_token": "at", "id_token": id_token({"sub": "from-id-token", "aud": "ophir-cards", "exp": time.time() + 300})}
     response, _ = sso_callback(anonymous, monkeypatch, token, {"sub": "from-userinfo", "email": "demo@example.com"})
     assert response.headers["Location"].endswith("/")
     assert query("SELECT oauth_subject s FROM users WHERE username='demo'")[0]["s"] == "from-userinfo"
 
-    fresh = deckledger.app.test_client()
-    refused, _ = sso_callback(fresh, monkeypatch, {"access_token": "at"}, deckledger.auth.OAuthConfigError("403"))
+    fresh = ophir_cards.app.test_client()
+    refused, _ = sso_callback(fresh, monkeypatch, {"access_token": "at"}, ophir_cards.auth.OAuthConfigError("403"))
     assert refused.headers["Location"].endswith("/login?error=provider_error")
 
 
@@ -180,10 +180,10 @@ def test_an_id_token_for_someone_else_or_out_of_date_is_not_used():
 
     import oauth_client
 
-    config, soon = {"client_id": "deckledger"}, time.time() + 300
-    claims = lambda **changes: oauth_client.id_token_claims(config, {"id_token": id_token({"sub": "s", "aud": "deckledger", "exp": soon, **changes})})
+    config, soon = {"client_id": "ophir-cards"}, time.time() + 300
+    claims = lambda **changes: oauth_client.id_token_claims(config, {"id_token": id_token({"sub": "s", "aud": "ophir-cards", "exp": soon, **changes})})
     assert claims()["sub"] == "s"
-    assert claims(aud=["other", "deckledger"])["sub"] == "s"
+    assert claims(aud=["other", "ophir-cards"])["sub"] == "s"
     assert claims(aud="another-client") == {} and claims(exp=time.time() - 5) == {} and claims(exp="never") == {}
     assert oauth_client.id_token_claims(config, {"id_token": "not.a-token"}) == {}
     assert oauth_client.id_token_claims(config, {"id_token": "a.%%%.c"}) == {}

@@ -1,4 +1,4 @@
-class DeckLedgerStatPill extends HTMLElement {
+class OphirStatPill extends HTMLElement {
   connectedCallback(){
     if(this.dataset.enhanced==='1')return;
     this.dataset.enhanced='1';
@@ -20,6 +20,6 @@ class DeckLedgerStatPill extends HTMLElement {
   }
 }
 
-if(!customElements.get('deckledger-stat-pill')){
-  customElements.define('deckledger-stat-pill',DeckLedgerStatPill);
+if(!customElements.get('ophir-stat-pill')){
+  customElements.define('ophir-stat-pill',OphirStatPill);
 }

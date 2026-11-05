@@ -6,9 +6,9 @@
 
 ### app.py
 
-- `gunicorn app:app` in the container (docker-entrypoint.sh: 2 workers, 4 threads, port 8080); `python app.py` starts Flask's debug server on 0.0.0.0:8080. It only re-exports `deckledger.app`.
-- Importing `deckledger` - or any submodule such as `deckledger.config`, since Python runs the package `__init__.py` first - imports every route module and then calls `schema.init_database()`. The background scripts (`catalog_sync.py`, `ebay_sync.py`, `post_watch.py`) rely on this to get a migrated database. docker-entrypoint.sh runs `python -c "import app"` before starting gunicorn so migrations finish before anything is served.
-- Import order in `deckledger/__init__.py`: `config, games, web, schema` first, then the feature modules.
+- `gunicorn app:app` in the container (docker-entrypoint.sh: 2 workers, 4 threads, port 8080); `python app.py` starts Flask's debug server on 0.0.0.0:8080. It only re-exports `ophir_cards.app`.
+- Importing `ophir_cards` - or any submodule such as `ophir_cards.config`, since Python runs the package `__init__.py` first - imports every route module and then calls `schema.init_database()`. The background scripts (`catalog_sync.py`, `ebay_sync.py`, `post_watch.py`) rely on this to get a migrated database. docker-entrypoint.sh runs `python -c "import app"` before starting gunicorn so migrations finish before anything is served.
+- Import order in `ophir_cards/__init__.py`: `config, games, web, schema` first, then the feature modules.
 
 ### config.py
 
@@ -37,8 +37,8 @@ Imports nothing from the package; safe to import from anywhere.
 
 ### web.py
 
-- `app` - the single Flask app (subclass `DeckLedger`, `root_path=ROOT`, so `templates/` and `static/` are the repository's). Every route module does `from .web import app`.
-- `db()` - one `sqlite3` connection per app context (`g.db`), closed at teardown. `sqlite3.Row` rows, `PRAGMA foreign_keys = ON`, `busy_timeout` 10 s, and the SQL function `search_score` (from `deckledger.search`). Nothing auto-commits: a writing view calls `db().commit()` itself.
+- `app` - the single Flask app (subclass `Ophir Cards`, `root_path=ROOT`, so `templates/` and `static/` are the repository's). Every route module does `from .web import app`.
+- `db()` - one `sqlite3` connection per app context (`g.db`), closed at teardown. `sqlite3.Row` rows, `PRAGMA foreign_keys = ON`, `busy_timeout` 10 s, and the SQL function `search_score` (from `ophir_cards.search`). Nothing auto-commits: a writing view calls `db().commit()` itself.
 - `login_required` - the session's `user_id` must name an existing `users` row (checked on every request; a stale session is cleared). Failure: `/api/...` gets 401 `{"error": "authentication required"}`, other paths redirect to `/login`.
 - `admin_required` - `login_required` plus `users.role == 'admin'`. Failure: `/api/...` gets 403 JSON, other paths redirect to `/`.
 - `user_id()` - `int(session["user_id"])`; only valid inside a guarded view.
@@ -74,7 +74,7 @@ Imports nothing from the package; safe to import from anywhere.
 - `status(connection)` - (highest applied version, `len(MIGRATIONS)`); used by `/health`.
 - `applied_versions(connection)` - creates `schema_migrations(version, name, applied_at)` if missing.
 
-Adding a migration: a new file with the next number, listed in `MIGRATIONS`; never edit a released one. Tests (tests/test_migrations.py) check that the numbers have no gaps, that every file is listed, and that no `CREATE TABLE/INDEX`, `ALTER TABLE` or `DROP` appears in `deckledger/*.py`, `deckledger/games/`, `catalog_sync.py` or `price_sync.py` (TEMP tables excepted).
+Adding a migration: a new file with the next number, listed in `MIGRATIONS`; never edit a released one. Tests (tests/test_migrations.py) check that the numbers have no gaps, that every file is listed, and that no `CREATE TABLE/INDEX`, `ALTER TABLE` or `DROP` appears in `ophir_cards/*.py`, `ophir_cards/games/`, `catalog_sync.py` or `price_sync.py` (TEMP tables excepted).
 
 | # | Name | What it does |
 | --- | --- | --- |
@@ -101,8 +101,8 @@ Adding a migration: a new file with the next number, listed in `MIGRATIONS`; nev
 - orjson - JSON encoding of answers
 - sqlite3 (stdlib) - the database: one file at `DATABASE_PATH`, WAL mode
 - gunicorn - production server (docker-entrypoint.sh)
-- `deckledger.search` - `search_score` SQL function registered on every connection
-- `deckledger.games` - `GAMES`, the registry the seed reads
+- `ophir_cards.search` - `search_score` SQL function registered on every connection
+- `ophir_cards.games` - `GAMES`, the registry the seed reads
 - `catalog_provider_contract` (repository root) - `digest()` for provider versions
 - `providers/*.py` - shipped provider code, copied into `catalog_providers.code` at seed time
 

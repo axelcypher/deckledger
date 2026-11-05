@@ -17,7 +17,7 @@ from . import migrations, search
 from .config import DB_PATH, ROOT
 
 
-class DeckLedger(Flask):
+class OphirCards(Flask):
     def send_static_file(self, filename):
         """Flask's static view, plus what lets browsers keep the files: a URL that carries the
         file's current content hash (asset_url) can never mean anything else, so it may be kept
@@ -58,9 +58,9 @@ class OrjsonProvider(DefaultJSONProvider):
         return self._app.response_class(payload + b"\n", mimetype=self.mimetype)
 
 
-app = DeckLedger("deckledger", root_path=str(ROOT))
+app = OphirCards("ophir_cards", root_path=str(ROOT))
 app.json = OrjsonProvider(app)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "deckledger-local-development-key")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "ophir-cards-local-development-key")
 if os.environ.get("TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
     # Opt-in only (never trust X-Forwarded-* from directly-exposed traffic, where a client could
     # spoof them) -- needed behind a TLS-terminating reverse proxy so url_for(_external=True) in

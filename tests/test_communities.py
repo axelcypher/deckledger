@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from conftest import ADMIN, EMBER8, EMBER9, TIDE8, deckledger, login, query
+from conftest import ADMIN, EMBER8, EMBER9, TIDE8, ophir_cards, login, query
 from test_watcher import POST_URL, inbox, reddit, run_job, sheet  # noqa: F401  -- fixtures
 
-watcher = deckledger.watcher
+watcher = ophir_cards.watcher
 
 
 def listed(external_id, author, title, text="see pictures", age_hours=1):
@@ -246,7 +246,7 @@ def test_a_community_that_cannot_be_read_does_not_stop_the_job(client, sheet, co
 # ---- the step from the previous schema ---------------------------------------------------------
 
 def test_inbox_entries_keep_their_sheet_through_the_rebuild(tmp_path):
-    migrations = deckledger.migrations
+    migrations = ophir_cards.migrations
     connection = sqlite3.connect(tmp_path / "before.db")
     connection.row_factory = sqlite3.Row
     migrations.migrate(connection, migrations=migrations.MIGRATIONS[:5], log=lambda message: None)

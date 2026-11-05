@@ -4,7 +4,7 @@ Reads the current price and price history of a card variant, stores prices enter
 
 ## Public interface
 
-### deckledger/prices.py
+### ophir_cards/prices.py
 
 SQL fragments other modules embed (catalog, collection, decks, sheets, watchlists, pages, backup, ebay):
 
@@ -47,7 +47,7 @@ Which feed a game uses: per language of the game, `game_price_overrides(game_id,
 | hololive | JP | `yuyutei` (override) | Yuyutei sell pages, retail JPY | trend |
 | vcard | EN | none | no feed; manual prices only | - |
 
-Independently of these, `deckledger/ebay.py` stores an `ebay` provider price for cards with followed eBay listings. Any other game with method `cardmarket` and a `cardmarket_game_id` uses the generic matcher; a game with the method but no id is skipped. The `tcgcsv` and `yuyutei` pipelines only run for the game id `hololive`.
+Independently of these, `ophir_cards/ebay.py` stores an `ebay` provider price for cards with followed eBay listings. Any other game with method `cardmarket` and a `cardmarket_game_id` uses the generic matcher; a game with the method but no id is skipped. The `tcgcsv` and `yuyutei` pipelines only run for the game id `hololive`.
 
 Feeds: Cardmarket `https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_<id>.json` and `.../priceGuide/price_guide_<id>.json`; TCGCSV `https://tcgcsv.com/tcgplayer/87/groups`, `/<groupId>/products`, `/<groupId>/prices` (groups published up to today, 3 threads, a short pause between calls) and `https://tcgcsv.com/last-updated.txt`; Yuyutei `https://yuyu-tei.jp/sell/hocg/s/<set code>` for every JP hololive set released by today or without a release date; ECB `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml` (USD and JPY, fetched every run, missing rates raise).
 
@@ -72,9 +72,9 @@ History compaction (afterwards, own transactions; a failure is logged and does n
 
 ## Dependencies
 
-- `deckledger/web.py` - `app`, `db()`, `login_required` (prices.py).
-- `deckledger/config.py` - `ROOT`, `jload`, `now_iso` (prices.py). `price_sync.py` resolves `DATABASE_PATH` itself and imports nothing from the app.
-- `deckledger/schema.py` / `deckledger/games` - seed `games.price_method`, `game_price_overrides`, `games.cardmarket_game_id`.
+- `ophir_cards/web.py` - `app`, `db()`, `login_required` (prices.py).
+- `ophir_cards/config.py` - `ROOT`, `jload`, `now_iso` (prices.py). `price_sync.py` resolves `DATABASE_PATH` itself and imports nothing from the app.
+- `ophir_cards/schema.py` / `ophir_cards/games` - seed `games.price_method`, `game_price_overrides`, `games.cardmarket_game_id`.
 - `providers/lorcana.py` - the variant `priceUrl` Lorcana matching depends on; `providers/one_piece.py` - `releaseProductCode`/`releaseProductReleaseDate` for One Piece EN groups.
 - Cardmarket (downloads.s3.cardmarket.com) - product catalogue and daily price guide, no API key.
 - TCGCSV (tcgcsv.com) - daily TCGplayer export for hololive EN.

@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from conftest import deckledger
-from deckledger import migrations
+from conftest import ophir_cards
+from ophir_cards import migrations
 
 FIXTURES = Path(__file__).parent / "fixtures"
-ROOT = Path(deckledger.__file__).parent.parent
+ROOT = Path(ophir_cards.__file__).parent.parent
 
 
 def connect(path):
@@ -125,12 +125,12 @@ def test_upgrading_keeps_the_data(first_release):
 
 def test_the_app_starts_on_an_upgraded_database(first_release, monkeypatch):
     """Seeds and default lists come after the migrations and find what they need."""
-    monkeypatch.setattr(deckledger.schema, "DB_PATH", str(first_release))
-    deckledger.schema.init_database()
+    monkeypatch.setattr(ophir_cards.schema, "DB_PATH", str(first_release))
+    ophir_cards.schema.init_database()
     connection = connect(first_release)
     try:
-        assert {row[0] for row in connection.execute("SELECT id FROM games")} == set(deckledger.games.GAMES)
-        assert connection.execute("SELECT COUNT(*) FROM named_watchlists WHERE user_id=1 AND is_default=1").fetchone()[0] == len(deckledger.games.GAMES)
+        assert {row[0] for row in connection.execute("SELECT id FROM games")} == set(ophir_cards.games.GAMES)
+        assert connection.execute("SELECT COUNT(*) FROM named_watchlists WHERE user_id=1 AND is_default=1").fetchone()[0] == len(ophir_cards.games.GAMES)
         assert connection.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1, "an existing installation gets no demo accounts"
     finally:
         connection.close()
@@ -147,8 +147,8 @@ def test_start_up_switches_the_database_to_wal(first_release, monkeypatch):
             connection.close()
 
     assert journal_mode() != "wal"
-    monkeypatch.setattr(deckledger.schema, "DB_PATH", str(first_release))
-    deckledger.schema.init_database()
+    monkeypatch.setattr(ophir_cards.schema, "DB_PATH", str(first_release))
+    ophir_cards.schema.init_database()
     assert journal_mode() == "wal"
 
 
@@ -271,13 +271,13 @@ def test_health_reports_the_schema_version(anonymous):
 def test_migrations_are_numbered_without_gaps():
     numbers = [int(re.match(r"m(\d{4})_", module.__name__.rsplit(".", 1)[1]).group(1)) for module in migrations.MIGRATIONS]
     assert numbers == list(range(1, len(numbers) + 1))
-    files = sorted(path.stem for path in (ROOT / "deckledger" / "migrations").glob("m[0-9]*.py"))
+    files = sorted(path.stem for path in (ROOT / "ophir_cards" / "migrations").glob("m[0-9]*.py"))
     assert files == [module.__name__.rsplit(".", 1)[1] for module in migrations.MIGRATIONS], "a migration file is not listed in MIGRATIONS"
 
 
 def test_nothing_but_a_migration_changes_the_schema():
     pattern = re.compile(r"\b(CREATE\s+(UNIQUE\s+)?(TABLE|INDEX)|ALTER\s+TABLE|DROP\s+(TABLE|INDEX|COLUMN))\b", re.I)
-    sources = [*(ROOT / "deckledger").glob("*.py"), *(ROOT / "deckledger" / "games").glob("*.py"), ROOT / "catalog_sync.py", ROOT / "price_sync.py"]
+    sources = [*(ROOT / "ophir_cards").glob("*.py"), *(ROOT / "ophir_cards" / "games").glob("*.py"), ROOT / "catalog_sync.py", ROOT / "price_sync.py"]
     offenders = [
         f"{path.name}:{number}" for path in sources
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
@@ -311,7 +311,7 @@ def test_the_demo_account_is_locked_while_it_has_the_published_password(tmp_path
     ("DELETE FROM applied_requests WHERE created_at<datetime('now','-30 days')", "idx_applied_requests_created"),
 ])
 def test_frequent_lookups_use_an_index(statement, index):
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     try:
         plan = " ".join(row[3] for row in connection.execute(f"EXPLAIN QUERY PLAN {statement}"))
     finally:

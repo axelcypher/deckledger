@@ -1,5 +1,5 @@
 """Loads registered catalog providers and dispatches each to its custom-code
-subprocess. Every provider -- including the ones DeckLedger ships with -- is
+subprocess. Every provider -- including the ones Ophir Cards ships with -- is
 `kind='custom_code'`: one uniform system instead of a hardcoded/builtin path
 plus a separate declarative interpreter.
 

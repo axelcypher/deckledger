@@ -1,4 +1,4 @@
-"""ebay_photos: a user's own photos of a card for its eBay listings (deckledger/ebay_photos.py).
+"""ebay_photos: a user's own photos of a card for its eBay listings (ophir_cards/ebay_photos.py).
 
 The files live next to the database in ebay-photos/: <id>-original.jpg as uploaded (upright) and
 <id>.jpg cut from it by crop (JSON: x, y, w, h as fractions, rotate in degrees). eps_url is the

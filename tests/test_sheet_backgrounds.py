@@ -5,13 +5,13 @@ import pytest
 from PIL import Image
 
 import sheet_render
-from conftest import ADMIN, EMBER8, deckledger, login, query
+from conftest import ADMIN, EMBER8, ophir_cards, login, query
 
 
 @pytest.fixture(autouse=True)
 def isolated_backgrounds(tmp_path, monkeypatch):
-    monkeypatch.setattr(deckledger.sheets, "SHEET_BACKGROUND_DIR", tmp_path / "backgrounds")
-    deckledger.sheets._sheet_swatches.clear()
+    monkeypatch.setattr(ophir_cards.sheets, "SHEET_BACKGROUND_DIR", tmp_path / "backgrounds")
+    ophir_cards.sheets._sheet_swatches.clear()
 
 
 def upload(client, color="red", size=(320, 180), filename="mat.png"):
@@ -27,7 +27,7 @@ def test_upload_stores_jpeg_and_appears_after_built_in_options(client):
     background = response.get_json()
     assert background["id"].startswith("custom-") and background["id"][7:].isdigit()
     assert background["label"] == "mat" and background["custom"] is True
-    stored = deckledger.sheets.SHEET_BACKGROUND_DIR / f'{background["id"][7:]}.jpg'
+    stored = ophir_cards.sheets.SHEET_BACKGROUND_DIR / f'{background["id"][7:]}.jpg'
     assert stored.is_file()
     with Image.open(stored) as image:
         assert image.format == "JPEG" and image.mode == "RGB"
@@ -40,7 +40,7 @@ def test_large_upload_is_resized_without_stretching(client):
     response = upload(client, size=(5000, 3000))
     assert response.status_code == 201
     background_id = response.get_json()["id"].split("-")[1]
-    stored = deckledger.sheets.SHEET_BACKGROUND_DIR / f"{background_id}.jpg"
+    stored = ophir_cards.sheets.SHEET_BACKGROUND_DIR / f"{background_id}.jpg"
     with Image.open(stored) as image:
         assert max(image.size) <= sheet_render.PHOTO_MAX_SIDE
         assert abs(image.width / image.height - 5000 / 3000) < 0.001
@@ -50,7 +50,7 @@ def test_invalid_or_missing_upload_is_rejected_without_storage(client):
     response = client.post("/api/trade-sheets/backgrounds", data={"file": (io.BytesIO(b"not an image"), "mat.png")}, content_type="multipart/form-data")
     assert response.status_code == 400
     assert query("SELECT COUNT(*) n FROM sheet_backgrounds")[0]["n"] == 0
-    assert not list(deckledger.sheets.SHEET_BACKGROUND_DIR.glob("*"))
+    assert not list(ophir_cards.sheets.SHEET_BACKGROUND_DIR.glob("*"))
     assert client.post("/api/trade-sheets/backgrounds", data={}, content_type="multipart/form-data").status_code == 400
 
 
@@ -83,7 +83,7 @@ def test_another_accounts_background_cannot_be_used_or_read(client):
 
 def test_deleting_background_removes_file_and_resets_sheet(client):
     background = upload(client).get_json()["id"]
-    stored = deckledger.sheets.SHEET_BACKGROUND_DIR / f'{background[7:]}.jpg'
+    stored = ophir_cards.sheets.SHEET_BACKGROUND_DIR / f'{background[7:]}.jpg'
     sheet_id = client.post("/api/trade-sheets", json={"game_id": "vcard"}).get_json()["id"]
     assert client.patch(f"/api/trade-sheets/{sheet_id}", json={"background": background}).get_json()["sheet"]["background"] == background
     assert client.delete(f"/api/trade-sheets/backgrounds/{background}").get_json() == {"deleted": True}
@@ -105,7 +105,7 @@ def test_swatches_are_jpegs_and_require_login(client, anonymous):
 
 
 def test_upload_limit_is_per_user(client, monkeypatch):
-    monkeypatch.setattr(deckledger.sheets, "BACKGROUNDS_PER_USER", 2)
+    monkeypatch.setattr(ophir_cards.sheets, "BACKGROUNDS_PER_USER", 2)
     assert upload(client).status_code == 201
     assert upload(client).status_code == 201
     assert upload(client).status_code == 400
@@ -114,7 +114,7 @@ def test_upload_limit_is_per_user(client, monkeypatch):
 
 def test_deleting_account_removes_its_backgrounds(client, admin):
     background = upload(client).get_json()["id"]
-    stored = deckledger.sheets.SHEET_BACKGROUND_DIR / f'{background[7:]}.jpg'
+    stored = ophir_cards.sheets.SHEET_BACKGROUND_DIR / f'{background[7:]}.jpg'
     demo_id = query("SELECT id FROM users WHERE username='demo'")[0]["id"]
     assert stored.is_file()
     assert admin.delete(f"/api/admin/users/{demo_id}").get_json() == {"deleted": True}

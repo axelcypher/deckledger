@@ -1,13 +1,14 @@
-// DeckLedger offline shell. Bump CACHE_VERSION whenever the caching strategy
+// Ophir Cards offline shell. Bump CACHE_VERSION whenever the caching strategy
 // itself changes -- old caches are purged on activate. Static assets carry a
 // content hash in their ?v= param (asset_url() in app.py), so a changed file
 // always arrives under a new URL without anyone having to bump a number.
 const CACHE_VERSION = 'v2';
-const SHELL_CACHE = `deckledger-shell-${CACHE_VERSION}`;
-const API_CACHE = `deckledger-api-${CACHE_VERSION}`;
-const IMAGE_CACHE = `deckledger-images-${CACHE_VERSION}`;
+const SHELL_CACHE = `ophir-shell-${CACHE_VERSION}`;
+const API_CACHE = `ophir-api-${CACHE_VERSION}`;
+const IMAGE_CACHE = `ophir-images-${CACHE_VERSION}`;
 // What the user saved for offline use on purpose (static/js/offline.js). Written by the page,
-// only read here, never trimmed, and kept across changes of CACHE_VERSION.
+// only read here, never trimmed, and kept across changes of CACHE_VERSION. It keeps the app's old
+// name (DeckLedger) so the rename to Ophir Cards did not throw away what users had saved.
 const SAVED_CACHE = 'deckledger-offline-v1';
 const KNOWN_CACHES = [SHELL_CACHE, API_CACHE, IMAGE_CACHE, SAVED_CACHE];
 
@@ -142,7 +143,7 @@ async function staticAsset(event, cacheName) {
 // respond, so the app can say so instead of passing old data off as current.
 function staleCopy(cached) {
   const headers = new Headers(cached.headers);
-  headers.set('X-DeckLedger-Stale', '1');
+  headers.set('X-Ophir-Stale', '1');
   return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
 }
 

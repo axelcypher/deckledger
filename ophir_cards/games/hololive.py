@@ -45,14 +45,14 @@ def remote_image_url(row):
         official_number = f"h{official_number}"
     host = "https://en.hololive-official-cardgame.com" if row["language"] == "EN" else "https://hololive-official-cardgame.com"
     listing = f"{host}/cardlist/cardsearch/?expansion={quote_plus(expansion)}"
-    page = urlopen(Request(listing, headers={"User-Agent": "DeckLedger/0.1"}), timeout=12).read().decode("utf-8", "ignore")
+    page = urlopen(Request(listing, headers={"User-Agent": "OphirCards/0.1"}), timeout=12).read().decode("utf-8", "ignore")
     prefix = "EN_" if row["language"] == "EN" else ""
     pattern = rf'(?:src|data-src)="([^"]*{re.escape(prefix + official_number)}[^"]*\.png[^"]*)"'
     match = re.search(pattern, page, re.I)
     if not match and row["language"] == "EN":
         # Some early cards were published only in the Japanese catalogue.
         fallback = f"https://hololive-official-cardgame.com/cardlist/cardsearch/?expansion={quote_plus(expansion)}"
-        page = urlopen(Request(fallback, headers={"User-Agent": "DeckLedger/0.1"}), timeout=12).read().decode("utf-8", "ignore")
+        page = urlopen(Request(fallback, headers={"User-Agent": "OphirCards/0.1"}), timeout=12).read().decode("utf-8", "ignore")
         match = re.search(rf'(?:src|data-src)="([^"]*{re.escape(official_number)}[^"]*\.png[^"]*)"', page, re.I)
         return urljoin(fallback, match.group(1)) if match else None
     return urljoin(listing, match.group(1)) if match else None

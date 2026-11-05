@@ -1,4 +1,4 @@
-// The public profile (templates/public.html, deckledger/public_profile.py): a shared collection
+// The public profile (templates/public.html, ophir_cards/public_profile.py): a shared collection
 // without signing in. Its own small script -- the app's scripts expect a signed-in user. The
 // address says what is shown: #<game> for its sets, #<game>/<set> for the cards of a set.
 

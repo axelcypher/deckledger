@@ -1,4 +1,4 @@
-"""DeckLedger: a self-hosted collection manager for trading card games.
+"""Ophir Cards: a self-hosted collection manager for trading card games.
 
 Importing the package builds the whole application: every module registers its routes on the one
 Flask app, then the database is created or migrated. `app.py` in the repository root is the entry

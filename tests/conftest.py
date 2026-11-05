@@ -22,16 +22,16 @@ sys.path.insert(0, str(ROOT))
 try:
     import fcntl  # noqa: F401
 except ImportError:
-    # deckledger/images.py and price_sync.py use flock() to serialise image downloads and price runs. The
+    # ophir_cards/images.py and price_sync.py use flock() to serialise image downloads and price runs. The
     # module does not exist on Windows; a no-op stand-in lets the suite run on a dev machine.
     sys.modules["fcntl"] = types.SimpleNamespace(LOCK_EX=0, LOCK_SH=0, LOCK_UN=0, LOCK_NB=0, flock=lambda *args: None)
 
-DATA_DIR = Path(tempfile.mkdtemp(prefix="deckledger-tests-"))
-os.environ["DATABASE_PATH"] = str(DATA_DIR / "deckledger.web.db")
+DATA_DIR = Path(tempfile.mkdtemp(prefix="ophir-cards-tests-"))
+os.environ["DATABASE_PATH"] = str(DATA_DIR / "ophir_cards.web.db")
 atexit.register(shutil.rmtree, DATA_DIR, ignore_errors=True)
 os.environ.pop("SECRET_KEY", None)
 
-import deckledger  # noqa: E402
+import ophir_cards  # noqa: E402
 import catalog_sync  # noqa: E402
 
 DEMO = ("demo", "deckledger")
@@ -42,16 +42,16 @@ def add_users():
     """The suite's accounts: demo (id 1), an ordinary user the app itself no longer creates, and
     admin (id 2), in place of the admin the app seeds."""
     from werkzeug.security import generate_password_hash
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     connection.execute("PRAGMA foreign_keys=OFF")
     connection.execute("DELETE FROM users")
     connection.executemany("INSERT INTO users(id, username, display_name, password_hash, role, created_at) VALUES(?,?,?,?,?,'2026-01-01T00:00:00+00:00')", [
         (1, "demo", "Alex Morgan", generate_password_hash("deckledger"), "user"),
-        (2, "admin", "DeckLedger Admin", generate_password_hash("admin"), "admin"),
+        (2, "admin", "Ophir Cards Admin", generate_password_hash("admin"), "admin"),
     ])
     connection.commit()
     connection.close()
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
 
 add_users()
@@ -126,7 +126,7 @@ NAMI = "one-piece-print-op01-016-en-standard"
 
 
 def query(statement, args=()):
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     connection.row_factory = sqlite3.Row
     try:
         rows = [dict(row) for row in connection.execute(statement, args)]
@@ -138,7 +138,7 @@ def query(statement, args=()):
 
 @pytest.fixture(autouse=True)
 def fresh_database():
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     connection.execute("PRAGMA foreign_keys=OFF")
     tables = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='schema_migrations'"
     for (table,) in connection.execute(tables).fetchall():
@@ -151,7 +151,7 @@ def fresh_database():
 
 
 def login(credentials=DEMO):
-    client = deckledger.app.test_client()
+    client = ophir_cards.app.test_client()
     if credentials:
         assert client.post("/login", data={"username": credentials[0], "password": credentials[1]}).status_code == 302
     return client

@@ -24,7 +24,7 @@ export function loadScripts(names, extra = {}) {
   const document = { querySelector: () => element(), querySelectorAll: () => [], createElement: () => element(), body: element(), documentElement: element(), addEventListener() {} };
   const sandbox = {
     console, URL, URLSearchParams, Intl, Promise, Map, Set, Date, Math, JSON, setTimeout, clearTimeout, queueMicrotask, structuredClone,
-    document, navigator: { onLine: true }, location: { href: 'http://deckledger.test/', origin: 'http://deckledger.test', pathname: '/', search: '' },
+    document, navigator: { onLine: true }, location: { href: 'http://ophir_cards.test/', origin: 'http://ophir_cards.test', pathname: '/', search: '' },
     addEventListener() {}, removeEventListener() {}, scrollTo() {}, innerWidth: 1400,
     ...extra,
   };

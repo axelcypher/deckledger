@@ -1,6 +1,6 @@
 # Backup
 
-`deckledger/backup.py` moves a user's data in and out: the text-list import into the collection (preview, apply, undo), the CSV and JSON export, and restoring a JSON backup (collection, decks, watchlists, sheets, deals), which can be undone as well.
+`ophir_cards/backup.py` moves a user's data in and out: the text-list import into the collection (preview, apply, undo), the CSV and JSON export, and restoring a JSON backup (collection, decks, watchlists, sheets, deals), which can be undone as well.
 
 ## Public interface
 
@@ -15,8 +15,8 @@ All are `@login_required`; everything read or written belongs to the session use
 | POST | `/api/import/json/preview` | A backup payload -> one result row per collection entry, plus one summary row per deck, watchlist, sheet and deal (`kind`, how many of its cards were found, or that its game does not exist here). Writes nothing. |
 | POST | `/api/import/json/apply` | A backup payload plus `strategy` (`add` default, or `replace`) -> restores everything (see below) and records one `import_operations` row (`source_text` `json-backup`). Returns counts per part and `operation_id`. |
 | POST | `/api/import/<operation_id>/undo` | Reverts one text or backup import, once. 404 when the operation is unknown, another user's or already undone. |
-| GET | `/api/export.json` | Full backup as download `deckledger-collection.json`. |
-| GET | `/api/export.<other>` | Any other suffix: the collection rows as CSV, download `deckledger-collection.csv`. |
+| GET | `/api/export.json` | Full backup as download `ophir-cards-collection.json`. |
+| GET | `/api/export.<other>` | Any other suffix: the collection rows as CSV, download `ophir-cards-collection.csv`. |
 
 ### Text import
 
@@ -60,13 +60,13 @@ Games are matched by name; items of an unknown game are skipped.
 
 ## Dependencies
 
-- `deckledger.catalog` - `match_collector_number`, `split_set_prefix` for the text import.
-- `deckledger.games` - deck formats and zones.
-- `deckledger.sheets` - `SHEET_KINDS`, `SHEET_SORTS`.
-- `deckledger.deals` - `DEAL_STATES`, `SIDES`.
-- `deckledger.prices` - `latest_price_sql` for the exported `unit_price`.
+- `ophir_cards.catalog` - `match_collector_number`, `split_set_prefix` for the text import.
+- `ophir_cards.games` - deck formats and zones.
+- `ophir_cards.sheets` - `SHEET_KINDS`, `SHEET_SORTS`.
+- `ophir_cards.deals` - `DEAL_STATES`, `SIDES`.
+- `ophir_cards.prices` - `latest_price_sql` for the exported `unit_price`.
 - `sheet_render` (repo root) - `BACKGROUNDS`, `parse_layout`.
-- `deckledger.web`, `deckledger.config`.
+- `ophir_cards.web`, `ophir_cards.config`.
 - SQLite tables `collection_entries`, `decks`, `deck_cards`, `named_watchlists`, `named_watchlist_entries`, `trade_sheets`, `trade_sheet_cards`, `deals`, `deal_cards`, `deal_events`, `import_operations`, and the catalogue tables for matching.
 
 ## Decisions and assumptions

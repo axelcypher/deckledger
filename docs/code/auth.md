@@ -1,10 +1,10 @@
 # Authentication, accounts and admin
 
-`deckledger/auth.py` signs users in with a local password or the one optional OAuth2/OIDC provider, whose protocol mechanics live in `oauth_client.py` (repository root). `deckledger/account.py` holds a user's own settings, account data and password, and `deckledger/admin.py` the admin API for accounts, games, catalogue providers, manual cards and SSO settings.
+`ophir_cards/auth.py` signs users in with a local password or the one optional OAuth2/OIDC provider, whose protocol mechanics live in `oauth_client.py` (repository root). `ophir_cards/account.py` holds a user's own settings, account data and password, and `ophir_cards/admin.py` the admin API for accounts, games, catalogue providers, manual cards and SSO settings.
 
 ## Public interface
 
-### deckledger/auth.py
+### ophir_cards/auth.py
 
 | Method | Path | Auth | What it does |
 | --- | --- | --- | --- |
@@ -33,9 +33,9 @@ No Flask or database coupling; every function takes the resolved config dict. Fu
 - `id_token_claims(config, token)` - claims of the ID token or `{}`. The signature is not checked; `aud` must contain `client_id` and `exp` must be in the future.
 - `extract_identity(config, claims) -> (subject, email, display_name)` - by the configured claim names; raises when the subject is missing. Display name falls back from the username claim to `name`, email, subject.
 - `resolved_endpoints(config)` - manually set endpoints win, discovery fills the missing ones; raises when an endpoint, the client id or the client secret is missing. `discover_endpoints(url)` caches per discovery URL for 300 s.
-- Every request: 10 s timeout, User-Agent `DeckLedger (OAuth client)`.
+- Every request: 10 s timeout, User-Agent `Ophir Cards (OAuth client)`.
 
-### deckledger/account.py
+### ophir_cards/account.py
 
 | Method | Path | Auth | What it does |
 | --- | --- | --- | --- |
@@ -44,7 +44,7 @@ No Flask or database coupling; every function takes the resolved config dict. Fu
 | POST | `/api/account/password` | `login_required` | `new_password` at least 8 characters. `current_password` must match, unless the stored hash is empty (an SSO-only account sets its first password). Wrong current password: 401. |
 | POST | `/api/account/oauth/unlink` | `login_required` | Clears the SSO link; refused (400) while the account has no local password. |
 
-### deckledger/admin.py
+### ophir_cards/admin.py
 
 Every route is `@admin_required` (401 without a session, 403 for a non-admin on `/api/...`).
 
@@ -81,11 +81,11 @@ Invariants and error modes:
 
 ## Dependencies
 
-- `deckledger.web` - `app`, `db`, `login_required`, `admin_required`, `user_id`
-- `deckledger.config` - `OAUTH_CONFIG_DEFAULTS`, `OAUTH_CONFIG_PATH`, `OAUTH_PROVIDER_KEY`, `CARD_BACK_UPLOAD_DIR`, `ROOT`, `jload`, `now_iso`
-- `deckledger.schema` - `ensure_user_lists`, `default_provider_code`
-- `deckledger.games` - `GAMES` (is a provider shipped)
-- `deckledger.sheets`, `deckledger.ebay_photos` - file clean-up when an account is deleted
+- `ophir_cards.web` - `app`, `db`, `login_required`, `admin_required`, `user_id`
+- `ophir_cards.config` - `OAUTH_CONFIG_DEFAULTS`, `OAUTH_CONFIG_PATH`, `OAUTH_PROVIDER_KEY`, `CARD_BACK_UPLOAD_DIR`, `ROOT`, `jload`, `now_iso`
+- `ophir_cards.schema` - `ensure_user_lists`, `default_provider_code`
+- `ophir_cards.games` - `GAMES` (is a provider shipped)
+- `ophir_cards.sheets`, `ophir_cards.ebay_photos` - file clean-up when an account is deleted
 - `catalog_provider_contract` - `slug`, `digest`
 - `catalog_sync.py` - started as a subprocess by the provider run endpoint
 - Authlib (`OAuth2Session`, `generate_token`) and requests - used by `oauth_client.py`

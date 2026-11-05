@@ -1,10 +1,10 @@
 # Collection
 
-What each user owns (copies per variant, condition and grading) and the user's named watchlists per game. `deckledger/collection.py` changes and lists owned copies, including the multi-select remove/undo; `deckledger/watchlists.py` manages the lists, their entries and the bulk edits on them.
+What each user owns (copies per variant, condition and grading) and the user's named watchlists per game. `ophir_cards/collection.py` changes and lists owned copies, including the multi-select remove/undo; `ophir_cards/watchlists.py` manages the lists, their entries and the bulk edits on them.
 
 ## Public interface
 
-### deckledger/collection.py
+### ophir_cards/collection.py
 
 All routes `@login_required` and limited to the signed-in user's rows.
 
@@ -25,9 +25,9 @@ Rules of `POST /api/collection`:
 - `request_id` (max 64 chars): a repeat with the same id returns the first answer instead of counting again (table `applied_requests`, rows older than 30 days are pruned on each such request).
 - Errors: 400 for a non-object body or a non-numeric quantity/price, 404 for an unknown variant.
 
-The other bulk actions of the collection multi-select live elsewhere: add to a watchlist (`/api/watchlists/<id>/entries/add`, below), add to a sheet (`/api/trade-sheets/<id>/cards` with `at_least`, see sheets.md), manual prices (`/api/variants/manual-prices` in `deckledger/prices.py`), eBay drafts (`deckledger/ebay.py`).
+The other bulk actions of the collection multi-select live elsewhere: add to a watchlist (`/api/watchlists/<id>/entries/add`, below), add to a sheet (`/api/trade-sheets/<id>/cards` with `at_least`, see sheets.md), manual prices (`/api/variants/manual-prices` in `ophir_cards/prices.py`), eBay drafts (`ophir_cards/ebay.py`).
 
-### deckledger/watchlists.py
+### ophir_cards/watchlists.py
 
 All routes `@login_required`. A list belongs to one user and one game; every route checks that the list is the user's (404 `watchlist not found`), and entries must be variants of the list's game.
 
@@ -51,19 +51,19 @@ All routes `@login_required`. A list belongs to one user and one game; every rou
 
 ## Dependencies
 
-- `deckledger/web.py` - `app`, `db`, `login_required`, `user_id`.
-- `deckledger/prices.py` - `latest_price_sql()` for prices and values.
-- `deckledger/catalog.py` - `query_matches_row()` for the text search.
-- `deckledger/games` - `matches_catalog_filters()`, `rarity_rank()`.
-- `deckledger/schema.py` - `ensure_user_lists()` creates the default list ("Merkliste", `is_default=1`) for every user and game, at start-up and right after an account is created.
+- `ophir_cards/web.py` - `app`, `db`, `login_required`, `user_id`.
+- `ophir_cards/prices.py` - `latest_price_sql()` for prices and values.
+- `ophir_cards/catalog.py` - `query_matches_row()` for the text search.
+- `ophir_cards/games` - `matches_catalog_filters()`, `rarity_rank()`.
+- `ophir_cards/schema.py` - `ensure_user_lists()` creates the default list ("Merkliste", `is_default=1`) for every user and game, at start-up and right after an account is created.
 - Tables: `collection_entries`, `applied_requests`, `named_watchlists`, `named_watchlist_entries`; read: the catalogue and price tables.
 
 ## Decisions and assumptions
 
 - The read-modify-write routes (`POST /api/collection`, remove, restore, watchlist move) start with `BEGIN IMMEDIATE`, because two quick clicks arrive on two threads and would otherwise read the same old quantity (code comment). An error answer after that leaves nothing changed: the open transaction is dropped when the request's connection closes.
-- Collection and watchlist rows are small, user-specific result sets, so they are loaded and then filtered in Python with the same `matches_catalog_filters()` the catalogue uses, instead of duplicating game-specific SQL (docstring in `deckledger/games`). The text search runs last because it is the most expensive test.
+- Collection and watchlist rows are small, user-specific result sets, so they are loaded and then filtered in Python with the same `matches_catalog_filters()` the catalogue uses, instead of duplicating game-specific SQL (docstring in `ophir_cards/games`). The text search runs last because it is the most expensive test.
 - A collection card is one variant; the answer still wraps it as `variants: [itself]`, `variant_count: 1` so the frontend can treat it like a catalogue card.
 - A watchlist entry's `quantity` is how many copies are wanted, not how many are owned.
 - Moving entries: a card already on the target list keeps its wanted quantity there instead of merging two counts (docstring). Copy and delete run as one transaction.
 - The heart menu sends an explicit `active`, so a second click that crosses an earlier one in flight cannot undo it (code comment).
-- Other writers: `deckledger/backup.py` (import and undo) changes both tables; `deckledger/deals.py` and `catalog_sync.py` change `collection_entries`; `deckledger/admin.py` deletes watchlist entries when an account or game is removed.
+- Other writers: `ophir_cards/backup.py` (import and undo) changes both tables; `ophir_cards/deals.py` and `catalog_sync.py` change `collection_entries`; `ophir_cards/admin.py` deletes watchlist entries when an account or game is removed.

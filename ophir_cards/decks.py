@@ -73,7 +73,7 @@ def deck_catalog():
         filters.append(f"i.card_type IN ({','.join('?' for _ in rules.playable_types)})")
         values.extend(rules.playable_types)
     if q:
-        # The search every box uses (deckledger/search.py), localized names and texts included.
+        # The search every box uses (ophir_cards/search.py), localized names and texts included.
         filters.append(f"{search.card_score_sql()}>0")
         values.append(q)
     if set_id:

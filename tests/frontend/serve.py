@@ -32,5 +32,6 @@ def new_posts():
             + entry.format(author="seller_two", id="have1", posted=posted, title="[US] [H] Ember PL8 [W] PayPal") + "</feed>").encode()
 
 
-conftest.deckledger.watcher.fetch_feed = lambda url: (new_posts() if "/r/" in url else COMMENT_FEED, 2)
-conftest.deckledger.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)
+conftest.ophir_cards.watcher.fetch_feed = lambda url: (new_posts() if "/r/" in url else COMMENT_FEED, 2)
+
+conftest.ophir_cards.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)

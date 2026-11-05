@@ -155,7 +155,7 @@ body.dark.mobile-modern .content .page-section-head>:is(button,.sales-nav-tools)
 body.dark.mobile-modern .content .dashboard-recent>h2 { margin-bottom:var(--ds-gap-tight); }
 
 /* ---- The head of a page: the numbers, then the navigation, then the content -------------- */
-body.dark.mobile-modern .content deckledger-stat-pill:is(.dashboard-summary,.ebay-summary) { margin-top:0;margin-bottom:0;min-height:0; }
+body.dark.mobile-modern .content ophir-stat-pill:is(.dashboard-summary,.ebay-summary) { margin-top:0;margin-bottom:0;min-height:0; }
 
 /* The row of tiles under the numbers -- the dashboard's and the one of "Verkauf & Tausch" are the
    same component and change together. On a wide screen the icon sits beside its label, which

@@ -95,7 +95,7 @@ async function refreshStats(){
   try{data=await api(`${url}&stats_only=1`)}catch{return}
   if(url!==state.statsUrl)return; // the view changed while the numbers were on their way
   for(const [label,value] of items(data.stats)){
-    const cell=$$('deckledger-stat-pill [data-stat]',content).find(item=>$('span',item)?.textContent===label);
+    const cell=$$('ophir-stat-pill [data-stat]',content).find(item=>$('span',item)?.textContent===label);
     if(cell)$('b',cell).textContent=String(value);
   }
 }

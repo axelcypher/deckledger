@@ -1,4 +1,4 @@
-"""Own photos of a card for its eBay listings (deckledger/ebay.py): eBay wants pictures of the
+"""Own photos of a card for its eBay listings (ophir_cards/ebay.py): eBay wants pictures of the
 item, and the catalogue image is only the fallback.
 
 Photos belong to a user's card (variant), not to a draft, so they outlast a draft that is deleted
@@ -6,7 +6,7 @@ and made again and serve every listing of that card. Each keeps the uploaded ori
 listed is cut from it on the server by the crop the user chose (fractions of the upright,
 rotated original), so the crop can be changed any time without uploading again.
 
-On eBay a photo is uploaded once (Media API, deckledger/ebay.py upload_picture) and its URL reused
+On eBay a photo is uploaded once (Media API, ophir_cards/ebay.py upload_picture) and its URL reused
 while eBay keeps it: a picture no listing uses expires after 30 days, so an older upload is made
 again.
 

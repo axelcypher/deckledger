@@ -2,7 +2,7 @@
 trade sheets, and a backup that still carries one restores it as a sheet."""
 import pytest
 
-from conftest import BOOST, ELSA, EMBER8, EMBER8_HOLO, TIDE8, deckledger, query
+from conftest import BOOST, ELSA, EMBER8, EMBER8_HOLO, TIDE8, ophir_cards, query
 
 
 @pytest.fixture(autouse=True)
@@ -12,7 +12,7 @@ def before_the_migration():
     query("ALTER TABLE named_watchlist_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
     query("DELETE FROM schema_migrations WHERE version=2")
     yield
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
 
 def legacy_sale_list(game_id="vcard", user="demo", entries=()):
@@ -54,7 +54,7 @@ def test_a_sale_list_becomes_a_sheet_with_the_same_cards():
     legacy_sale_list(entries=[(EMBER8, 2, "manual"), (TIDE8, 1, "manual")])
     entries_before = query("SELECT COUNT(*) n FROM named_watchlist_entries")[0]["n"]
 
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
     assert sheets() == [("demo", "vcard", "Verkaufsliste", "WTS", EMBER8, 2), ("demo", "vcard", "Verkaufsliste", "WTS", TIDE8, 1)]
     assert sale_lists_left() == 0
@@ -64,8 +64,8 @@ def test_a_sale_list_becomes_a_sheet_with_the_same_cards():
 
 def test_migration_runs_once():
     legacy_sale_list(entries=[(EMBER8, 2, "manual")])
-    deckledger.schema.init_database()
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
+    ophir_cards.schema.init_database()
     assert sheets() == [("demo", "vcard", "Verkaufsliste", "WTS", EMBER8, 2)]
 
 
@@ -74,7 +74,7 @@ def test_every_account_and_game_keeps_its_own_list():
     legacy_sale_list("lorcana", "demo", [(ELSA, 3, "manual")])
     legacy_sale_list("vcard", "admin", [(BOOST, 4, "manual")])
 
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
     assert sheets() == [
         ("demo", "vcard", "Verkaufsliste", "WTS", EMBER8, 1),
@@ -90,7 +90,7 @@ def test_automatic_entries_only_move_while_the_card_is_still_surplus():
     own(TIDE8, 3)        # exactly a playset: no longer surplus
     legacy_sale_list(entries=[(EMBER8, 2, "auto"), (TIDE8, 1, "auto"), (BOOST, 1, "auto"), (EMBER8_HOLO, 1, "manual")])
 
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
     assert [(row[4], row[5]) for row in sheets()] == [(EMBER8, 2), (EMBER8_HOLO, 1)]
 
@@ -101,7 +101,7 @@ def test_an_own_list_of_that_name_stood_in_for_the_fixed_one():
     legacy_sale_list(entries=[(EMBER8, 2, "manual")])
     query("UPDATE named_watchlists SET is_sale_list=0 WHERE name='Verkaufsliste'")
 
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
     assert sheets() == [("demo", "vcard", "Verkaufsliste", "WTS", EMBER8, 2)]
     assert query("SELECT COUNT(*) n FROM named_watchlists WHERE name='Verkaufsliste'")[0]["n"] == 0
@@ -114,7 +114,7 @@ def test_a_watchlist_named_like_that_later_stays_a_watchlist(client):
     created = client.post("/api/watchlists", json={"game_id": "vcard", "name": "Verkaufsliste"}).get_json()["id"]
     client.post("/api/watchlist", json={"variant_id": EMBER8, "list_id": created})
 
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
     assert sheets() == []
     assert [item["name"] for item in client.get("/api/watchlists?game_id=vcard").get_json()] == ["Merkliste", "Verkaufsliste"]
@@ -123,13 +123,13 @@ def test_a_watchlist_named_like_that_later_stays_a_watchlist(client):
 def test_an_empty_sale_list_just_disappears():
     legacy_sale_list()
     legacy_sale_list("lorcana", entries=[(ELSA, 1, "auto")])     # nothing owned: the entry is stale
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
     assert sheets() == [] and sale_lists_left() == 0
 
 
 def test_quantities_are_brought_into_the_range_a_sheet_allows():
     legacy_sale_list(entries=[(EMBER8, 250, "manual"), (TIDE8, 0, "manual")])
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
     assert [(row[4], row[5]) for row in sheets()] == [(EMBER8, 99), (TIDE8, 1)]
 
 
@@ -139,7 +139,7 @@ def test_other_watchlists_are_untouched(client):
     client.post("/api/watchlist", json={"variant_id": EMBER8, "list_id": custom})
     legacy_sale_list(entries=[(BOOST, 1, "manual")])
 
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
 
     lists = client.get("/api/watchlists?game_id=vcard").get_json()
     assert [(item["name"], item["count"]) for item in lists] == [("Merkliste", 1), ("Kaufen", 1)]
@@ -149,7 +149,7 @@ def test_other_watchlists_are_untouched(client):
 
 def test_the_columns_of_the_sale_list_are_gone():
     legacy_sale_list(entries=[(EMBER8, 2, "auto")])
-    deckledger.schema.init_database()
+    ophir_cards.schema.init_database()
     assert "source" not in {row["name"] for row in query("PRAGMA table_info(named_watchlist_entries)")}
     assert query("SELECT COUNT(*) n FROM app_settings WHERE key='sale_lists_migrated'")[0]["n"] == 0
     assert query("SELECT name FROM schema_migrations WHERE version=2")[0]["name"] == "sale lists become trade sheets"

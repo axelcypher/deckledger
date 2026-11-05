@@ -1,6 +1,6 @@
 # Deals
 
-`deckledger/deals.py` keeps a user's deals ("Vorgaenge"): sales, purchases and trades with any partner on any platform, and books them into the collection and the user's trade sheets as the deal's status changes.
+`ophir_cards/deals.py` keeps a user's deals ("Vorgaenge"): sales, purchases and trades with any partner on any platform, and books them into the collection and the user's trade sheets as the deal's status changes.
 
 ## Public interface
 
@@ -55,10 +55,10 @@ The deal payload is the `deals` row plus `cards` (each with catalogue fields, `o
 
 ## Dependencies
 
-- `deckledger.web` - Flask app, `db()`, `login_required`, `user_id`.
-- `deckledger.sheets` - `RESERVED_SQL` (reserved copies per variant), `WANTED_SHEET_KINDS`.
-- `deckledger.search` - `matches()` for the `q` filter.
-- `deckledger.config` - `now_iso`.
+- `ophir_cards.web` - Flask app, `db()`, `login_required`, `user_id`.
+- `ophir_cards.sheets` - `RESERVED_SQL` (reserved copies per variant), `WANTED_SHEET_KINDS`.
+- `ophir_cards.search` - `matches()` for the `q` filter.
+- `ophir_cards.config` - `now_iso`.
 - SQLite tables `deals`, `deal_cards`, `deal_events` (migration `m0007_deals`), `collection_entries`, `trade_sheets`, `trade_sheet_cards`, and the catalogue tables for card snapshots.
 
 ## Decisions and assumptions

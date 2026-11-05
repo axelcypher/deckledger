@@ -1,6 +1,8 @@
-# DeckLedger
+# Ophir Cards
 
 Self-hosted, multi-user collection manager for trading card games: Disney Lorcana, One Piece, hololive OCG and VCard TCG. It keeps the catalogue, each account's collection, watchlists and decks, and the selling side (trade and sale sheets, deals, eBay) in one Flask app with an SQLite database, shipped as a single container image (`ghcr.io/axelcypher/deckledger`). In use.
+
+Ophir Cards is the trading-card part of the Ophir series and was called DeckLedger until November 2026. The repository, the container image, the database file (`deckledger.db`), the Docker volume (`deckledger_data`), the browser's offline storage and the GitHub deployment variables still carry the old name, so existing installations keep their data.
 
 ## Features
 
@@ -71,23 +73,23 @@ The first start creates the database in the `deckledger_data` volume and imports
 
 ### Single sign-on (OAuth2 / OIDC)
 
-DeckLedger can sign users in through one external OAuth2/OIDC identity provider (Google, Authentik, Keycloak, Authelia, Okta or any other OIDC-compatible one), next to local username and password accounts. It is configured one of two ways:
+Ophir Cards can sign users in through one external OAuth2/OIDC identity provider (Google, Authentik, Keycloak, Authelia, Okta or any other OIDC-compatible one), next to local username and password accounts. It is configured one of two ways:
 
 - **Admin → Single Sign-On**: stored in the database, effective immediately.
 - **A config file**: shape as in [oauth.json.example](oauth.json.example), mounted read-only at `/config/oauth.json` (or `OAUTH_CONFIG_PATH`):
 
     ```yaml
     services:
-      deckledger:
+      ophir_cards:
         volumes:
           - deckledger_data:/data
           - ./public:/app/public:ro
           - ./oauth.json:/config/oauth.json:ro
     ```
 
-    The file always wins when it is present: the Admin UI then shows every field read-only. Change the file and run `docker compose restart deckledger`.
+    The file always wins when it is present: the Admin UI then shows every field read-only. Change the file and run `docker compose restart ophir_cards`.
 
-Required are `client_id`, `client_secret` and either `discovery_url` (OIDC) or all three of `authorize_url`, `token_url` and `userinfo_url` (plain OAuth2). `account_matching` decides what happens on the first login of an identity DeckLedger has not seen, each level including the ones before it:
+Required are `client_id`, `client_secret` and either `discovery_url` (OIDC) or all three of `authorize_url`, `token_url` and `userinfo_url` (plain OAuth2). `account_matching` decides what happens on the first login of an identity Ophir Cards has not seen, each level including the ones before it:
 
 - `manual` (safest): the identity must already be linked; a user links their own account under **Einstellungen → Konto** while signed in with a password.
 - `email`: an identity whose email matches an unlinked local account (admins included) is linked to it, unless the provider reports the address as unverified (`email_verified: false`).
@@ -97,7 +99,7 @@ Most providers require an `https://` redirect URI. Behind a TLS-terminating reve
 
 ### eBay
 
-eBay needs an application from the eBay Developer Program. Enter its client id, client secret and RuName under **Admin → eBay** (or set the `EBAY_*` variables). The RuName's accept and decline URL is `https://<host>/ebay/callback`. Client id and secret alone are enough to follow listings as prices; connecting accounts and publishing need the RuName too. Drafts stay in DeckLedger until they are published, because eBay's API cannot create Seller Hub drafts. Listing statistics need the scope `sell.analytics.readonly`; accounts connected before it was requested reconnect once.
+eBay needs an application from the eBay Developer Program. Enter its client id, client secret and RuName under **Admin → eBay** (or set the `EBAY_*` variables). The RuName's accept and decline URL is `https://<host>/ebay/callback`. Client id and secret alone are enough to follow listings as prices; connecting accounts and publishing need the RuName too. Drafts stay in Ophir Cards until they are published, because eBay's API cannot create Seller Hub drafts. Listing statistics need the scope `sell.analytics.readonly`; accounts connected before it was requested reconnect once.
 
 eBay unlocks production keys only once the application listens for deleted eBay accounts. Under **Application Keys → Notifications → Marketplace Account Deletion** enter the endpoint URL and verification token shown under **Admin → eBay**. The endpoint is `https://<public host>/ebay/account-deletion`; it needs no login and must be reachable by eBay over HTTPS, so exposing just that path is enough. If the public host differs from the one the admin page is opened on, set `EBAY_DELETION_ENDPOINT`.
 
@@ -121,8 +123,8 @@ The container's [docker-entrypoint.sh](docker-entrypoint.sh) runs the migrations
 A failing job leaves the last stored catalogue and prices in use. Catalogue and prices can also be refreshed by hand:
 
 ```bash
-docker compose exec deckledger python catalog_sync.py
-docker compose exec deckledger python price_sync.py
+docker compose exec ophir_cards python catalog_sync.py
+docker compose exec ophir_cards python price_sync.py
 ```
 
 The catalogues come from LorcanaJSON (Lorcana EN/DE, with Ravensburger image URLs), the official One Piece and hololive card lists (EN/JP) and the official VCard TCG set pages; VCard's 1-of-1 God Rares are left out (`INCLUDE_NON_COLLECTIBLE` in `providers/vcard.py`). The code under `providers/` is what runs, unless an admin has replaced it under **Admin → Katalog-Provider**. A card that disappears from a source stays in the catalogue for as long as a collection, deck or watchlist still uses it. Missing market prices stay empty; they are never shown as `0.00` or estimated. A manual price ("Eigener Preis" in a card's market tab) is one per card, shared by all accounts, and wins over the feeds until it is removed. VCard has no price feed, so its prices are entered by hand.
@@ -167,10 +169,10 @@ python app.py
 
 `python app.py` starts Flask's debug server on port 8080 with `deckledger.db` in the repo root; `python catalog_sync.py --provider <id>` imports one game's catalogue into it.
 
-- Code layout: `app.py` is only the entry point; the application is the `deckledger` package, the job scripts, sheet renderer and providers sit next to it. Module docs: [docs/code/](docs/code/architecture.md).
-- Schema changes: add `deckledger/migrations/mNNNN_<what>.py` with `NAME` and `apply(connection, context)` and list it in `MIGRATIONS`. A released migration is never edited; nothing else creates or alters tables (a test enforces it).
+- Code layout: `app.py` is only the entry point; the application is the `ophir_cards` package, the job scripts, sheet renderer and providers sit next to it. Module docs: [docs/code/](docs/code/architecture.md).
+- Schema changes: add `ophir_cards/migrations/mNNNN_<what>.py` with `NAME` and `apply(connection, context)` and list it in `MIGRATIONS`. A released migration is never edited; nothing else creates or alters tables (a test enforces it).
 - Python tests: `python -m pytest` - runs against a throwaway database with a small built-in catalogue, never touches the network.
-- Frontend tests: `node --test "tests/frontend/*.test.mjs"` - script logic in a bare JavaScript context, the service worker against fake caches, and smoke tests that drive the real app in headless Chrome (`CHROME_BIN` sets the browser, `DECKLEDGER_PYTHON` the interpreter that starts the app).
+- Frontend tests: `node --test "tests/frontend/*.test.mjs"` - script logic in a bare JavaScript context, the service worker against fake caches, and smoke tests that drive the real app in headless Chrome (`CHROME_BIN` sets the browser, `OPHIR_PYTHON` the interpreter that starts the app).
 - Lint / format: none configured.
 
 ## Release
@@ -190,4 +192,4 @@ After a published build from `main` or a `v*` tag, the job `update-deployment-re
 ## Documentation
 
 - Module docs for agents: [docs/code/](docs/code/architecture.md)
-- Detailed docs: vault note `homelab-docs/projects/deckledger.md`
+- Detailed docs: vault note `homelab-docs/projects/ophir_cards.md`

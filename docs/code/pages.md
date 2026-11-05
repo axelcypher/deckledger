@@ -1,10 +1,10 @@
 # Pages and public profile
 
-`deckledger/pages.py` serves the page shell, the service worker and the data the dashboard loads first, and `deckledger/public_profile.py` the read-only public view of a user's collection at `/u/<slug>`. Also covered: what the server renders into `templates/index.html`, `templates/login.html` and `templates/public.html` (the frontend scripts are documented elsewhere).
+`ophir_cards/pages.py` serves the page shell, the service worker and the data the dashboard loads first, and `ophir_cards/public_profile.py` the read-only public view of a user's collection at `/u/<slug>`. Also covered: what the server renders into `templates/index.html`, `templates/login.html` and `templates/public.html` (the frontend scripts are documented elsewhere).
 
 ## Public interface
 
-### deckledger/pages.py
+### ophir_cards/pages.py
 
 | Method | Path | Auth | What it does |
 | --- | --- | --- | --- |
@@ -28,7 +28,7 @@
 
 `glass_plate_inline_markup()` - the content between the outer `<svg>` tags of `public/glass-plate.svg` (newlines normalised), cached per file version; `""` when the file is missing.
 
-### deckledger/public_profile.py
+### ophir_cards/public_profile.py
 
 The owner's setting is a JSON object in `user_settings` under key `publicProfile`: `enabled`, `slug`, `name`, `games` (ids), `theme` (`auto`, `light`, `dark`).
 
@@ -61,17 +61,17 @@ Invariants:
 | `login.html` | `/login` | `error` (message or None), `oauth_enabled`, `oauth_provider_name`; the form posts `username`/`password` to `/login`; the SSO button links to `url_for('oauth_login')` when enabled. |
 | `public.html` | `/u/<slug>` | `slug` (as `data-slug` on `#content`, read by `static/public.js`), `name` (title), `missing` (404 state; `public.js` not loaded), `theme` (body class and `data-theme`; `auto` follows the visitor's `prefers-color-scheme`, also live). Carries a `robots` meta tag `noindex, nofollow`. |
 
-Client-side bits in the templates: `index.html` and `login.html` pick light/dark from the `deckledger_theme` cookie before first paint; `login.html` deletes service-worker caches whose names start with `deckledger-api-`.
+Client-side bits in the templates: `index.html` and `login.html` pick light/dark from the `ophir_theme` cookie before first paint; `login.html` deletes service-worker caches whose names start with `ophir-api-`.
 
 ## Dependencies
 
-- `deckledger.web` - `app`, `db`, `login_required`, `user_id`, `compress_file`, `derived_from_file`; `asset_url` as Jinja global
-- `deckledger.config` - `PUBLIC_DIR`, `jload`
-- `deckledger.games` - `game(...)`: `main_set_types`, `client_rules()`
-- `deckledger.prices` - `latest_price_sql`, `latest_prices`
-- `deckledger.auth` - `resolve_oauth_config`
-- `deckledger.catalog` - `card_rows`, `serialize_card_rows`, `sets_of_game`
-- `deckledger.images`, `deckledger.assets` - image views reused by the public routes
+- `ophir_cards.web` - `app`, `db`, `login_required`, `user_id`, `compress_file`, `derived_from_file`; `asset_url` as Jinja global
+- `ophir_cards.config` - `PUBLIC_DIR`, `jload`
+- `ophir_cards.games` - `game(...)`: `main_set_types`, `client_rules()`
+- `ophir_cards.prices` - `latest_price_sql`, `latest_prices`
+- `ophir_cards.auth` - `resolve_oauth_config`
+- `ophir_cards.catalog` - `card_rows`, `serialize_card_rows`, `sets_of_game`
+- `ophir_cards.images`, `ophir_cards.assets` - image views reused by the public routes
 - Files: `public/glass-plate.svg`, `static/service-worker.js`
 - External: Google Fonts (the templates load fonts.googleapis.com without blocking rendering)
 

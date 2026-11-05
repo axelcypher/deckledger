@@ -1,6 +1,6 @@
 {
-  "name": "DeckLedger",
-  "short_name": "DeckLedger",
+  "name": "Ophir Cards",
+  "short_name": "Ophir",
   "description": "TCG-Sammlungstracker für Lorcana, One Piece, hololive und VCard",
   "start_url": "/",
   "scope": "/",

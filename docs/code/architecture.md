@@ -1,6 +1,6 @@
 # Architecture
 
-DeckLedger is one Flask application with one SQLite database, plus a few standalone job scripts that run next to it in the same container. This page is the map; each area has its own doc in this folder.
+Ophir Cards is one Flask application with one SQLite database, plus a few standalone job scripts that run next to it in the same container. This page is the map; each area has its own doc in this folder.
 
 ## Processes
 
@@ -9,7 +9,7 @@ browser (templates/index.html + static/js, service worker)
    |  JSON under /api/, images, static files
    v
 gunicorn app:app (2 workers x 4 threads, port 8080)
-   |  deckledger package: one Flask app, routes from every module
+   |  ophir_cards package: one Flask app, routes from every module
    v
 SQLite  <DATA>/deckledger.db (WAL)  +  cache folders next to it
    ^
@@ -21,31 +21,31 @@ post_watch.py                     every 60 s, at most one Reddit feed per run
 ebay_sync.py                      every 600 s, followed listings and connected accounts when due
 ```
 
-- `docker-entrypoint.sh` first runs `python -c "import app"`, so the migrations finish before gunicorn serves anything. Importing the `deckledger` package anywhere (web workers, `catalog_sync.py`, `post_watch.py`, `ebay_sync.py`) migrates and seeds the database (`schema.init_database`). `price_sync.py` imports nothing from the package.
+- `docker-entrypoint.sh` first runs `python -c "import app"`, so the migrations finish before gunicorn serves anything. Importing the `ophir_cards` package anywhere (web workers, `catalog_sync.py`, `post_watch.py`, `ebay_sync.py`) migrates and seeds the database (`schema.init_database`). `price_sync.py` imports nothing from the package.
 - The job scripts open their own SQLite connections and take a file lock next to the database (`price-sync.lock`, `post-watch.lock`, `ebay-sync.lock`), so runs never overlap. Several of them can also be started from the web: `POST /api/prices/sync`, `POST /api/admin/providers/<id>/run`, the "Jetzt pruefen" and eBay sync buttons.
 - Every connection uses `busy_timeout` 10 s; web requests and jobs share the one writer of the WAL database.
 
 ## Package layout
 
-`app.py` is only the entry point. `deckledger/__init__.py` imports `config, games, web, schema` first, then the feature modules, then runs `schema.init_database()`. `config` imports nothing from the package and every feature module builds on `web` (`app`, `db`, the decorators). Feature modules import each other where they need to, not strictly in the listed order: `sheets` imports `ebay` and `admin` imports `ebay_photos` at module level, `ebay` imports `deals` inside a function.
+`app.py` is only the entry point. `ophir_cards/__init__.py` imports `config, games, web, schema` first, then the feature modules, then runs `schema.init_database()`. `config` imports nothing from the package and every feature module builds on `web` (`app`, `db`, the decorators). Feature modules import each other where they need to, not strictly in the listed order: `sheets` imports `ebay` and `admin` imports `ebay_photos` at module level, `ebay` imports `deals` inside a function.
 
 | Area | Source | Doc |
 | --- | --- | --- |
-| Core: paths, the Flask app, request guards, schema and migrations | `app.py`, `deckledger/config.py`, `web.py`, `schema.py`, `migrations/` | [database.md](database.md) |
-| Per-game rules | `deckledger/games/` | [games.md](games.md) |
-| Catalogue, search, catalogue import, provider plumbing | `deckledger/catalog.py`, `search.py`, `catalog_sync.py`, `catalog_provider_*.py` | [catalog.md](catalog.md) |
+| Core: paths, the Flask app, request guards, schema and migrations | `app.py`, `ophir_cards/config.py`, `web.py`, `schema.py`, `migrations/` | [database.md](database.md) |
+| Per-game rules | `ophir_cards/games/` | [games.md](games.md) |
+| Catalogue, search, catalogue import, provider plumbing | `ophir_cards/catalog.py`, `search.py`, `catalog_sync.py`, `catalog_provider_*.py` | [catalog.md](catalog.md) |
 | Catalogue sources per game | `providers/` | [providers.md](providers.md) |
-| Prices, manual prices, price import | `deckledger/prices.py`, `price_sync.py` | [prices.md](prices.md) |
-| Card images, foil masks, logos, set visuals, card backs | `deckledger/images.py`, `assets.py`, `ravensburger_foil.py`, `static/lorcana-foil/` | [images.md](images.md) |
-| Collection and watchlists | `deckledger/collection.py`, `watchlists.py` | [collection.md](collection.md) |
-| Decks | `deckledger/decks.py` | [decks.md](decks.md) |
-| Trade and sale sheets, sheet images | `deckledger/sheets.py`, `sheet_render.py` | [sheets.md](sheets.md) |
-| Deals | `deckledger/deals.py` | [deals.md](deals.md) |
-| Linked posts, inbox, subreddit search | `deckledger/watcher.py`, `post_watch.py` | [watcher.md](watcher.md) |
-| eBay | `deckledger/ebay.py`, `ebay_photos.py`, `ebay_sync.py` | [ebay.md](ebay.md) |
-| Export, backup, restore, text import | `deckledger/backup.py` | [backup.md](backup.md) |
-| Sign-in, SSO, own account, admin API | `deckledger/auth.py`, `oauth_client.py`, `account.py`, `admin.py` | [auth.md](auth.md) |
-| Page shell, dashboard data, public profile | `deckledger/pages.py`, `public_profile.py`, `templates/` | [pages.md](pages.md) |
+| Prices, manual prices, price import | `ophir_cards/prices.py`, `price_sync.py` | [prices.md](prices.md) |
+| Card images, foil masks, logos, set visuals, card backs | `ophir_cards/images.py`, `assets.py`, `ravensburger_foil.py`, `static/lorcana-foil/` | [images.md](images.md) |
+| Collection and watchlists | `ophir_cards/collection.py`, `watchlists.py` | [collection.md](collection.md) |
+| Decks | `ophir_cards/decks.py` | [decks.md](decks.md) |
+| Trade and sale sheets, sheet images | `ophir_cards/sheets.py`, `sheet_render.py` | [sheets.md](sheets.md) |
+| Deals | `ophir_cards/deals.py` | [deals.md](deals.md) |
+| Linked posts, inbox, subreddit search | `ophir_cards/watcher.py`, `post_watch.py` | [watcher.md](watcher.md) |
+| eBay | `ophir_cards/ebay.py`, `ebay_photos.py`, `ebay_sync.py` | [ebay.md](ebay.md) |
+| Export, backup, restore, text import | `ophir_cards/backup.py` | [backup.md](backup.md) |
+| Sign-in, SSO, own account, admin API | `ophir_cards/auth.py`, `oauth_client.py`, `account.py`, `admin.py` | [auth.md](auth.md) |
+| Page shell, dashboard data, public profile | `ophir_cards/pages.py`, `public_profile.py`, `templates/` | [pages.md](pages.md) |
 | Browser frontend, service worker, frontend tests | `templates/index.html`, `static/` | [frontend.md](frontend.md) |
 
 ## Request flow
@@ -58,7 +58,7 @@ ebay_sync.py                      every 600 s, followed listings and connected a
 
 ## Games
 
-Nothing outside `deckledger/games/` branches on a game's id for its rules: modules ask `games.game(game_id)` for playset size, rarity ladder, finishes, deck formats and rules, image and logo hooks, price method and the catalogue provider. The frontend gets the rules it needs with each game in `/api/bootstrap`. Adding a game is a module in `deckledger/games/`, a provider in `providers/` and an icon (see [games.md](games.md)). Known exceptions are listed in the module docs (the `hololive`-only price pipelines in `price_sync.py`, a few branches in `static/js/catalog.js`).
+Nothing outside `ophir_cards/games/` branches on a game's id for its rules: modules ask `games.game(game_id)` for playset size, rarity ladder, finishes, deck formats and rules, image and logo hooks, price method and the catalogue provider. The frontend gets the rules it needs with each game in `/api/bootstrap`. Adding a game is a module in `ophir_cards/games/`, a provider in `providers/` and an icon (see [games.md](games.md)). Known exceptions are listed in the module docs (the `hololive`-only price pipelines in `price_sync.py`, a few branches in `static/js/catalog.js`).
 
 ## Where state lives
 

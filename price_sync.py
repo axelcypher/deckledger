@@ -187,13 +187,13 @@ def compact_price_history(connection, today: date | None = None) -> dict:
 
 
 def fetch_json(url: str) -> dict:
-    request = Request(url, headers={"User-Agent": "DeckLedger/1.0", "Accept": "application/json"})
+    request = Request(url, headers={"User-Agent": "OphirCards/1.0", "Accept": "application/json"})
     with urlopen(request, timeout=60) as response:
         return json.load(response)
 
 
 def fetch_bytes(url: str, accept="*/*") -> bytes:
-    request = Request(url, headers={"User-Agent": "DeckLedger/1.0", "Accept": accept})
+    request = Request(url, headers={"User-Agent": "OphirCards/1.0", "Accept": accept})
     with urlopen(request, timeout=60) as response:
         return response.read()
 
@@ -427,7 +427,7 @@ def map_one_piece(connection, products: list) -> tuple[list[dict], dict]:
     )
 
     # Combined Western products (for example OP14-EB04) are split back into
-    # their canonical sets in DeckLedger.  Remember the resolved Western ID per
+    # their canonical sets in Ophir Cards.  Remember the resolved Western ID per
     # canonical set so it can be excluded from the corresponding JP match.
     western_by_set = defaultdict(set)
     for row in rows_by_language["EN"]:

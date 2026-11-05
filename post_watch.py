@@ -1,5 +1,5 @@
 """Reads the comments of the posts users linked to their sheets, and the new posts of the
-communities they have searched for their cards (see deckledger/watcher.py).
+communities they have searched for their cards (see ophir_cards/watcher.py).
 
 One run asks for at most one feed -- the source allows about one anonymous request a minute --
 so the container starts this once a minute. Runs do not overlap.
@@ -13,8 +13,8 @@ import os
 import sqlite3
 import sys
 
-from deckledger.config import DB_PATH
-from deckledger.watcher import run_due
+from ophir_cards.config import DB_PATH
+from ophir_cards.watcher import run_due
 
 LOCK_PATH = os.path.join(os.path.dirname(DB_PATH), "post-watch.lock")
 

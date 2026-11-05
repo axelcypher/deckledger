@@ -1,4 +1,4 @@
-// Own photos of a card for its eBay listings (deckledger/ebay_photos.py): the strip in a draft
+// Own photos of a card for its eBay listings (ophir_cards/ebay_photos.py): the strip in a draft
 // and the editor that crops and turns a photo. The server cuts the listed picture from the
 // original, so the editor only says where: fractions of the turned picture and the turn.
 

@@ -1,20 +1,20 @@
 """The public profile: a shared collection at /u/<slug>, readable without signing in, limited to
-the games the owner chose and without prices (deckledger/public_profile.py)."""
+the games the owner chose and without prices (ophir_cards/public_profile.py)."""
 import json
 
 import pytest
 
-from conftest import ADMIN, ELSA, EMBER8, EMBER8_HOLO, TIDE8, deckledger, login, query
+from conftest import ADMIN, ELSA, EMBER8, EMBER8_HOLO, TIDE8, ophir_cards, login, query
 
 
 @pytest.fixture
 def visitor():
-    return deckledger.app.test_client()
+    return ophir_cards.app.test_client()
 
 
 @pytest.fixture(autouse=True)
 def no_image_downloads(monkeypatch):
-    monkeypatch.setattr(deckledger.images, "card_image", lambda row, variant_id: None)
+    monkeypatch.setattr(ophir_cards.images, "card_image", lambda row, variant_id: None)
 
 
 def own(variant_id, quantity, user_id=1):

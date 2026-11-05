@@ -1,10 +1,10 @@
 """Indexes for lookups that scanned a whole table every time they ran.
 
 - ebay_listings(user_id, variant_id): a sheet looks up the cheapest active listing of each of
-  its cards (deckledger/sheets.py EBAY_LISTING_SQL); the primary key only narrowed that down to
+  its cards (ophir_cards/sheets.py EBAY_LISTING_SQL); the primary key only narrowed that down to
   every listing the user ever had, and listings are kept after they end.
 - card_identities(canonical_name COLLATE NOCASE): a card named in a text import or a pasted
-  decklist (deckledger/backup.py, deckledger/decks.py) -- once per line.
+  decklist (ophir_cards/backup.py, ophir_cards/decks.py) -- once per line.
 - deal_events(deal_id), inbox_items(post_id): their parents delete them by cascade and a deal
   reads its history; neither had an index on the reference.
 - applied_requests(created_at): every quantity change clears out the entries older than 30 days.

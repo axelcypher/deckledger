@@ -71,7 +71,7 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('.dl-moda
 function openTradeSettings(){
   const settings=state.boot.settings||{};
   const modal=openSettingsModal({id:'trade-settings-modal',eyebrow:'VERKAUF &amp; TAUSCH',title:'Reddit',
-    intro:'DeckLedger liest die Kommentare der Posts, die du mit einem Sheet verknüpfst, und sucht in Subreddits nach Posts zu deinen Karten. Mit deinem Reddit-Namen zählen deine eigenen Posts und Antworten nicht als neu.',
+    intro:'Ophir Cards liest die Kommentare der Posts, die du mit einem Sheet verknüpfst, und sucht in Subreddits nach Posts zu deinen Karten. Mit deinem Reddit-Namen zählen deine eigenen Posts und Antworten nicht als neu.',
     body:`<section class="dl-modal-section"><div class="dl-grid"><label class="dl-field"><span>Reddit-Name</span><input class="dl-control" id="reddit-username" autocomplete="off" spellcheck="false" placeholder="ohne u/" value="${escapeHtml(settings.redditUsername||'')}"></label></div>
       <div class="dl-modal-actions"><span class="spacer"></span><button class="primary-button" id="reddit-username-save">Speichern</button></div></section>
       <section class="dl-modal-section"><div id="reddit-communities" class="reddit-communities"></div></section>`});
@@ -87,7 +87,7 @@ function openTradeSettings(){
 function renderSettings(){
   const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],appearance=appearancePreference();
   const user=state.boot.user,oauth=state.boot.oauth||{enabled:false};
-  content.innerHTML=`<div class="page-head compact-page-head user-settings-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe DeckLedger an deine Sammlung an.</p></div></div>
+  content.innerHTML=`<div class="page-head compact-page-head user-settings-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe Ophir Cards an deine Sammlung an.</p></div></div>
     <div class="user-settings-layout">
     <section class="settings-section user-settings-card settings-card-profile settings-card-wide">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20c1.3-3.6 4.2-5.5 7.2-5.5s5.9 1.9 7.2 5.5"/></svg></span><div><span class="eyebrow">KONTO</span><h2>Konto</h2><p>Profil und Anmeldung dieses Kontos.</p></div></div>
@@ -199,7 +199,7 @@ async function renderOfflineSave(message=''){
   }
   const info=await offlineSaveInfo(),mine=info&&info.userId===state.boot.user.id;
   let usage='';
-  try{const estimate=await navigator.storage?.estimate?.();if(estimate?.usage)usage=` · DeckLedger belegt hier insgesamt ${Math.max(1,Math.round(estimate.usage/1048576))} MB`}catch{}
+  try{const estimate=await navigator.storage?.estimate?.();if(estimate?.usage)usage=` · Ophir Cards belegt hier insgesamt ${Math.max(1,Math.round(estimate.usage/1048576))} MB`}catch{}
   if(!$('#offline-save-body'))return;
   const status=mine
     ?`<b>${offlineCardCount(info.cards)} gespeichert</b><small>Stand ${new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short'}).format(new Date(info.savedAt))}${info.fullImages?' · mit großen Bildern':''}${info.skipped?` · ${info.skipped} Dateien nicht erreichbar`:''}${usage}</small>`
@@ -230,7 +230,7 @@ async function startOfflineSave(){
   }
 }
 
-// The public profile (deckledger/public_profile.py): on/off, its address, the name shown and the
+// The public profile (ophir_cards/public_profile.py): on/off, its address, the name shown and the
 // games it shares. Saved on its own, as the address has to be checked for being free.
 async function renderPublicProfileSettings(){
   const body=$('#public-profile-body',content);if(!body)return;

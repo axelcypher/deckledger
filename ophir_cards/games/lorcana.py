@@ -77,7 +77,7 @@ def remote_image_url(row):
     base_name = re.sub(r"\s·\s(?:Awakened|New Journey|Altitude)$", "", row["canonical_name"])
     base_name = base_name.replace(" · ", " ")
     endpoint = f"https://api.lorcast.com/v0/cards/search?q={quote_plus(base_name)}&unique=prints"
-    payload = json.loads(urlopen(Request(endpoint, headers={"User-Agent": "DeckLedger/0.1"}), timeout=12).read())
+    payload = json.loads(urlopen(Request(endpoint, headers={"User-Agent": "OphirCards/0.1"}), timeout=12).read())
     results = payload.get("results", [])
     if results:
         return results[0].get("image_uris", {}).get("digital", {}).get("normal")

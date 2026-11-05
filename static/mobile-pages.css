@@ -1,4 +1,4 @@
-/* DeckLedger modern mobile pages
+/* Ophir Cards modern mobile pages
    The active card-detail work intentionally stays in mobile-theme.css.
    This file only targets application chrome and #content, which is a sibling
    of every overlay/modal in index.html. */
@@ -227,7 +227,7 @@
     background:var(--mp-soft);
     box-shadow:var(--mp-shadow-soft),0 0 14px color-mix(in srgb,var(--mt-gold) 18%,transparent);
   }
-  body.dark.mobile-modern .content .hero-summary:not(deckledger-stat-pill)::before {
+  body.dark.mobile-modern .content .hero-summary:not(ophir-stat-pill)::before {
     content:"";position:absolute;z-index:2;inset:0;padding:2px;pointer-events:none;border-radius:inherit;
     background-image:linear-gradient(125deg,transparent 18%,rgba(255,244,205,.38) 31%,#fffef5 43%,#fff 50%,#f4d58d 59%,transparent 78%);
     background-size:148px 100%;background-repeat:no-repeat;background-position:-160px 0;

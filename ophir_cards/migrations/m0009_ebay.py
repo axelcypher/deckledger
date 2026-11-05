@@ -1,5 +1,5 @@
 """eBay: a connected seller account, its listings and sales, listing drafts made from cards, and
-eBay listings watched as a price source (deckledger/ebay.py).
+eBay listings watched as a price source (ophir_cards/ebay.py).
 
 ebay_accounts: one connected eBay account per user and its OAuth tokens.
 ebay_listings: the account's own listings as eBay last reported them; variant_id is the card a

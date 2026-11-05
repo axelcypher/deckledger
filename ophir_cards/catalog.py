@@ -76,7 +76,7 @@ def set_statistics(game_id, uid):
 
 def sets_of_game(game_id, uid):
     """The sets of a game with that user's ownership, completion and value, newest first. Also
-    what a public profile shows (deckledger/public_profile.py, without the value)."""
+    what a public profile shows (ophir_cards/public_profile.py, without the value)."""
     rows = []
     statistics = set_statistics(game_id, uid)
     release_dates = release_dates_of_game(game_id)
@@ -208,7 +208,7 @@ def set_labels():
 
 
 def query_matches_row(query, row):
-    """The match used by every card search box (deckledger/search.py) for rows filtered in Python:
+    """The match used by every card search box (ophir_cards/search.py) for rows filtered in Python:
     name and localized name, number, set, finish, rarity, rules text. `row` needs at least
     canonical_name/collector_number; printing_attrs (the raw printings.attributes JSON) adds the
     localized name and text."""
@@ -514,7 +514,7 @@ def card_detail(identity_id):
         # a price entered by hand.
         variant["price_manual"] = variant.get("price_provider") == MANUAL_PRICE_PROVIDER
         if variant.get("price_provider") == "ebay":
-            # Followed eBay listings (deckledger/ebay.py): the link goes to the cheapest of them.
+            # Followed eBay listings (ophir_cards/ebay.py): the link goes to the cheapest of them.
             variant["price_source"] = "eBay-Angebote"
             variant["price_url"] = (market_mapping or {}).get("source_url") or variant.get("price_url")
         variant["edition_label"] = variant_attrs.get("editionLabel")

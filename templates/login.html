@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>DeckLedger · Anmeldung</title>
+  <title>Ophir Cards · Anmeldung</title>
   <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
   <!-- Light or dark: what the user had on last (the app keeps it in a cookie), else what the
        system asks for. Set before the first paint so the page does not flash the other one. -->
   <script>
     (function () {
-      var match = document.cookie.match(/(?:^|; )deckledger_theme=(light|dark)(?:;|$)/);
+      var match = document.cookie.match(/(?:^|; )(?:ophir|deckledger)_theme=(light|dark)(?:;|$)/);
       if (match) document.documentElement.dataset.theme = match[1];
     })();
   </script>
@@ -26,7 +26,7 @@
     <section class="login-showcase" aria-hidden="true">
       <div class="login-brand">
         <svg class="brand-symbol" viewBox="0 0 44 44"><path class="brand-card-back" d="M8.5 15.5 23 7.8a3 3 0 0 1 4.1 1.3l9.2 18.1a3 3 0 0 1-1.3 4.1l-14.5 7.4"/><rect class="brand-card-front" x="10.5" y="6.5" width="23" height="31" rx="4"/><path class="brand-card-line" d="M16 26.5h12M16 31h8"/><path class="brand-card-spark" d="m27.5 12.2 1.1 2.2 2.2 1.1-2.2 1.1-1.1 2.2-1.1-2.2-2.2-1.1 2.2-1.1 1.1-2.2Z"/></svg>
-        <span class="brand-word"><b>DECK</b><span>LEDGER</span></span>
+        <span class="brand-word"><b>OPHIR</b><span>CARDS</span></span>
       </div>
       <div class="login-stage">
         <div class="login-glow"></div>
@@ -44,7 +44,7 @@
     <section class="login-panel">
       <div class="login-mobile-brand">
         <svg class="brand-symbol" viewBox="0 0 44 44" aria-hidden="true"><path class="brand-card-back" d="M8.5 15.5 23 7.8a3 3 0 0 1 4.1 1.3l9.2 18.1a3 3 0 0 1-1.3 4.1l-14.5 7.4"/><rect class="brand-card-front" x="10.5" y="6.5" width="23" height="31" rx="4"/><path class="brand-card-line" d="M16 26.5h12M16 31h8"/><path class="brand-card-spark" d="m27.5 12.2 1.1 2.2 2.2 1.1-2.2 1.1-1.1 2.2-1.1-2.2-2.2-1.1 2.2-1.1 1.1-2.2Z"/></svg>
-        <span class="brand-word"><b>DECK</b><span>LEDGER</span></span>
+        <span class="brand-word"><b>OPHIR</b><span>CARDS</span></span>
       </div>
       <form method="post" class="login-form">
         <span class="login-eyebrow">WILLKOMMEN ZURÜCK</span>
@@ -65,7 +65,7 @@
   <script>
     // The service worker keeps API answers as an offline fallback. Whoever reaches the login
     // page is signed out, so the previous user's cached answers must not outlive that session.
-    if ('caches' in window) caches.keys().then(keys => keys.filter(key => key.startsWith('deckledger-api-')).forEach(key => caches.delete(key)));
+    if ('caches' in window) caches.keys().then(keys => keys.filter(key => /^(?:ophir|deckledger)-api-/.test(key)).forEach(key => caches.delete(key)));
   </script>
 </body>
 </html>

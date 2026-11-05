@@ -90,7 +90,7 @@ JSON_BACKUP_MATCH_FROM = """FROM variants v JOIN printings p ON p.id=v.printing_
 
 
 def parse_json_backup(entries):
-    """Match rows from a DeckLedger /api/export.json payload back onto current catalog variants.
+    """Match rows from a Ophir Cards /api/export.json payload back onto current catalog variants.
 
     collector_number can legitimately be an empty string (e.g. One Piece DON!! tokens), so
     only language/finish/game/set_code are required. The primary match also pins canonical_name
@@ -595,6 +595,6 @@ def export_collection(fmt):
             fields = ("game", "partner", "platform", "url", "note", "status", "money_in", "money_out", "shipping", "created_at", "updated_at", "reserved_at", "completed_at", "received_at", "cancelled_at")
             deals.append({key: deal[key] for key in fields} | {"cards": [dict(card) for card in cards], "events": [dict(event) for event in events]})
         payload = {"format_version": 2, "exported_at": now_iso(), "collection": data, "decks": decks, "watchlists": watchlists, "trade_sheets": sheets, "deals": deals}
-        return Response(json.dumps(payload,indent=2,ensure_ascii=False),mimetype="application/json",headers={"Content-Disposition":"attachment; filename=deckledger-collection.json"})
+        return Response(json.dumps(payload,indent=2,ensure_ascii=False),mimetype="application/json",headers={"Content-Disposition":"attachment; filename=ophir-cards-collection.json"})
     out = io.StringIO(); writer = csv.DictWriter(out,fieldnames=data[0].keys() if data else ["game","set_code","collector_number","canonical_name","language","finish","condition","quantity"]); writer.writeheader(); writer.writerows(data)
-    return Response(out.getvalue(),mimetype="text/csv",headers={"Content-Disposition":"attachment; filename=deckledger-collection.csv"})
+    return Response(out.getvalue(),mimetype="text/csv",headers={"Content-Disposition":"attachment; filename=ophir-cards-collection.csv"})

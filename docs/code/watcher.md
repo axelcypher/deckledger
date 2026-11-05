@@ -1,6 +1,6 @@
 # Watcher
 
-`deckledger/watcher.py`, run by the job script `post_watch.py`, reads public Reddit feeds and files what matters for a user's trade sheets into that user's inbox: new comments on posts the user linked to a sheet, and other people's posts in chosen subreddits that want or offer a sheet's cards (a find, "Fund"). It only reads; nothing is ever posted or answered.
+`ophir_cards/watcher.py`, run by the job script `post_watch.py`, reads public Reddit feeds and files what matters for a user's trade sheets into that user's inbox: new comments on posts the user linked to a sheet, and other people's posts in chosen subreddits that want or offer a sheet's cards (a find, "Fund"). It only reads; nothing is ever posted or answered.
 
 ## Public interface
 
@@ -74,9 +74,9 @@ All are `@login_required` and scoped to the session user.
 ## Dependencies
 
 - Reddit public Atom feeds on `www.reddit.com` - comments of linked posts and new posts of subreddits; no account, no API key.
-- `deckledger.web` - Flask app, `db()`, `login_required`, `user_id`.
-- `deckledger.sheets` - `WANTED_SHEET_KINDS`, `own_sheet`.
-- `deckledger.config` - `jload`, `now_iso`, `DB_PATH` (`post_watch.py`).
+- `ophir_cards.web` - Flask app, `db()`, `login_required`, `user_id`.
+- `ophir_cards.sheets` - `WANTED_SHEET_KINDS`, `own_sheet`.
+- `ophir_cards.config` - `jload`, `now_iso`, `DB_PATH` (`post_watch.py`).
 - `fcntl` - lock in `post_watch.py`, so the script runs on POSIX only.
 - SQLite tables `sheet_posts`, `inbox_items`, `watch_communities`, `community_feeds` (migrations `m0005`, `m0006`, `m0008`), `trade_sheets`, `trade_sheet_cards`, `user_settings`, `app_settings`, catalogue tables for card names.
 

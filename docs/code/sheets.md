@@ -1,10 +1,10 @@
 # Sheets
 
-Trade and sale sheets: named, per-game card selections for "want to sell / trade / buy" posts, stored per account and rendered on the server as one or more collage images plus a Markdown list for the post. `deckledger/sheets.py` does storage, sorting and image lookup; `sheet_render.py` does layout and drawing.
+Trade and sale sheets: named, per-game card selections for "want to sell / trade / buy" posts, stored per account and rendered on the server as one or more collage images plus a Markdown list for the post. `ophir_cards/sheets.py` does storage, sorting and image lookup; `sheet_render.py` does layout and drawing.
 
 ## Public interface
 
-### deckledger/sheets.py
+### ophir_cards/sheets.py
 
 Names other modules import:
 
@@ -43,21 +43,21 @@ No Flask or database dependency (Pillow only), so it can be tested and tuned on 
 - `paginate(count, layout) -> [(columns, rows, on_page)]` and `page_slices(cards, layout)` (same, with the card lists). `"auto"`: full pages use the largest layout (8x5), the last page the smallest one that fits. A fixed `"CxR"` (up to `MAX_COLUMNS` 10 x `MAX_ROWS` 6, checked by `parse_layout`) is used for every page.
 - `BACKGROUNDS` (eight drawn mats: id -> label, top, bottom, accent, glow colours), `DEFAULT_BACKGROUND = "midnight"`, `swatch(name)`.
 - `prepare_photo(source, target) -> accent` - stores an upload upright, RGB, at most 3600 px, as JPEG, and returns an accent colour taken from the picture; raises for anything Pillow cannot read. `photo_background(size, path)` fills a page with it.
-- `is_holo(finish, variant_code, rarity, game_id, is_parallel) -> bool` - foil detection with the same rules as `finishPresentation()` in `static/js/finish.js`; also used by `deckledger/ebay.py`.
-- `trim_bleed(image, bleed)`, `PRINT_BLEED`, `CUT_CARD_RATIO` - used by `deckledger/images.py` and the VCard game module.
+- `is_holo(finish, variant_code, rarity, game_id, is_parallel) -> bool` - foil detection with the same rules as `finishPresentation()` in `static/js/finish.js`; also used by `ophir_cards/ebay.py`.
+- `trim_bleed(image, bleed)`, `PRINT_BLEED`, `CUT_CARD_RATIO` - used by `ophir_cards/images.py` and the VCard game module.
 - `scale_for(columns)` - scale that keeps the widest layouts within 3600 px.
 - `FONT_PATH` - the bundled `static/fonts/Manrope.ttf`.
 
 ## Dependencies
 
 - `sheet_render.py` - layout and drawing.
-- `deckledger/images.py` - `card_image()` for each card's (bleed-trimmed) image file.
-- `deckledger/prices.py` - `latest_price_sql()`.
-- `deckledger/catalog.py` - `natural_code_key()` for sorting.
-- `deckledger/games` - `rarity_rank`, `RARITY_FALLBACK_RANK`, the game's `languages` for the text list.
-- `deckledger/ebay.py` - `update_sheets_from_listings()`; the payload reads `ebay_listings`.
-- `deckledger/watcher.py` - `hand_over_comments()` on delete (imported inside the function, since `watcher` imports this module).
-- `deckledger/web.py` - `app`, `db`, `login_required`, `user_id`, `derived_from_file`.
+- `ophir_cards/images.py` - `card_image()` for each card's (bleed-trimmed) image file.
+- `ophir_cards/prices.py` - `latest_price_sql()`.
+- `ophir_cards/catalog.py` - `natural_code_key()` for sorting.
+- `ophir_cards/games` - `rarity_rank`, `RARITY_FALLBACK_RANK`, the game's `languages` for the text list.
+- `ophir_cards/ebay.py` - `update_sheets_from_listings()`; the payload reads `ebay_listings`.
+- `ophir_cards/watcher.py` - `hand_over_comments()` on delete (imported inside the function, since `watcher` imports this module).
+- `ophir_cards/web.py` - `app`, `db`, `login_required`, `user_id`, `derived_from_file`.
 - Tables: `trade_sheets`, `trade_sheet_cards`, `sheet_backgrounds`; read: `sheet_posts`, `deals`, `deal_cards`, `collection_entries`, `ebay_listings` and the catalogue.
 - Data dir: `sheet-backgrounds/<id>.jpg`, `sheet-renders/<key>.<jpg|png>`.
 
@@ -70,5 +70,5 @@ No Flask or database dependency (Pillow only), so it can be tested and tuned on 
 - The drawn backgrounds are an own playmat look in VCard's element colours; no publisher artwork or logo is used (module docstring). An uploaded picture is referred to as `custom-<id>`; one whose row or file is gone falls back to the default mat. Swatches are cached in process memory.
 - Holo cards get a rainbow sheen and a pearly frame because a holo scan looks like its regular print, and on a sale sheet that difference is the price (code comment).
 - The card update starts with `BEGIN IMMEDIATE` before reading (read-modify-write: quick clicks must not overwrite each other).
-- `scout` / `scout_communities` steer the search of other people's posts in `deckledger/watcher.py`; communities are stored lower-case and comma-separated (names `[A-Za-z0-9_]{2,21}`, max 400 chars, empty = all of the game's communities).
+- `scout` / `scout_communities` steer the search of other people's posts in `ophir_cards/watcher.py`; communities are stored lower-case and comma-separated (names `[A-Za-z0-9_]{2,21}`, max 400 chars, empty = all of the game's communities).
 - `ebay_sync` sheets take quantity and price label of their cards from the account's active eBay listings (only WTS and WTS/WTT sheets, see `ebay.update_sheets_from_listings`).

@@ -1,4 +1,4 @@
-// Deals: what was sold, bought or traded, with whom, and what became of it (deckledger/deals.py).
+// Deals: what was sold, bought or traded, with whom, and what became of it (ophir_cards/deals.py).
 // Their list is part of the "Verkäufe" tab of "Verkauf & Tausch" (renderSales in js/ebay.js),
 // together with eBay -- whose sales are deals too; a deal opens in place of the tab. A deal can be
 // started by hand or from an entry of the inbox.

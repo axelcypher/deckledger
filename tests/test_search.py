@@ -3,7 +3,7 @@ small typos -- or, with regular-expression syntax, the text as typed or read as 
 import pytest
 
 from conftest import EMBER8, EMBER9, TIDE8
-from deckledger import search
+from ophir_cards import search
 
 
 def names(rows):

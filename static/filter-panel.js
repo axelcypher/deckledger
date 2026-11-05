@@ -1,4 +1,4 @@
-class DeckLedgerFilterPanel extends HTMLElement {
+class OphirFilterPanel extends HTMLElement {
   connectedCallback(){
     if(this.dataset.enhanced==='1')return;
     this.dataset.enhanced='1';
@@ -29,7 +29,7 @@ class DeckLedgerFilterPanel extends HTMLElement {
       this.classList.toggle('is-open',expanded);
       this.toggleAttribute('open',expanded);
       toggle.setAttribute('aria-expanded',String(expanded));
-      this.dispatchEvent(new CustomEvent('deckledger-filter-toggle',{
+      this.dispatchEvent(new CustomEvent('ophir-filter-toggle',{
         bubbles:true,
         detail:{key:this.getAttribute('filter-key')||'',open:expanded},
       }));
@@ -45,6 +45,6 @@ class DeckLedgerFilterPanel extends HTMLElement {
   }
 }
 
-if(!customElements.get('deckledger-filter-panel')){
-  customElements.define('deckledger-filter-panel',DeckLedgerFilterPanel);
+if(!customElements.get('ophir-filter-panel')){
+  customElements.define('ophir-filter-panel',OphirFilterPanel);
 }

@@ -1,6 +1,6 @@
 # eBay
 
-`deckledger/ebay.py`, `deckledger/ebay_photos.py` and the job script `ebay_sync.py` connect DeckLedger to eBay's official APIs: a user's seller account (its listings, sales and statistics), listing drafts made from cards and published from DeckLedger, the user's own photos for those listings, and anyone's eBay listings followed as a card's "ebay" price.
+`ophir_cards/ebay.py`, `ophir_cards/ebay_photos.py` and the job script `ebay_sync.py` connect Ophir Cards to eBay's official APIs: a user's seller account (its listings, sales and statistics), listing drafts made from cards and published from Ophir Cards, the user's own photos for those listings, and anyone's eBay listings followed as a card's "ebay" price.
 
 ## Public interface
 
@@ -45,12 +45,12 @@
 - Traffic report (`sync_traffic`, only with `sell.analytics.readonly` granted): Analytics API, last 90 days, 200 listings per call; stores `view_count`, `impression_count`, `click_through_rate`, `conversion_rate`.
 - `deals_from_sales(connection, uid)`: every sale whose listing has a card becomes a finished deal: partner = buyer, platform `eBay`, link = listing URL, the sold copies on the give side at total / quantity, `money_in` = total, created and completed at the sale time, booked with `deals.book_done` (copies leave the collection and offer sheets). `ebay_sales.deal_id` records the deal; `0` = the card is no longer in the catalogue, never retried. Sales of listings without a card wait until one is linked. Runs `deals.py` functions on the given connection through `on_connection`.
 - `update_sheets_from_listings(connection, uid)`: sheets of kind WTS or WTS/WTT with `ebay_sync=1` take quantity (available copies, at most 99) and price label (cheapest active listing) of each card from its active listings and remember the listing in `trade_sheet_cards.ebay_item`. A card whose remembered listing sold out leaves the sheet; one whose listing ended otherwise loses the label. Bumps the sheet's `updated_at`. Does not commit. Also called by `sheets.py` when a sheet's `ebay_sync` is switched on.
-- Listing numbers in `GET /api/ebay/listings`: `popularity` = views + 10 x watchers + 25 x sold + impressions / 100 (DeckLedger's own measure), `rank` among active listings, `market_ratio` = (price + shipping) / market price x 100 for EUR listings.
+- Listing numbers in `GET /api/ebay/listings`: `popularity` = views + 10 x watchers + 25 x sold + impressions / 100 (Ophir Cards' own measure), `rank` among active listings, `market_ratio` = (price + shipping) / market price x 100 for EUR listings.
 
 #### Marketplace Account Deletion
 
 - `GET /ebay/account-deletion?challenge_code=...` answers `{"challengeResponse": sha256(challenge + verification token + endpoint URL)}`. The token is `EBAY_VERIFICATION_TOKEN` or one generated once and kept in `app_settings` row `ebay_deletion_token`; the endpoint URL is `EBAY_DELETION_ENDPOINT` or the external URL Flask builds for the route. Both are shown to admins in `GET /api/admin/ebay`.
-- `POST`: notices for usernames DeckLedger does not know (no connected account, no buyer in `ebay_sales`) are acknowledged with 204 without checking. For a known one, `X-EBAY-SIGNATURE` is verified (ECDSA/SHA1 against eBay's public key from the Notification API, cached per process); a bad signature gets 412. Then the account's `ebay_accounts` row is deleted, the buyer name is blanked in `ebay_sales` and as partner of the deals booked from those sales; 204.
+- `POST`: notices for usernames Ophir Cards does not know (no connected account, no buyer in `ebay_sales`) are acknowledged with 204 without checking. For a known one, `X-EBAY-SIGNATURE` is verified (ECDSA/SHA1 against eBay's public key from the Notification API, cached per process); a bad signature gets 412. Then the account's `ebay_accounts` row is deleted, the buyer name is blanked in `ebay_sales` and as partner of the deals booked from those sales; 204.
 
 #### Background entry point
 
@@ -114,12 +114,12 @@
 - eBay Media API on `apim.ebay.com` - picture uploads.
 - eBay picture servers `*.ebayimg.com` - importing a listing's pictures.
 - `requests` - HTTP; `cryptography` - signature check; Pillow - image conversion and cropping (both imported lazily).
-- `deckledger.deals` - booking sales as deals; `deckledger.prices` (`latest_price_sql`), `deckledger.images` (`card_image`), `deckledger.search` (`title_score`), `sheet_render` (`is_holo`), `deckledger.web`, `deckledger.config`.
+- `ophir_cards.deals` - booking sales as deals; `ophir_cards.prices` (`latest_price_sql`), `ophir_cards.images` (`card_image`), `ophir_cards.search` (`title_score`), `sheet_render` (`is_holo`), `ophir_cards.web`, `ophir_cards.config`.
 - SQLite tables `ebay_accounts`, `ebay_listings`, `ebay_sales`, `ebay_drafts`, `ebay_tracked_items`, `ebay_photos` (migrations `m0009`, `m0011`-`m0014`), `price_observations`, `marketplace_products`, `deals`/`deal_cards`/`deal_events`, `trade_sheets`, `trade_sheet_cards`, `user_settings`, `app_settings`.
 
 ## Decisions and assumptions
 
-- Official APIs only; drafts stay in DeckLedger until published because eBay's API cannot create Seller Hub drafts (module docstring).
+- Official APIs only; drafts stay in Ophir Cards until published because eBay's API cannot create Seller Hub drafts (module docstring).
 - Pictures go up through the Media API on the `apim` host: the Trading API's `UploadSiteHostedPictures` was switched off in October 2026, and `api.ebay.com` answers 404 for the Media API path (commits b87894d, cf6cb55).
 - The card image is uploaded to eBay because listings need a public HTTPS image and this server usually is not one (`upload_card_picture` docstring).
 - No eBay call is made while holding the database's write lock: syncs, followed-listing reads and the traffic report fetch everything first and write afterwards (comments in `sync_listings`, `refresh_tracked`, `sync_traffic`; commit 3904924).

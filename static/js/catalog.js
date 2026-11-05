@@ -240,7 +240,7 @@ function lorcanaVariantBadges(languageVariants){
 
 // Mirrors playset_size() in app.py: the constructed copy limit a full playset is measured against.
 // What differs per game (playset size, copy limits, icon) comes with the game from the server
-// (deckledger/games); nothing here knows a game by its id.
+// (ophir_cards/games); nothing here knows a game by its id.
 const gameRules=gameId=>state.boot?.games.find(game=>game.id===gameId)||{};
 function playsetSize(gameId){return gameRules(gameId).playset_size||4}
 
@@ -281,7 +281,7 @@ function cardTile(card,foilDisplayActive=false){
   const v0=languageVariants.find(x=>x.variant_id===card.variant_id)||languageVariants.find(x=>x.finish==='Normal')||languageVariants.find(x=>['standard','normal'].includes(x.variant_code))||languageVariants[0]||card.variants[0];
   const gameId=v0.game_id||state.activeGameId,isLorcana=gameId==='lorcana';
   // Which print run the tile's buttons stand for, and its regular and foil variant of this card
-  // (see tile_editions in deckledger/games). A card that does not exist in the chosen run -- or
+  // (see tile_editions in ophir_cards/games). A card that does not exist in the chosen run -- or
   // only as a foil -- falls back to what it does exist as.
   const editions=gameRules(gameId).tile_editions||[],chosen=editions.find(edition=>edition.id===state.tileEditions[gameId])||editions[0];
   const pairOf=edition=>({edition,regular:languageVariants.find(x=>x.finish===edition.regular),foil:languageVariants.find(x=>x.finish===edition.foil)});

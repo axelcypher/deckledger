@@ -31,7 +31,7 @@ from .ebay import update_sheets_from_listings
 SHEET_KINDS = ("WTS", "WTT", "WTS/WTT", "WTB", "WTTF", "WTB/WTTF")
 WANTED_SHEET_KINDS = ("WTB", "WTTF", "WTB/WTTF")
 SHEET_SORTS = ("number", "rarity")
-# How many copies of a variant (v.id) the user's reserved deals have spoken for (deckledger/deals.py).
+# How many copies of a variant (v.id) the user's reserved deals have spoken for (ophir_cards/deals.py).
 RESERVED_SQL = """(SELECT COALESCE(SUM(rc.quantity),0) FROM deal_cards rc JOIN deals rd ON rd.id=rc.deal_id
   WHERE rd.user_id=? AND rd.status='reserved' AND rc.side='give' AND rc.variant_id=v.id)"""
 SHEET_CARD_LIMIT = 400
@@ -167,11 +167,11 @@ def trade_sheet(sheet_id):
             "background": p.get("background") if p.get("background") in sheet_render.BACKGROUNDS or own_background(p.get("background")) else sheet["background"],
             "sort": p.get("sort") if p.get("sort") in SHEET_SORTS else sheet["sort"],
             "layout": p["layout"] if p.get("layout") == "auto" or sheet_render.parse_layout(p.get("layout")) else sheet["layout"],
-            # Other people's posts are searched for the sheet's cards (deckledger/watcher.py):
+            # Other people's posts are searched for the sheet's cards (ophir_cards/watcher.py):
             # whether at all, and in which of the game's communities ('' = all of them).
             "scout": int(bool(p["scout"])) if "scout" in p else sheet["scout"],
             "scout_communities": scout_communities(p["scout_communities"]) if "scout_communities" in p else sheet["scout_communities"],
-            # Quantity and price of the cards from their active eBay listings (deckledger/ebay.py).
+            # Quantity and price of the cards from their active eBay listings (ophir_cards/ebay.py).
             "ebay_sync": int(bool(p["ebay_sync"])) if "ebay_sync" in p else sheet["ebay_sync"],
         }
         db().execute(

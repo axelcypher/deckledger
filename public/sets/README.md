@@ -1,6 +1,6 @@
 # Server-provided set visuals
 
-Files in this directory override DeckLedger's external and generated set-image
+Files in this directory override Ophir Cards' external and generated set-image
 fallbacks. The preferred filename is the internal set ID, for example:
 
 ```text

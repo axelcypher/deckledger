@@ -17,7 +17,7 @@ RARITY_FALLBACK_RANK = 900
 
 def fetch_html(url: str) -> str:
     """A publisher's page as text, for the hooks that look up images and logos there."""
-    request = Request(url, headers={"User-Agent": "DeckLedger/1.0", "Accept": "text/html"})
+    request = Request(url, headers={"User-Agent": "OphirCards/1.0", "Accept": "text/html"})
     return urlopen(request, timeout=18).read(2_000_000).decode("utf-8", "ignore")
 
 

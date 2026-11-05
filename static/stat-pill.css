@@ -1,5 +1,5 @@
 /* One visual/statistical summary module shared by dashboard, catalogues and decks. */
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill {
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill {
   position:relative;
   isolation:isolate;
   display:grid;
@@ -18,7 +18,7 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill {
   box-sizing:border-box;
 }
 
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill::before {
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill::before {
   content:"";
   position:absolute;
   z-index:2;
@@ -47,7 +47,7 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill::before {
   82%,100% { background-position:calc(100% + 170px) 0; }
 }
 
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat] {
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat] {
   position:relative;
   z-index:1;
   display:flex;
@@ -66,8 +66,8 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat] {
   box-sizing:border-box;
 }
 
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]+[data-stat] { border-left:1px solid var(--mp-line,var(--line)); }
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>span {
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat]+[data-stat] { border-left:1px solid var(--mp-line,var(--line)); }
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat]>span {
   display:block;
   overflow:hidden;
   max-width:100%;
@@ -78,7 +78,7 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>span
   text-transform:uppercase;
   white-space:nowrap;
 }
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>b {
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat]>b {
   display:block;
   overflow:hidden;
   max-width:100%;
@@ -88,11 +88,11 @@ body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>b {
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat].complete>b { color:var(--brand); }
-body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat].missing>b { color:var(--danger,#b75f5f); }
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat].complete>b { color:var(--brand); }
+body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat].missing>b { color:var(--danger,#b75f5f); }
 
 body.dark.mobile-modern .content .browser-summary-row { display:flex;align-items:stretch;gap:10px;margin-bottom:13px; }
-body.dark.mobile-modern .content .browser-summary-row>deckledger-stat-pill { flex:1;margin:0; }
+body.dark.mobile-modern .content .browser-summary-row>ophir-stat-pill { flex:1;margin:0; }
 body.dark.mobile-modern .content .browser-summary-row>.browser-summary-actions {
   display:flex;
   flex:0 0 auto;
@@ -103,29 +103,29 @@ body.dark.mobile-modern .content .browser-summary-row>.browser-summary-actions {
 }
 
 @media (max-width:760px) {
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill {
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill {
     grid-template-columns:repeat(var(--stat-pill-mobile-columns,3),minmax(0,1fr));
     min-height:0;
     margin-bottom:13px;
   }
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat] { min-height:56px;padding:9px 5px; }
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>span { font-size:8.5px; }
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill>[data-stat]>b { font-size:15px; }
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat] { min-height:56px;padding:9px 5px; }
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat]>span { font-size:8.5px; }
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill>[data-stat]>b { font-size:15px; }
 
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="2"]>[data-stat]:nth-child(2n+1),
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="3"]>[data-stat]:nth-child(3n+1),
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="4"]>[data-stat]:nth-child(4n+1) { border-left:0; }
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="2"]>[data-stat]:nth-child(n+3),
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="3"]>[data-stat]:nth-child(n+4),
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill[mobile-columns="4"]>[data-stat]:nth-child(n+5) { border-top:1px solid var(--mp-line,var(--line)); }
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill[mobile-columns="2"]>[data-stat]:nth-child(2n+1),
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill[mobile-columns="3"]>[data-stat]:nth-child(3n+1),
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill[mobile-columns="4"]>[data-stat]:nth-child(4n+1) { border-left:0; }
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill[mobile-columns="2"]>[data-stat]:nth-child(n+3),
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill[mobile-columns="3"]>[data-stat]:nth-child(n+4),
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill[mobile-columns="4"]>[data-stat]:nth-child(n+5) { border-top:1px solid var(--mp-line,var(--line)); }
 
   body.dark.mobile-modern .content .browser-summary-row { display:block;margin-bottom:13px; }
-  body.dark.mobile-modern .content .browser-summary-row>deckledger-stat-pill { margin-bottom:8px; }
+  body.dark.mobile-modern .content .browser-summary-row>ophir-stat-pill { margin-bottom:8px; }
   body.dark.mobile-modern .content .browser-summary-row>.browser-summary-actions { justify-content:flex-end; }
 
-  body.dark.mobile-modern .content deckledger-stat-pill.deck-stat-chips { margin:0; }
+  body.dark.mobile-modern .content ophir-stat-pill.deck-stat-chips { margin:0; }
 }
 
 @media (prefers-reduced-motion:reduce) {
-  body.dark.mobile-modern .content deckledger-stat-pill.stat-pill::before { animation:none; }
+  body.dark.mobile-modern .content ophir-stat-pill.stat-pill::before { animation:none; }
 }

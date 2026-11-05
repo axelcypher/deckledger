@@ -1449,8 +1449,8 @@ body .dl-modal .dl-control:focus { border-color:color-mix(in srgb,var(--mt-gold,
   .ebay-section .sheet-section-head.ebay-drafts-head>.ebay-section-toggle~button { flex:1 1 0;margin-left:0; }
 }
 /* The eBay tab's numbers (ebaySummaryPill): the dashboard's pill, with a quiet unit after a count. */
-deckledger-stat-pill.ebay-summary .ebay-summary-below>b { color:var(--success,#2b7553); }
-deckledger-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b23f37); }
+ophir-stat-pill.ebay-summary .ebay-summary-below>b { color:var(--success,#2b7553); }
+ophir-stat-pill.ebay-summary .ebay-summary-above>b { color:var(--danger,#b23f37); }
 /* Folding section heads of the "Verkäufe" tab: the switch on the left, its buttons together on
    the right (the tab's older rule pushed every first button of a head to the right). */
 .ebay-section .sheet-section-head.ebay-drafts-head>.ebay-section-toggle~button { margin-left:0; }

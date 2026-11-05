@@ -35,7 +35,7 @@ OAUTH_ERROR_MESSAGES = {
     "not_configured": "Single Sign-On ist auf diesem Server nicht aktiviert.",
     "state_mismatch": "Die Anmeldeanfrage ist abgelaufen oder ungültig. Bitte erneut versuchen.",
     "provider_error": "Der Identity Provider hat die Anmeldung abgelehnt oder ist nicht erreichbar.",
-    "no_account": "Kein DeckLedger-Konto mit dieser Identität verknüpft. Bitte zuerst mit Benutzername/Passwort anmelden und das Konto in den Einstellungen unter „Single Sign-On“ verbinden.",
+    "no_account": "Kein Konto bei Ophir Cards ist mit dieser Identität verknüpft. Bitte zuerst mit Benutzername/Passwort anmelden und das Konto in den Einstellungen unter „Single Sign-On“ verbinden.",
     "already_linked": "Diese SSO-Identität ist bereits mit einem anderen Konto verknüpft.",
 }
 

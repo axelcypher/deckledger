@@ -43,7 +43,7 @@ CATALOG_URLS = {
     "de": "https://api.lorcana.ravensburger.com/v3/catalog/de",
 }
 CATALOG_TTL_SECONDS = 24 * 3600  # the catalog only changes on new-set-release cadence
-USER_AGENT = "DeckLedger/1.0 (+local collection manager)"
+USER_AGENT = "OphirCards/1.0 (+local collection manager)"
 # Cards live at catalog["cards"][<supertype>] -- catalog["cards"] is an OBJECT keyed by
 # supertype, not a flat array (confirmed against the live payload). Four supertypes observed;
 # no "songs" key -- Songs are a subtype of Action in Lorcana's own rules, filed under

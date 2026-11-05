@@ -1,5 +1,5 @@
 """What a database is seeded with, and bringing it up to date at start-up. The schema itself
-is defined by the migrations in deckledger/migrations."""
+is defined by the migrations in ophir_cards/migrations."""
 
 import json
 import os
@@ -95,7 +95,7 @@ def seed_database(connection):
         return
     connection.executemany(
         "INSERT INTO users(username, display_name, password_hash, role, created_at) VALUES(?,?,?,?,?)",
-        [("admin", "DeckLedger Admin", generate_password_hash("admin"), "admin", now_iso())],
+        [("admin", "Ophir Cards Admin", generate_password_hash("admin"), "admin", now_iso())],
     )
     connection.executemany(f"INSERT INTO games({GAME_COLUMNS}) VALUES(?,?,?,?,?,?,?,1)", game_rows)
     seed_default_providers(connection)
@@ -116,7 +116,7 @@ def ensure_user_lists(connection, user_id=None):
 
 
 def init_database():
-    """Brings the database to the current schema (deckledger/migrations), then makes sure the
+    """Brings the database to the current schema (ophir_cards/migrations), then makes sure the
     data that follows the code -- games, their providers and defaults, every account's default
     lists -- is there. Runs at import, in every process that loads the app."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)

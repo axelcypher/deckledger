@@ -24,7 +24,7 @@ PROFILE_KEY = "publicProfile"
 THEMES = ("auto", "light", "dark")   # auto: as the visitor's system asks
 SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])")
 NAME_LIMIT = 60
-# Where profiles are shared from, e.g. https://deckledger.example.org -- the app itself may run
+# Where profiles are shared from, e.g. https://ophircards.example.org -- the app itself may run
 # under a private address. Without it the link uses the address the settings were opened on.
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_PROFILE_URL", "").strip().rstrip("/")
 

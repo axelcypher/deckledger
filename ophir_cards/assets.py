@@ -28,7 +28,7 @@ def game_logo(game_id):
         if data_path.exists() and mime_path.exists():
             payload, content_type = data_path.read_bytes(), mime_path.read_text().strip()
         else:
-            response = urlopen(Request(source_url, headers={"User-Agent": "DeckLedger/1.0", "Accept": "image/svg+xml,image/png,image/*"}), timeout=15)
+            response = urlopen(Request(source_url, headers={"User-Agent": "OphirCards/1.0", "Accept": "image/svg+xml,image/png,image/*"}), timeout=15)
             payload, content_type = response.read(1_000_000), response.headers.get_content_type()
             if not content_type.startswith("image/") or len(payload) < 100:
                 return Response(status=502)
@@ -136,7 +136,7 @@ def set_logo(set_id):
             source_url = remote_set_visual(set_row)
             if not source_url:
                 raise RuntimeError("no official set visual published")
-            response = urlopen(Request(source_url, headers={"User-Agent": "DeckLedger/1.0", "Accept": "image/avif,image/webp,image/*"}), timeout=18)
+            response = urlopen(Request(source_url, headers={"User-Agent": "OphirCards/1.0", "Accept": "image/avif,image/webp,image/*"}), timeout=18)
             payload, content_type = response.read(4_000_000), response.headers.get_content_type()
             if not content_type.startswith("image/") or len(payload) < 500:
                 raise RuntimeError("invalid set visual response")

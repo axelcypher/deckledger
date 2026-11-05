@@ -20,7 +20,7 @@ import re
 import time
 from urllib.request import Request, urlopen
 
-USER_AGENT = "DeckLedger/1.0 (+local collection manager)"
+USER_AGENT = "OphirCards/1.0 (+local collection manager)"
 
 
 def fetch(url: str, attempts: int = 3, headers: dict | None = None) -> str:

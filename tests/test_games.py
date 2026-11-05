@@ -1,14 +1,14 @@
-"""The per-game rules live in deckledger/games; the rest of the app only asks the registry."""
+"""The per-game rules live in ophir_cards/games; the rest of the app only asks the registry."""
 import re
 from pathlib import Path
 
 import pytest
 
-from conftest import ELSA, EMBER8, SPARKY, deckledger, query
-from deckledger import games
-from deckledger.games import GAMES, GENERIC, game
+from conftest import ELSA, EMBER8, SPARKY, ophir_cards, query
+from ophir_cards import games
+from ophir_cards.games import GAMES, GENERIC, game
 
-PACKAGE = Path(deckledger.__file__).parent
+PACKAGE = Path(ophir_cards.__file__).parent
 
 
 def test_every_shipped_game_is_complete():

@@ -29,7 +29,7 @@ from .config import jload, now_iso
 from .web import app, db, login_required, user_id
 from .sheets import WANTED_SHEET_KINDS, own_sheet
 
-USER_AGENT = "DeckLedger/1.0 (self-hosted collection manager; reads public feeds of posts the user follows)"
+USER_AGENT = "OphirCards/1.0 (self-hosted collection manager; reads public feeds of posts the user follows)"
 ATOM = {"a": "http://www.w3.org/2005/Atom"}
 POSTS_PER_SHEET = 12
 # A post nobody has commented on for this long is no longer asked for.

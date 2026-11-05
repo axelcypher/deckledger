@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import ELSA, EMBER8, TIDE8, deckledger, query
+from conftest import ELSA, EMBER8, TIDE8, ophir_cards, query
 
 
 def observe(variant_id, provider, amount, observed_at, metric="trend", mapped=True):
@@ -93,20 +93,20 @@ def test_static_urls_carry_a_content_hash(client, tmp_path, monkeypatch):
     # Every local script and stylesheet the page loads goes through asset_url().
     assert set(re.findall(r'(?:src|href)="/static/([\w./-]+\.(?:js|css))[?"]', page)) == set(hashed)
 
-    monkeypatch.setattr(deckledger.app, "static_folder", str(tmp_path))
+    monkeypatch.setattr(ophir_cards.app, "static_folder", str(tmp_path))
     (tmp_path / "probe.js").write_text("one")
-    with deckledger.app.test_request_context():
-        first = deckledger.web.asset_url("probe.js")
+    with ophir_cards.app.test_request_context():
+        first = ophir_cards.web.asset_url("probe.js")
         (tmp_path / "probe.js").write_text("two, and longer")
-        second = deckledger.web.asset_url("probe.js")
+        second = ophir_cards.web.asset_url("probe.js")
     assert first != second and first.startswith("/static/probe.js?v=")
 
 
 def test_hashed_static_urls_are_cached_for_good(client):
     """A URL naming the file's current content can be kept without revalidating; one with no or
     an outdated hash must still be checked every time."""
-    with deckledger.app.test_request_context():
-        current = deckledger.web.asset_url("js/core.js")
+    with ophir_cards.app.test_request_context():
+        current = ophir_cards.web.asset_url("js/core.js")
     kept = client.get(current)
     assert kept.status_code == 200
     assert kept.cache_control.immutable and kept.cache_control.max_age == 31_536_000 and kept.cache_control.public
@@ -117,7 +117,7 @@ def test_hashed_static_urls_are_cached_for_good(client):
 
 
 def test_static_text_is_sent_compressed(client):
-    path = Path(deckledger.app.static_folder) / "app.css"
+    path = Path(ophir_cards.app.static_folder) / "app.css"
     plain = client.get("/static/app.css")
     packed = client.get("/static/app.css", headers={"Accept-Encoding": "gzip, deflate"})
     assert "Content-Encoding" not in plain.headers and plain.get_data() == path.read_bytes()
@@ -136,7 +136,7 @@ def test_static_text_is_sent_compressed(client):
 def test_static_images_and_small_files_are_not_compressed(client, tmp_path, monkeypatch):
     image = client.get("/static/icons/icon-192.png", headers={"Accept-Encoding": "gzip"})
     assert image.status_code == 200 and "Content-Encoding" not in image.headers
-    monkeypatch.setattr(deckledger.app, "static_folder", str(tmp_path))
+    monkeypatch.setattr(ophir_cards.app, "static_folder", str(tmp_path))
     (tmp_path / "tiny.css").write_text("body{}")
     tiny = client.get("/static/tiny.css", headers={"Accept-Encoding": "gzip"})
     assert tiny.status_code == 200 and "Content-Encoding" not in tiny.headers and tiny.get_data() == b"body{}"
@@ -160,36 +160,36 @@ def test_card_back_that_ships_with_the_app_is_served(anonymous):
     """Deployments mount their own public folder, so a bundled back must not depend on it."""
     response = anonymous.get("/card-back/vcard")
     assert response.status_code == 200 and response.mimetype == "image/jpeg"
-    assert len(response.get_data()) == (Path(deckledger.app.static_folder) / "assets" / "vcard" / "vcard-back.jpg").stat().st_size
+    assert len(response.get_data()) == (Path(ophir_cards.app.static_folder) / "assets" / "vcard" / "vcard-back.jpg").stat().st_size
     assert anonymous.get("/card-back/unknown-game").status_code == 404
 
 
 def test_json_answers_are_written_as_flask_writes_them():
-    """orjson writes the answers (deckledger/web.py OrjsonProvider); what a client reads stays the same."""
+    """orjson writes the answers (ophir_cards/web.py OrjsonProvider); what a client reads stays the same."""
     import datetime
     import decimal
     from flask import json as flask_json
     payload = {"b": 1, "a": [1.5, None, True, 1e16], "ä": "Pokémon", "when": datetime.date(2026, 1, 2),
                "price": decimal.Decimal("1.50"), "by_id": {7: "seven", 3: "three"}}
-    with deckledger.app.test_request_context():
-        fast = deckledger.app.json.response(payload).get_data()
-        standard = flask_json.provider.DefaultJSONProvider(deckledger.app).response(payload).get_data()
+    with ophir_cards.app.test_request_context():
+        fast = ophir_cards.app.json.response(payload).get_data()
+        standard = flask_json.provider.DefaultJSONProvider(ophir_cards.app).response(payload).get_data()
         assert json.loads(fast) == json.loads(standard)
         text = fast.decode()
         assert text.index('"a"') < text.index('"b"') < text.index('"by_id"') and text.index('"3"') < text.index('"7"'), "keys stay sorted"
-        assert deckledger.app.json.response(1, 2).get_json() == [1, 2] and deckledger.app.json.response().get_json() is None
-        assert json.loads(deckledger.app.json.response(nan=float("nan")).get_data()) == {"nan": None}
+        assert ophir_cards.app.json.response(1, 2).get_json() == [1, 2] and ophir_cards.app.json.response().get_json() is None
+        assert json.loads(ophir_cards.app.json.response(nan=float("nan")).get_data()) == {"nan": None}
 
 
 def test_a_set_logo_dropped_into_the_public_folder_is_used_at_once(client, tmp_path, monkeypatch):
     """The folder's listing is kept between requests; adding, replacing and removing a file shows."""
     import os
     import time
-    monkeypatch.setattr(deckledger.assets, "PUBLIC_SET_DIR", tmp_path)
+    monkeypatch.setattr(ophir_cards.assets, "PUBLIC_SET_DIR", tmp_path)
     set_row = {"id": "vcard-test", "game_id": "vcard", "code": "1", "name": "Test Set"}
 
     def version():
-        return deckledger.assets.set_visual_version(set_row)
+        return ophir_cards.assets.set_visual_version(set_row)
 
     assert version() == "provider-v3"
     (tmp_path / "vcard-test.png").write_bytes(b"first")
@@ -230,10 +230,10 @@ def test_the_page_shell_is_sent_compressed(client):
 
 
 def test_the_inlined_glass_plate_follows_its_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(deckledger.pages, "PUBLIC_DIR", tmp_path)
+    monkeypatch.setattr(ophir_cards.pages, "PUBLIC_DIR", tmp_path)
     (tmp_path / "glass-plate.svg").write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg"><g id="glass_side"/></svg>')
-    assert deckledger.pages.glass_plate_inline_markup() == '<g id="glass_side"/>'
+    assert ophir_cards.pages.glass_plate_inline_markup() == '<g id="glass_side"/>'
     (tmp_path / "glass-plate.svg").write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg">\r\n<g id="glass_side" fill="#fff"/></svg>')
-    assert deckledger.pages.glass_plate_inline_markup() == '\n<g id="glass_side" fill="#fff"/>'
+    assert ophir_cards.pages.glass_plate_inline_markup() == '\n<g id="glass_side" fill="#fff"/>'
     (tmp_path / "glass-plate.svg").unlink()
-    assert deckledger.pages.glass_plate_inline_markup() == ""
+    assert ophir_cards.pages.glass_plate_inline_markup() == ""

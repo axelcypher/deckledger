@@ -6,7 +6,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from conftest import ADMIN, EMBER8, EMBER9, TIDE8, deckledger, login, query
+from conftest import ADMIN, EMBER8, EMBER9, TIDE8, ophir_cards, login, query
 from test_prices_and_assets import observe, price_of
 
 ITEM = "123456789012"
@@ -108,13 +108,13 @@ class FakeEbay:
 @pytest.fixture
 def ebay(monkeypatch):
     fake = FakeEbay()
-    monkeypatch.setattr(deckledger.ebay, "http", fake)
+    monkeypatch.setattr(ophir_cards.ebay, "http", fake)
     return fake
 
 
 @pytest.fixture
 def configured(ebay):
-    assert login(ADMIN).post("/api/admin/ebay", json={"client_id": "app", "client_secret": "secret", "ru_name": "Deck-Ledger-ru"}).status_code == 200
+    assert login(ADMIN).post("/api/admin/ebay", json={"client_id": "app", "client_secret": "secret", "ru_name": "Ophir-Cards-ru"}).status_code == 200
     return ebay
 
 
@@ -141,7 +141,7 @@ def connect(user_id=1):
     ("12345", None),
 ])
 def test_item_ids_are_read_from_links(text, expected):
-    assert deckledger.ebay.parse_item_id(text) == expected
+    assert ophir_cards.ebay.parse_item_id(text) == expected
 
 
 def test_following_needs_the_application_keys(client, ebay):
@@ -197,13 +197,13 @@ def test_only_changes_are_stored(client, configured):
 def test_the_background_job_rereads_what_is_due(client, configured):
     configured.items = {ITEM: listing(5)}
     client.post(f"/api/variants/{EMBER8}/ebay-items", json={"url": ITEM})
-    connection = deckledger.web.sqlite3.connect(deckledger.config.DB_PATH)
-    connection.row_factory = deckledger.web.sqlite3.Row
+    connection = ophir_cards.web.sqlite3.connect(ophir_cards.config.DB_PATH)
+    connection.row_factory = ophir_cards.web.sqlite3.Row
     try:
-        assert deckledger.ebay.run_due(connection)["tracked"] == 0
+        assert ophir_cards.ebay.run_due(connection)["tracked"] == 0
         connection.execute("UPDATE ebay_tracked_items SET checked_at='2020-01-01T00:00:00+00:00'")
         configured.items = {ITEM: listing(8)}
-        assert deckledger.ebay.run_due(connection)["tracked"] == 1
+        assert ophir_cards.ebay.run_due(connection)["tracked"] == 1
     finally:
         connection.close()
     assert price_of(client, EMBER8, "vcard-card-ember8")["price"] == 8.0
@@ -234,7 +234,7 @@ def test_connecting_an_account(client, configured):
     status = client.get("/api/ebay/status").get_json()
     assert (status["connected"], status["username"], status["marketplace"]) == (True, "kartenhai", "EBAY_DE")
     token_call = next(call for call in configured.calls if call[1].endswith("/oauth2/token"))
-    assert token_call[2]["data"]["redirect_uri"] == "Deck-Ledger-ru"
+    assert token_call[2]["data"]["redirect_uri"] == "Ophir-Cards-ru"
     assert client.post("/api/ebay/disconnect").get_json() == {"disconnected": True}
     assert client.get("/api/ebay/status").get_json()["connected"] is False
 
@@ -251,7 +251,7 @@ def test_the_secret_never_leaves_the_server(admin, configured):
     assert "client_secret" not in config and config["client_secret_set"] is True
     assert config["callback_url"].endswith("/ebay/callback")
     admin.post("/api/admin/ebay", json={"client_id": "app2", "client_secret": ""})
-    assert deckledger.ebay.ebay_config(deckledger.web.sqlite3.connect(deckledger.config.DB_PATH))["client_secret"] == "secret"
+    assert ophir_cards.ebay.ebay_config(ophir_cards.web.sqlite3.connect(ophir_cards.config.DB_PATH))["client_secret"] == "secret"
 
 
 # ---- Drafts -------------------------------------------------------------------------------------
@@ -298,7 +298,7 @@ def ready_draft(client, monkeypatch, tmp_path):
     connect()
     image = tmp_path / "card.png"
     image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
-    monkeypatch.setattr(deckledger.ebay, "card_image", lambda row, variant_id: (image, "image/png", "key"))
+    monkeypatch.setattr(ophir_cards.ebay, "card_image", lambda row, variant_id: (image, "image/png", "key"))
     client.put("/api/ebay/preset", json={"game_id": "vcard", "fulfillment_policy_id": "fulfillment-1", "payment_policy_id": "payment-1",
                                           "return_policy_id": "return-1", "postal_code": "10115", "price_fallback": "2,50"})
     return client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]}).get_json()["ids"][0]
@@ -317,9 +317,9 @@ def test_the_card_picture_goes_up_through_the_media_api(client, configured, monk
     assert sent["files"]["image"][0] == "card.png" and sent["files"]["image"][2] == "image/png"
     assert not any(call[2].get("headers", {}).get("X-EBAY-API-CALL-NAME") == "UploadSiteHostedPictures" for call in configured.calls)
     # eBay's own reason comes through when it refuses a picture.
-    original = deckledger.ebay.http
+    original = ophir_cards.ebay.http
     refusal = Response(400, {"errors": [{"errorId": 190203, "longMessage": "The supplied image is in a format that is not supported."}]})
-    monkeypatch.setattr(deckledger.ebay, "http", lambda method, url, **kwargs: refusal if url.endswith("/image/create_image_from_file") else original(method, url, **kwargs))
+    monkeypatch.setattr(ophir_cards.ebay, "http", lambda method, url, **kwargs: refusal if url.endswith("/image/create_image_from_file") else original(method, url, **kwargs))
     refused = client.post(f"/api/ebay/drafts/{draft_id}/verify")
     assert refused.status_code == 502 and "format that is not supported" in refused.get_json()["error"]
 
@@ -381,7 +381,7 @@ def test_an_account_without_business_policies_gets_none_to_pick(client, configur
         if "/sell/account/v1/" in url:
             return Response(400, {"errors": [{"errorId": 20403, "message": "User is not eligible for Business Policy."}]})
         return real(method, url, **kwargs)
-    deckledger.ebay.http = not_opted_in
+    ophir_cards.ebay.http = not_opted_in
     assert client.get("/api/ebay/policies").get_json() == {"available": False, "fulfillment": [], "payment": [], "return": []}
 
 
@@ -476,8 +476,8 @@ def test_descriptions_may_be_html(client):
     client.post("/api/ebay/drafts", json={"variant_ids": [EMBER8]})
     description = client.get("/api/ebay/drafts").get_json()["drafts"][0]["description"]
     assert description == "<p><b>Ember &lt;PL8&gt;</b></p>"
-    assert deckledger.ebay.description_html(description) == description
-    assert deckledger.ebay.description_html("Zeile 1\nA & B") == "Zeile 1<br>A &amp; B"
+    assert ophir_cards.ebay.description_html(description) == description
+    assert ophir_cards.ebay.description_html("Zeile 1\nA & B") == "Zeile 1<br>A &amp; B"
 
 
 # ---- Marketplace account deletion ---------------------------------------------------------------
@@ -504,7 +504,7 @@ def ebay_key(configured):
     pem = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
     # eBay sends the key on one line.
     configured.public_key = pem.replace("\n", "")
-    deckledger.ebay.PUBLIC_KEYS.clear()
+    ophir_cards.ebay.PUBLIC_KEYS.clear()
     return key
 
 
@@ -513,7 +513,7 @@ def test_the_deletion_endpoint_answers_ebays_challenge(admin):
     config = admin.get("/api/admin/ebay").get_json()
     token, endpoint = config["deletion_token"], config["deletion_endpoint"]
     assert re.fullmatch(r"[A-Za-z0-9_-]{32,80}", token) and endpoint == "http://localhost/ebay/account-deletion"
-    response = deckledger.app.test_client().get("/ebay/account-deletion?challenge_code=abc123")
+    response = ophir_cards.app.test_client().get("/ebay/account-deletion?challenge_code=abc123")
     assert response.status_code == 200 and response.is_json
     assert response.get_json() == {"challengeResponse": hashlib.sha256(f"abc123{token}{endpoint}".encode()).hexdigest()}
     assert admin.get("/api/admin/ebay").get_json()["deletion_token"] == token
@@ -521,7 +521,7 @@ def test_the_deletion_endpoint_answers_ebays_challenge(admin):
 
 def test_deletions_of_unknown_accounts_are_only_acknowledged(configured):
     calls = len(configured.calls)
-    response = deckledger.app.test_client().post("/ebay/account-deletion", data=deletion_notice("someone"), content_type="application/json")
+    response = ophir_cards.app.test_client().post("/ebay/account-deletion", data=deletion_notice("someone"), content_type="application/json")
     assert response.status_code == 204 and len(configured.calls) == calls
 
 
@@ -530,7 +530,7 @@ def test_a_deleted_account_is_forgotten(ebay_key):
     query("INSERT INTO deals(id,user_id,game_id,partner,platform,status,created_at,updated_at) VALUES(41,1,'vcard','kartenhai','eBay','done','t','t'),(42,1,'vcard','kartenhai','Reddit','done','t','t')")
     query("INSERT INTO ebay_sales(user_id,item_id,transaction_id,buyer,deal_id) VALUES(1,'1','t1','kartenhai',41),(1,'2','t2','other',NULL)")
     body = deletion_notice("kartenhai")
-    anonymous = deckledger.app.test_client()
+    anonymous = ophir_cards.app.test_client()
     forged = anonymous.post("/ebay/account-deletion", data=body, content_type="application/json", headers={"X-EBAY-SIGNATURE": signed(b"{}", ebay_key)})
     assert forged.status_code == 412 and query("SELECT COUNT(*) AS n FROM ebay_accounts")[0]["n"] == 1
     response = anonymous.post("/ebay/account-deletion", data=body, content_type="application/json", headers={"X-EBAY-SIGNATURE": signed(body, ebay_key)})
@@ -554,7 +554,7 @@ def test_a_listing_with_variations_needs_the_chosen_one(client, configured):
 
 # ---- Listing statistics, suggestions and sheets that follow eBay ----------------------------------
 
-ANALYTICS = deckledger.ebay.ANALYTICS_SCOPE
+ANALYTICS = ophir_cards.ebay.ANALYTICS_SCOPE
 
 
 def own_listing(item_id, variant_id=None, title="Ember PL8", price=4.99, quantity=1, sold=0, status="active", watchers=0):
@@ -570,7 +570,7 @@ def test_views_come_from_the_traffic_report_once_it_is_granted(client, configure
     client.post("/api/ebay/listings/sync")
     assert configured.traffic_params is None, "an account connected before stays without views"
     assert client.get("/api/ebay/status").get_json()["stats_need_reconnect"] is True
-    query("UPDATE ebay_accounts SET scopes=?", (" ".join(deckledger.ebay.USER_SCOPES),))
+    query("UPDATE ebay_accounts SET scopes=?", (" ".join(ophir_cards.ebay.USER_SCOPES),))
     client.post("/api/ebay/listings/sync")
     assert "listing_ids:{111}" in configured.traffic_params["filter"] and "marketplace_ids:{EBAY_DE}" in configured.traffic_params["filter"]
     listing = client.get("/api/ebay/listings").get_json()["listings"][0]
@@ -582,8 +582,8 @@ def test_views_come_from_the_traffic_report_once_it_is_granted(client, configure
 def test_a_renewed_token_asks_only_for_what_was_granted(client, configured):
     connect()
     query("UPDATE ebay_accounts SET access_expires_at='2000-01-01T00:00:00+00:00'")
-    with deckledger.app.app_context():
-        deckledger.ebay.user_token(deckledger.ebay.db(), 1)
+    with ophir_cards.app.app_context():
+        ophir_cards.ebay.user_token(ophir_cards.ebay.db(), 1)
     form = [call[2]["data"] for call in configured.calls if call[1].endswith("/identity/v1/oauth2/token")][-1]
     assert ANALYTICS not in form["scope"] and "sell.inventory" in form["scope"]
 
@@ -624,9 +624,9 @@ def test_sale_sheets_follow_the_listings_of_their_cards(client):
     # Sold out: off the sheet. Ended unsold: stays, without the eBay price.
     query("UPDATE ebay_listings SET status='sold',quantity_sold=3 WHERE item_id='111'")
     query("UPDATE ebay_listings SET status='unsold' WHERE item_id='222'")
-    with deckledger.app.app_context():
-        deckledger.ebay.update_sheets_from_listings(deckledger.ebay.db(), 1)
-        deckledger.ebay.db().commit()
+    with ophir_cards.app.app_context():
+        ophir_cards.ebay.update_sheets_from_listings(ophir_cards.ebay.db(), 1)
+        ophir_cards.ebay.db().commit()
     cards = {card["variant_id"]: card for card in client.get(f"/api/trade-sheets/{sheet}").get_json()["cards"]}
     assert EMBER8 not in cards and (cards[EMBER9]["quantity"], cards[EMBER9]["label"]) == (2, "")
 
@@ -755,7 +755,7 @@ def upload_photo(client, variant_id=EMBER8, crop=None, payload=None):
 
 @pytest.fixture
 def photo_dir(monkeypatch, tmp_path):
-    monkeypatch.setattr(deckledger.ebay_photos, "EBAY_PHOTO_DIR", tmp_path / "ebay-photos")
+    monkeypatch.setattr(ophir_cards.ebay_photos, "EBAY_PHOTO_DIR", tmp_path / "ebay-photos")
     return tmp_path / "ebay-photos"
 
 
@@ -891,10 +891,10 @@ def test_the_background_sync_books_sales_too(client, configured):
     configured.selling = {"ActiveList": "<ActiveList/>", "UnsoldList": "<UnsoldList/>",
                           "SoldList": f"<SoldList><OrderTransactionArray><OrderTransaction>{sold('333', 'Ember PL8', '4.00', 1, 't-1', 'sammlerin', sku=f'DL-{EMBER8}')}"
                                       "</OrderTransaction></OrderTransactionArray></SoldList>"}
-    connection = sqlite3.connect(deckledger.config.DB_PATH)
+    connection = sqlite3.connect(ophir_cards.config.DB_PATH)
     connection.row_factory = sqlite3.Row
     try:
-        deckledger.ebay.sync_listings(connection, 1)
+        ophir_cards.ebay.sync_listings(connection, 1)
         assert connection.execute("SELECT 1").fetchone(), "the sync's connection stays open"
     finally:
         connection.close()
@@ -918,7 +918,7 @@ def test_the_tab_sums_up_what_is_on_offer(client):
 def write_lock_free():
     """Whether another connection could start writing right now -- a web request, say."""
     import sqlite3
-    probe = sqlite3.connect(deckledger.config.DB_PATH, timeout=0)
+    probe = sqlite3.connect(ophir_cards.config.DB_PATH, timeout=0)
     try:
         probe.execute("BEGIN IMMEDIATE")
         probe.rollback()
@@ -939,13 +939,13 @@ def lock_watch(configured, monkeypatch):
         return answer(method, url, **kwargs)
 
     monkeypatch.setattr(configured, "__call__", call)
-    monkeypatch.setattr(deckledger.ebay, "http", call)
+    monkeypatch.setattr(ophir_cards.ebay, "http", call)
     return seen
 
 
 def background_connection():
-    connection = deckledger.web.sqlite3.connect(deckledger.config.DB_PATH)
-    connection.row_factory = deckledger.web.sqlite3.Row
+    connection = ophir_cards.web.sqlite3.connect(ophir_cards.config.DB_PATH)
+    connection.row_factory = ophir_cards.web.sqlite3.Row
     return connection
 
 
@@ -958,7 +958,7 @@ def test_followed_listings_are_read_without_holding_the_database(client, configu
     lock_watch.clear()
     connection = background_connection()
     try:
-        assert deckledger.ebay.run_due(connection)["tracked"] == 2
+        assert ophir_cards.ebay.run_due(connection)["tracked"] == 2
     finally:
         connection.close()
     assert len(lock_watch) >= 2 and all(lock_watch)
@@ -974,7 +974,7 @@ def test_the_listing_sync_asks_ebay_before_it_writes(client, configured, lock_wa
     lock_watch.clear()
     connection = background_connection()
     try:
-        deckledger.ebay.sync_listings(connection, 1)
+        ophir_cards.ebay.sync_listings(connection, 1)
     finally:
         connection.close()
     assert len(lock_watch) >= 3 and all(lock_watch)

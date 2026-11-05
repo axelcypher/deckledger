@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 import { loadScripts } from './scripts.mjs';
 
-const ORIGIN = 'http://deckledger.test';
+const ORIGIN = 'http://ophir_cards.test';
 const urlOf = request => new URL(typeof request === 'string' ? request : request.url, ORIGIN).href;
 
 class FakeCache {
@@ -75,8 +75,8 @@ describe('API answers', () => {
     worker.network.answer = () => json({ fresh: true });
     const response = await worker.get('/api/bootstrap');
     assert.deepEqual(await response.json(), { fresh: true });
-    assert.equal(response.headers.get('X-DeckLedger-Stale'), null);
-    assert.ok(await (await worker.cache('deckledger-api-v2')).match('/api/bootstrap'));
+    assert.equal(response.headers.get('X-Ophir-Stale'), null);
+    assert.ok(await (await worker.cache('ophir-api-v2')).match('/api/bootstrap'));
   });
 
   test('fall back to the kept copy, marked as stale, when the server cannot be reached', async () => {
@@ -85,7 +85,7 @@ describe('API answers', () => {
     worker.network.answer = () => { throw new TypeError('offline'); };
     const response = await worker.get('/api/bootstrap');
     assert.deepEqual(await response.json(), { version: 1 });
-    assert.equal(response.headers.get('X-DeckLedger-Stale'), '1');
+    assert.equal(response.headers.get('X-Ophir-Stale'), '1');
   });
 
   test('fail like the network does when there is nothing kept', async () => {
@@ -100,7 +100,7 @@ describe('API answers', () => {
     await tick();
     assert.deepEqual(worker.timers.filter(timer => !timer.cleared).map(timer => timer.ms), [15000]);
     worker.fireTimers();
-    assert.equal((await pending).headers.get('X-DeckLedger-Stale'), '1');
+    assert.equal((await pending).headers.get('X-Ophir-Stale'), '1');
     // Having seen that, the next requests do not each wait out the full limit again.
     const next = worker.get('/api/bootstrap');
     await tick();
@@ -113,12 +113,12 @@ describe('API answers', () => {
     worker.network.answer = () => json({ version: 1 });
     await worker.get('/api/bootstrap');
     worker.network.answer = () => new Response('Bad Gateway', { status: 502 });
-    assert.equal((await worker.get('/api/bootstrap')).headers.get('X-DeckLedger-Stale'), '1');
+    assert.equal((await worker.get('/api/bootstrap')).headers.get('X-Ophir-Stale'), '1');
     // An ordinary error from the app itself is passed on as it is.
     worker.network.answer = () => json({ error: 'nope' }, { status: 400 });
     const refused = await worker.get('/api/bootstrap');
     assert.equal(refused.status, 400);
-    assert.equal(refused.headers.get('X-DeckLedger-Stale'), null);
+    assert.equal(refused.headers.get('X-Ophir-Stale'), null);
   });
 
   test('an error answer does not replace the kept copy', async () => {
@@ -126,20 +126,20 @@ describe('API answers', () => {
     await worker.get('/api/bootstrap');
     worker.network.answer = () => json({ error: 'broken' }, { status: 500 });
     await worker.get('/api/bootstrap');
-    assert.deepEqual(await (await (await worker.cache('deckledger-api-v2')).match('/api/bootstrap')).json(), { version: 1 });
+    assert.deepEqual(await (await (await worker.cache('ophir-api-v2')).match('/api/bootstrap')).json(), { version: 1 });
   });
 
   test('what was saved for offline use is used when nothing else is kept', async () => {
     await (await worker.cache('deckledger-offline-v1')).put('/api/collection?game_id=vcard', json({ cards: ['saved'] }));
     const response = await worker.get('/api/collection?game_id=vcard');
     assert.deepEqual(await response.json(), { cards: ['saved'] });
-    assert.equal(response.headers.get('X-DeckLedger-Stale'), '1');
+    assert.equal(response.headers.get('X-Ophir-Stale'), '1');
   });
 
   test('only the newest answers are kept', async () => {
     worker.network.answer = url => json({ url });
     for (let index = 0; index < 160; index++) await worker.get(`/api/search?q=${index}`);
-    const kept = (await (await worker.cache('deckledger-api-v2')).keys()).map(entry => entry.url);
+    const kept = (await (await worker.cache('ophir-api-v2')).keys()).map(entry => entry.url);
     assert.equal(kept.length, 150);
     assert.ok(kept.at(-1).endsWith('q=159') && !kept.some(url => url.endsWith('q=5')));
   });
@@ -186,7 +186,7 @@ describe('static files and the page', () => {
     worker.network.answer = () => new Response('script');
     await worker.get('/static/js/core.js?v=old');
     await worker.get('/static/js/core.js?v=new');
-    const kept = (await (await worker.cache('deckledger-shell-v2')).keys()).map(entry => entry.url);
+    const kept = (await (await worker.cache('ophir-shell-v2')).keys()).map(entry => entry.url);
     assert.deepEqual(kept, [`${ORIGIN}/static/js/core.js?v=new`]);
   });
 
@@ -219,8 +219,8 @@ describe('static files and the page', () => {
 
 describe('updates', () => {
   test('caches of an older worker are removed, the offline save is not', async () => {
-    for (const name of ['deckledger-shell-v1', 'deckledger-api-v1', 'deckledger-api-v2', 'deckledger-offline-v1', 'something-else']) await worker.cache(name);
+    for (const name of ['ophir-shell-v1', 'ophir-api-v1', 'ophir-api-v2', 'deckledger-shell-v2', 'deckledger-api-v2', 'deckledger-images-v2', 'deckledger-offline-v1', 'something-else']) await worker.cache(name);
     await worker.lifecycle('activate');
-    assert.deepEqual([...worker.stores.keys()].sort(), ['deckledger-api-v2', 'deckledger-offline-v1']);
+    assert.deepEqual([...worker.stores.keys()].sort(), ['deckledger-offline-v1', 'ophir-api-v2']);
   });
 });

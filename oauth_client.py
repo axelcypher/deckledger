@@ -1,4 +1,4 @@
-"""Generic OAuth2/OIDC client mechanics for DeckLedger's optional SSO login.
+"""Generic OAuth2/OIDC client mechanics for Ophir Cards' optional SSO login.
 
 Deliberately built on Authlib (github.com/lepture/authlib) instead of hand-rolled
 PKCE/state/token-exchange code -- reimplementing the OAuth2 authorization-code +
@@ -24,7 +24,7 @@ _REQUEST_TIMEOUT = 10
 # Sent with every request this module makes itself. Proxies and bot filters in front of an
 # identity provider commonly refuse the default "python-requests/x.y" (the token request, made
 # by Authlib under its own name, got through where the userinfo request was answered with 403).
-_HEADERS = {"User-Agent": "DeckLedger (OAuth client)", "Accept": "application/json"}
+_HEADERS = {"User-Agent": "Ophir Cards (OAuth client)", "Accept": "application/json"}
 _DISCOVERY_TTL_SECONDS = 300
 _discovery_cache = {}
 

@@ -55,7 +55,7 @@ const api = async (url, options={}) => {
     throw error;
   }
   if (response.status===401) { location.href='/login'; const error=new Error('Nicht angemeldet'); error.isAuthError=true; throw error; }
-  const stale=response.headers.get('X-DeckLedger-Stale')==='1';
+  const stale=response.headers.get('X-Ophir-Stale')==='1';
   if(stale!==serverUnreachable){
     serverUnreachable=stale;
     updateOfflineIndicator();
@@ -222,7 +222,7 @@ function initials(name){return name.split(/\s+/).map(x=>x[0]).slice(0,2).join(''
 function mountFilterPanel(key,selectors,label='Filter'){
   const targets=selectors.map(selector=>$(selector,content)).filter(Boolean);
   if(!targets.length)return;
-  const panel=document.createElement('deckledger-filter-panel');
+  const panel=document.createElement('ophir-filter-panel');
   panel.setAttribute('filter-key',key);
   panel.setAttribute('label',label);
   panel.dataset.mobileFilterShell=key;
@@ -238,10 +238,10 @@ function statPill(items,{className='',columns=items.length,mobileColumns=Math.mi
   const safeColumns=Math.max(1,Math.min(8,Number(columns)||items.length||1));
   const safeMobileColumns=Math.max(1,Math.min(8,Number(mobileColumns)||Math.min(safeColumns,3)));
   const classAttribute=className?` class="${escapeHtml(className)}"`:'';
-  return `<deckledger-stat-pill${classAttribute} columns="${safeColumns}" mobile-columns="${safeMobileColumns}">${items.map(item=>{
+  return `<ophir-stat-pill${classAttribute} columns="${safeColumns}" mobile-columns="${safeMobileColumns}">${items.map(item=>{
     const itemClass=item.className?` class="${escapeHtml(item.className)}"`:'';
     return `<div data-stat${itemClass}><span>${escapeHtml(item.label)}</span><b>${item.value}</b></div>`;
-  }).join('')}</deckledger-stat-pill>`;
+  }).join('')}</ophir-stat-pill>`;
 }
 
 // Bug fix: setting overflow:hidden on body ALONE doesn't reliably lock page scroll -- confirmed
@@ -265,7 +265,7 @@ async function refreshWatchCount(){
   if(mtBadge){mtBadge.textContent=count;mtBadge.classList.toggle('hidden',count===0)}
 }
 
-// What a search box's text matches, as on the server (deckledger/search.py): every word somewhere
+// What a search box's text matches, as on the server (ophir_cards/search.py): every word somewhere
 // in the fields, spaces/case/accents aside and a letter off allowed ("Smugalana PL9", "Godess");
 // with | ^ $ \ [ ] * + ? { } the text as typed or read as a regular expression ("PL9|PL10").
 const searchFold=text=>String(text??'').normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase();
@@ -327,6 +327,8 @@ function applyAppearance(){
   const preference=appearancePreference();
   const light=preference==='light'||(preference==='auto'&&!systemDark?.matches);
   document.body.classList.toggle('mobile-light',light);
-  document.cookie=`deckledger_theme=${light?'light':'dark'};path=/;max-age=31536000;samesite=lax`;
+  document.cookie=`ophir_theme=${light?'light':'dark'};path=/;max-age=31536000;samesite=lax`;
+  // Until November 2026 the cookie was called deckledger_theme; drop it so it cannot win over the new one.
+  document.cookie='deckledger_theme=;path=/;max-age=0;samesite=lax';
 }
 systemDark?.addEventListener?.('change',()=>{if(state.boot&&appearancePreference()==='auto')applyAppearance()});

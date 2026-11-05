@@ -128,7 +128,7 @@ def download_real_image(url, legacy_data, legacy_mime, placeholders=()):
         try:
             response = urlopen(
                 Request(url, headers={
-                    "User-Agent": "DeckLedger/0.1",
+                    "User-Agent": "OphirCards/0.1",
                     "Accept": "image/avif,image/webp,image/*",
                     # Some CDNs (e.g. Cardmarket's product-image bucket) 403 hotlink-style
                     # requests without a same-site Referer.
@@ -330,7 +330,7 @@ def card_art(variant_id):
     <path d="M150 170 L255 85 L350 175 L436 115 L404 340 L267 430 L118 334Z" fill="#fff" opacity=".12" stroke="#fff" stroke-opacity=".35" stroke-width="3"/>
     <text x="38" y="58" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#fff" opacity=".86">{number}</text><text x="500" y="58" text-anchor="end" font-family="Arial,sans-serif" font-size="17" fill="#fff" opacity=".8">{row['language']}</text>
     <rect x="28" y="540" width="484" height="176" rx="18" fill="#07101f" opacity=".9"/><text x="52" y="590" font-family="Arial,sans-serif" font-size="29" font-weight="800" fill="#fff">{title[:29]}</text><text x="52" y="624" font-family="Arial,sans-serif" font-size="16" fill="#cbd5e1">{rarity} · {finish}</text>
-    <path d="M52 657 H460" stroke="#fff" stroke-opacity=".13"/><text x="52" y="687" font-family="Arial,sans-serif" font-size="13" fill="#94a3b8">DECKLEDGER CATALOGUE EDITION</text></svg>'''
+    <path d="M52 657 H460" stroke="#fff" stroke-opacity=".13"/><text x="52" y="687" font-family="Arial,sans-serif" font-size="13" fill="#94a3b8">OPHIR CARDS CATALOGUE EDITION</text></svg>'''
     # A stand-in for an image that could not be fetched right now, not the card's artwork:
     # browsers and the service worker must come back for the real one.
     return Response(svg,mimetype="image/svg+xml",headers={"Cache-Control":"private, max-age=3600","X-Image-Source":"placeholder"})

@@ -7,6 +7,8 @@
 // (price overrides, "set to X") don't have that property, so those are
 // blocked outright while offline instead of silently risking a stomped value
 // once reconnected -- see changeCollectionEntry below.
+// The outbox and the offline save keep the app's old name (DeckLedger): renaming them would drop
+// unsent changes and saved data on every device.
 const OFFLINE_DB_NAME='deckledger-offline', OFFLINE_DB_VERSION=1, OFFLINE_STORE='outbox';
 function openOfflineDb(){
   return new Promise((resolve,reject)=>{
@@ -127,7 +129,7 @@ async function saveForOffline({fullImages=false,onProgress=()=>{}}={}){
     const response=await fetch(url,{signal:controller.signal,headers:image?{}:{'Content-Type':'application/json'}});
     // An answer the service worker took from its own cache because the server did not respond
     // is not a fresh copy, and the stand-in for an image that could not be fetched is no image.
-    if(!response.ok||response.headers.get('X-DeckLedger-Stale')==='1')throw new Error(`${url} (${response.status})`);
+    if(!response.ok||response.headers.get('X-Ophir-Stale')==='1')throw new Error(`${url} (${response.status})`);
     if(image&&response.headers.get('X-Image-Source')==='placeholder')throw new Error(`${url} (no image)`);
     await cache.put(url,response.clone());
     saved.add(new URL(url,location.origin).href);

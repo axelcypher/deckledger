@@ -1,10 +1,10 @@
 # Providers
 
-The catalogue providers DeckLedger ships with, one per game: each turns the publisher's or a community source into the catalog dict defined in `catalog_provider_contract.py`. They are seeded into `catalog_providers` and run by `catalog_sync.py` in a subprocess (see catalog.md).
+The catalogue providers Ophir Cards ships with, one per game: each turns the publisher's or a community source into the catalog dict defined in `catalog_provider_contract.py`. They are seeded into `catalog_providers` and run by `catalog_sync.py` in a subprocess (see catalog.md).
 
 ## Public interface
 
-Every provider exposes one function, `fetch_catalog() -> dict`, returning `{sets, identities, printings, variants, sources}`. A failed download raises `RuntimeError` (the contract's `fetch` tries three times), and so do the provider-specific completeness checks below; a raise fails that game's import and leaves its stored catalogue untouched. Validation minimums and timeouts come from `Game.provider` in `deckledger/games/<game>.py`:
+Every provider exposes one function, `fetch_catalog() -> dict`, returning `{sets, identities, printings, variants, sources}`. A failed download raises `RuntimeError` (the contract's `fetch` tries three times), and so do the provider-specific completeness checks below; a raise fails that game's import and leaves its stored catalogue untouched. Validation minimums and timeouts come from `Game.provider` in `ophir_cards/games/<game>.py`:
 
 | File | Game id | Min. sets | Min. cards | Timeout |
 |---|---|---|---|---|
@@ -57,7 +57,7 @@ Every provider exposes one function, `fetch_catalog() -> dict`, returning `{sets
 - `catalog_provider_contract.py` - `fetch`, `fetch_bytes`, `clean`, `slug`, `digest`, `empty_catalog`, `put_identity`, `merge`.
 - pypdf (`requirements.txt`, `pypdf[image]==6.6.2`) - One Piece's JP DON!! PDF and its images.
 - External sources - lorcanajson.org, en.onepiece-cardgame.com, www.onepiece-cardgame.com, asia-en.onepiece-cardgame.com, api.github.com (TCGJSON release asset), en.hololive-official-cardgame.com, hololive-official-cardgame.com, www.vcardtcg.com.
-- `deckledger/schema.py` - seeds each file as provider code: game `<id>` reads `providers/<id with - replaced by _>.py`.
+- `ophir_cards/schema.py` - seeds each file as provider code: game `<id>` reads `providers/<id with - replaced by _>.py`.
 
 ## Decisions and assumptions
 
