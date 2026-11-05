@@ -116,7 +116,7 @@ def market_links(variant, attributes, mapping, search_term):
 GAME = Game(
     id="lorcana", module_id="disney-lorcana", name="Disney Lorcana", short_name="Lorcana", module_version="1.0.0",
     languages=("DE", "EN"), accent="#8b5cf6", symbol="✦", icon="lorcana",
-    logo_url="https://www.disneylorcana.com/_nuxt/logo-br-2x.Sweb4xgr.png",
+    logo_url="https://disneylorcana.com/wp-content/uploads/2026/09/logo-br-2x.webp",
     # Printings carry the rarity label in their own language, so the English and the official
     # German terms map to the same rank (Ravensburger's ladder incl. the Epic/Iconic tiers added
     # with Fabled in Sept. 2025).
