@@ -34,4 +34,13 @@ def new_posts():
 
 conftest.ophir_cards.watcher.fetch_feed = lambda url: (new_posts() if "/r/" in url else COMMENT_FEED, 2)
 
+# Nor the publishers' sites: every game's wordmark is already in the logo cache (a 1x1 PNG), so a
+# publisher moving its logo does not fail the browser tests.
+PIXEL = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                      "1f15c4890000000d49444154789c6360f8cfc0f01f0005000201e5270ade0000000049454e44ae426082")
+conftest.ophir_cards.config.IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
+for game_id in conftest.ophir_cards.games.GAMES:
+    (conftest.ophir_cards.config.IMAGE_CACHE / f"brand-{game_id}.img").write_bytes(PIXEL)
+    (conftest.ophir_cards.config.IMAGE_CACHE / f"brand-{game_id}.mime").write_text("image/png")
+
 conftest.ophir_cards.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)
