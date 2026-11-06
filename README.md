@@ -219,4 +219,4 @@ After a published build from `main` or a `v*` tag, the job `update-deployment-re
 ## Documentation
 
 - Module docs for agents: [docs/code/](docs/code/architecture.md)
-- Detailed docs: vault note `homelab-docs/projects/ophir_cards.md`
+- Detailed docs: vault note `homelab-docs/projects/deckledger.md`
