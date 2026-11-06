@@ -56,7 +56,7 @@
         <button class="login-submit" type="submit">Anmelden <span aria-hidden="true">→</span></button>
         {% if oauth_enabled %}
         <div class="login-divider"><span>oder</span></div>
-        <a class="login-sso" href="{{ url_for('oauth_login') }}">Mit {{ oauth_provider_name }} anmelden</a>
+        <a class="login-sso" href="{{ url_for('oauth_login', next=request.args.get('next')) }}">Mit {{ oauth_provider_name }} anmelden</a>
         {% endif %}
       </form>
       <p class="login-footer">Self-hosted · Deine Daten bleiben bei dir</p>

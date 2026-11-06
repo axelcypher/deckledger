@@ -24,6 +24,14 @@ PUBLIC_IMAGE_EXTENSIONS = (".avif", ".webp", ".png", ".jpg", ".jpeg", ".svg")
 # it is the sole source of truth for OAuth settings and the Admin UI renders it read-only; when
 # absent, OAuth settings live in the app_settings table and are fully editable from Admin.
 OAUTH_CONFIG_PATH = os.environ.get("OAUTH_CONFIG_PATH", "/config/oauth.json")
+# Shared sign-in with the other Ophir apps on one host (ophir_auth.py, docs/code/shared-auth.md):
+# standalone (default), master (signs people in for all of them under AUTH_PATH) or slave (takes
+# the master's sign-in). Read through the module (config.AUTH_MODE) so tests can switch it.
+AUTH_MODE = os.environ.get("OPHIR_AUTH_MODE", "standalone").strip().lower() or "standalone"
+# Where the master serves sign-in on the shared host, and where it sends people after a sign-in
+# there that did not say where to go (OPHIR_AUTH_HOME, e.g. /cards/).
+AUTH_PATH = "/" + os.environ.get("OPHIR_AUTH_PATH", "/auth").strip().strip("/")
+AUTH_HOME = os.environ.get("OPHIR_AUTH_HOME", "/").strip() or "/"
 # Fixed since there's only ever one configured provider (see plan: single generic OAuth2/OIDC
 # client, not a multi-provider table) -- kept as a named constant purely so users.oauth_provider
 # reads as "which identity system", not a magic string repeated at every call site.

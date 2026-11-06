@@ -87,20 +87,22 @@ function openTradeSettings(){
 function renderSettings(){
   const games=state.boot.games,settings=state.boot.settings||{},defaultLanguages=settings.defaultLanguages||{},banner=settings.homeBanner||{},modes=banner.modes||['newest'],appearance=appearancePreference();
   const user=state.boot.user,oauth=state.boot.oauth||{enabled:false};
+  // Shared sign-in of the Ophir apps: as a slave, name, email, password and SSO belong to the master.
+  const byMaster=state.boot.auth?.mode==='slave',accountLock=byMaster?'disabled':'';
   content.innerHTML=`<div class="page-head compact-page-head user-settings-page-head"><div><span class="eyebrow">KONTO</span><h1>Einstellungen</h1><p>Passe Ophir Cards an deine Sammlung an.</p></div></div>
     <div class="user-settings-layout">
     <section class="settings-section user-settings-card settings-card-profile settings-card-wide">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20c1.3-3.6 4.2-5.5 7.2-5.5s5.9 1.9 7.2 5.5"/></svg></span><div><span class="eyebrow">KONTO</span><h2>Konto</h2><p>Profil und Anmeldung dieses Kontos.</p></div></div>
       <div class="settings-grid settings-grid-account">
-        <label class="settings-field"><span>Anzeigename</span><input id="account-display-name" value="${escapeHtml(user.display_name)}"></label>
-        <label class="settings-field"><span>Benutzername</span><input id="account-username" value="${escapeHtml(user.username)}"></label>
-        <label class="settings-field"><span>E-Mail</span><input id="account-email" type="email" placeholder="name@example.com" value="${escapeHtml(user.email||'')}"></label>
+        <label class="settings-field"><span>Anzeigename</span><input id="account-display-name" value="${escapeHtml(user.display_name)}" ${accountLock}></label>
+        <label class="settings-field"><span>Benutzername</span><input id="account-username" value="${escapeHtml(user.username)}" ${accountLock}></label>
+        <label class="settings-field"><span>E-Mail</span><input id="account-email" type="email" placeholder="name@example.com" value="${escapeHtml(user.email||'')}" ${accountLock}></label>
       </div>
-      <div class="account-sign-in">
+      ${byMaster?`<div class="account-sign-in"><div class="account-sign-in-row"><div><b>Gemeinsame Anmeldung</b><small>Du bist über die Anmeldung der Ophir-Apps angemeldet. Name, E-Mail, Passwort und Single Sign-On änderst du in der App, die sie übernimmt.</small></div><span class="user-settings-status is-connected"><i></i>Aktiv</span></div></div>`:`<div class="account-sign-in">
         <div class="account-sign-in-row"><div><b>Passwort</b><small>${user.password_set?'Die Anmeldung mit Benutzername und Passwort ist aktiv.':'Noch kein lokales Passwort festgelegt.'}</small></div><span class="user-settings-status ${user.password_set?'is-connected':''}"><i></i>${user.password_set?'Aktiv':'Keins'}</span><button class="secondary-button" type="button" id="account-password-open">${user.password_set?'Passwort ändern':'Passwort festlegen'}</button></div>
         ${oauth.enabled?`<div class="account-sign-in-row"><div><b>Single Sign-On</b><small>${user.oauth_linked?`Dieses Konto ist mit ${escapeHtml(oauth.provider_name)} verbunden.`:`Verknüpfe dein Konto mit ${escapeHtml(oauth.provider_name)}.`}</small></div><span class="user-settings-status ${user.oauth_linked?'is-connected':''}"><i></i>${user.oauth_linked?'Verbunden':'Nicht verbunden'}</span>${user.oauth_linked?`<button class="secondary-button" id="account-oauth-unlink">Verbindung trennen</button>`:`<a class="secondary-button" href="${APP_BASE}/oauth/login">Mit ${escapeHtml(oauth.provider_name)} verbinden</a>`}</div>`:''}
       </div>
-      <div class="user-settings-actions account-settings-actions"><span class="spacer"></span><button class="primary-button" id="account-save"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Kontodaten speichern</button></div>
+      <div class="user-settings-actions account-settings-actions"><span class="spacer"></span><button class="primary-button" id="account-save"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Kontodaten speichern</button></div>`}
     </section>
     <section class="settings-section user-settings-card settings-card-highlights">
       <div class="user-settings-card-head"><span class="user-settings-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.1 5.4L20 9l-4.5 3.8L17 19l-5-3.2L7 19l1.5-6.2L4 9l5.9-.6L12 3Z"/></svg></span><div><span class="eyebrow">STARTSEITE</span><h2>Highlights</h2><p>Bestimme die Karten im endlosen Reel des aktiven TCGs.</p></div></div>
@@ -134,7 +136,7 @@ function renderSettings(){
     </div>`;
   renderOfflineSave();
   renderPublicProfileSettings();
-  $('#account-save',content).onclick=async()=>{
+  if($('#account-save',content))$('#account-save',content).onclick=async()=>{
     const payload={display_name:$('#account-display-name').value.trim(),username:$('#account-username').value.trim(),email:$('#account-email').value.trim()};
     try{
       const updated=await api('/api/account',{method:'PATCH',body:JSON.stringify(payload)});
@@ -143,7 +145,7 @@ function renderSettings(){
       toast('Kontodaten gespeichert');
     }catch(error){toast(error.message)}
   };
-  $('#account-password-open',content).onclick=()=>openAccountPasswordDialog(user);
+  $('#account-password-open',content)?.addEventListener('click',()=>openAccountPasswordDialog(user));
   $('#account-oauth-unlink',content)?.addEventListener('click',async()=>{
     try{
       await post('/api/account/oauth/unlink',{});

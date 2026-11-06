@@ -1,4 +1,6 @@
-"""Signing in: local passwords and the optional OAuth/OIDC provider."""
+"""Signing in: local passwords and the optional OAuth/OIDC provider. With the shared sign-in of the
+Ophir apps (ophir_cards/shared_auth.py) a slave sends all of it to the master, and the master
+serves it under the auth path of the shared host."""
 
 import json
 import os
@@ -13,6 +15,7 @@ from oauth_client import OAuthConfigError, build_authorization_request, exchange
 from .config import OAUTH_CONFIG_DEFAULTS, OAUTH_CONFIG_PATH, OAUTH_ENVIRONMENT, OAUTH_PROVIDER_KEY, jload, now_iso
 from .web import app, db
 from .schema import ensure_user_lists
+from .shared_auth import next_target, signs_in_elsewhere, start_page, to_auth_path, with_query
 
 
 def oauth_environment():
@@ -108,6 +111,8 @@ def resolve_oauth_identity(config, subject, email, display_name, email_verified=
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if signs_in_elsewhere():
+        return to_auth_path("/login", request.values.get("next"))
     oauth_config = resolve_oauth_config()
     oauth_context = {
         "oauth_enabled": oauth_config["enabled"], "oauth_provider_name": oauth_config["provider_name"],
@@ -119,38 +124,51 @@ def login():
         if row and row["password_hash"] and check_password_hash(row["password_hash"], password):
             session.clear()
             session["user_id"] = row["id"]
-            return redirect(url_for("index"))
+            return redirect(next_target())
         return render_template("login.html", error="Benutzername oder Passwort ist nicht korrekt.", **oauth_context), 401
     if session.get("user_id"):
-        return redirect(url_for("index"))
+        return redirect(next_target())
     error = OAUTH_ERROR_MESSAGES.get(request.args.get("error"))
     return render_template("login.html", error=error, **oauth_context)
 
 
-def oauth_failure_redirect(link_flow, error_code):
+def oauth_failure_redirect(link_flow, error_code, target=None):
     # An already-authenticated user hitting this from the Settings "Verbinden" button never sees
     # /login (it immediately bounces anyone with a session straight to "/") -- routing those
     # failures there would silently swallow the error. Send them to "/" with a query flag the SPA
     # itself reads and toasts (see init() in static/js/main.js) instead. A genuine logged-out login attempt
     # still gets the server-rendered banner on /login as before.
+    target = target or start_page()
     if link_flow:
-        return redirect(url_for("index", oauth_error=error_code))
-    return redirect(url_for("login", error=error_code))
+        return redirect(with_query(target, oauth_error=error_code))
+    return redirect(login_url(error=error_code, target=target))
+
+
+def login_url(error, target):
+    """The sign-in page with an error, keeping where the sign-in was to end unless that is the
+    start page anyway."""
+    return url_for("login", error=error, **({"next": target} if target != start_page() else {}))
 
 
 @app.get("/oauth/login")
 def oauth_login():
+    if signs_in_elsewhere():
+        # One redirect URI for every Ophir app on the host: <auth path>/oauth/callback.
+        return to_auth_path("/oauth/login", request.args.get("next"))
     config = resolve_oauth_config()
     link_flow = bool(session.get("user_id"))
+    target = next_target()
     if not config["enabled"]:
-        return oauth_failure_redirect(link_flow, "not_configured")
+        return oauth_failure_redirect(link_flow, "not_configured", target)
     try:
         auth_url, state, code_verifier = build_authorization_request(config, url_for("oauth_callback", _external=True))
     except OAuthConfigError as error:
         app.logger.warning("SSO login could not be started: %s", error)
-        return oauth_failure_redirect(link_flow, "provider_error")
+        return oauth_failure_redirect(link_flow, "provider_error", target)
     session["oauth_state"] = state
     session["oauth_code_verifier"] = code_verifier
+    # Where the round trip ends: the page that started it (a slave's start page, Settings).
+    session["oauth_next"] = target
     # Only set (and only ever trusted) when the browser already carries an authenticated
     # session -- marks this round trip on the callback as "link this identity to my
     # current account" (started from Settings) rather than "log me in as whoever this
@@ -165,11 +183,12 @@ def oauth_callback():
     link_user_id = session.pop("oauth_link_user_id", None)
     expected_state = session.pop("oauth_state", None)
     code_verifier = session.pop("oauth_code_verifier", None)
+    target = session.pop("oauth_next", None) or start_page()
     if not config["enabled"] or not expected_state or request.args.get("state") != expected_state:
-        return oauth_failure_redirect(link_user_id, "state_mismatch")
+        return oauth_failure_redirect(link_user_id, "state_mismatch", target)
     code = request.args.get("code")
     if not code:
-        return oauth_failure_redirect(link_user_id, "provider_error")
+        return oauth_failure_redirect(link_user_id, "provider_error", target)
     # The login page only says "the provider refused or cannot be reached". Which step failed and
     # what the provider answered goes to the log -- without it a wrong client secret, an
     # unreachable token endpoint and a missing claim all look the same.
@@ -192,7 +211,7 @@ def oauth_callback():
         subject, email, display_name = extract_identity(config, claims)
     except OAuthConfigError as error:
         app.logger.warning("SSO login failed at the %s (redirect URI %s): %s", step, url_for("oauth_callback", _external=True), error)
-        return oauth_failure_redirect(link_user_id, "provider_error")
+        return oauth_failure_redirect(link_user_id, "provider_error", target)
 
     connection = db()
     if link_user_id:
@@ -200,24 +219,27 @@ def oauth_callback():
             "SELECT id FROM users WHERE oauth_provider=? AND oauth_subject=? AND id!=?", (OAUTH_PROVIDER_KEY, subject, link_user_id),
         ).fetchone()
         if conflict:
-            return oauth_failure_redirect(link_user_id, "already_linked")
+            return oauth_failure_redirect(link_user_id, "already_linked", target)
         connection.execute(
             "UPDATE users SET oauth_provider=?, oauth_subject=?, email=CASE WHEN email='' THEN ? ELSE email END WHERE id=?",
             (OAUTH_PROVIDER_KEY, subject, email, link_user_id),
         )
         connection.commit()
         session["user_id"] = link_user_id
-        return redirect(url_for("index", linked="1"))
+        return redirect(with_query(target, linked="1"))
 
     matched = resolve_oauth_identity(config, subject, email, display_name, email_verified=claims.get("email_verified") is not False)
     if not matched:
-        return redirect(url_for("login", error="no_account"))
+        return redirect(login_url(error="no_account", target=target))
     session.clear()
     session["user_id"] = matched["id"]
-    return redirect(url_for("index"))
+    return redirect(target)
 
 
 @app.post("/logout")
 def logout():
+    if signs_in_elsewhere():
+        return to_auth_path("/logout", request.values.get("next"))
+    # In master mode the end of the session also takes back the host-wide sign-in (shared_auth.py).
     session.clear()
-    return redirect(url_for("login"))
+    return redirect(next_target() if request.values.get("next") else url_for("login"))

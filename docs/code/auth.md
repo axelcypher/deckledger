@@ -23,6 +23,15 @@
   3. with `auto_provision`: a new account (role `user`, empty password hash, username from the email's local part, else the display name, else the subject, made unique with `-2`, `-3`, ...) plus its default lists.
 - `unique_username_from(candidate)` - slug of the candidate with a numeric suffix until free.
 
+### Shared sign-in (ophir_cards/shared_auth.py, ophir_auth.py)
+
+With `OPHIR_AUTH_MODE` `master` or `slave` the routes above follow [shared-auth.md](shared-auth.md):
+
+- `signs_in_elsewhere()` (a slave, or the master served under a path of the shared host): `/login`, `/oauth/login` and `/logout` redirect to the same routes under `OPHIR_AUTH_PATH`, keeping `next` (`/logout` as 307).
+- Sign-ins end at `next_target()` (validated `next`, else `start_page()`: the app's start page, or `OPHIR_AUTH_HOME` under the auth path). The SSO round trip keeps it in `session["oauth_next"]`; link-flow results go there with `linked=1` or `oauth_error=<code>`; login-flow failures go to `/login?error=<code>` with `next` unless it is the start page.
+- `refuse_when_slave()` answers 409 for changes of the own account (`PATCH /api/account`, password, SSO unlink) and of accounts in the admin area in slave mode.
+- The bootstrap carries `auth: {mode, base}`; the Settings and Admin views show accounts as managed by the master in slave mode.
+
 ### oauth_client.py (repository root)
 
 No Flask or database coupling; every function takes the resolved config dict. Functions that talk to the provider raise only `OAuthConfigError` (any other exception is wrapped).

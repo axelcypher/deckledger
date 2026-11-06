@@ -9,6 +9,8 @@ from .games import game as game_rules
 from .web import app, compress_file, db, derived_from_file, login_required, user_id
 from .prices import latest_price_sql, latest_prices
 from .auth import resolve_oauth_config
+from . import config
+from .shared_auth import auth_base
 
 
 def glass_plate_inline_markup():
@@ -145,8 +147,10 @@ def bootstrap():
     user_payload["password_set"] = bool(current["password_hash"])
     oauth_config = resolve_oauth_config()
     oauth_payload = {"enabled": oauth_config["enabled"], "provider_name": oauth_config["provider_name"]}
+    # Shared sign-in of the Ophir apps: in slave mode accounts, passwords and SSO are the master's.
+    auth_payload = {"mode": config.AUTH_MODE, "base": auth_base()}
     inbox_new = db().execute("SELECT COUNT(*) FROM inbox_items WHERE user_id=? AND state='new'", (uid,)).fetchone()[0]
-    return jsonify({"user": user_payload, "games": games, "settings": settings, "imports": imports, "price_sync": price_sync, "oauth": oauth_payload, "inbox_new": inbox_new})
+    return jsonify({"user": user_payload, "games": games, "settings": settings, "imports": imports, "price_sync": price_sync, "oauth": oauth_payload, "auth": auth_payload, "inbox_new": inbox_new})
 
 
 def fetch_banner_cards(game_id, mode, uid):

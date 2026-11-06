@@ -6,6 +6,7 @@ import re
 from flask import jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .shared_auth import refuse_when_slave
 from .web import app, db, login_required, user_id
 
 
@@ -25,6 +26,8 @@ def save_settings():
 @app.patch("/api/account")
 @login_required
 def update_account():
+    if refused := refuse_when_slave():
+        return refused
     payload = request.get_json(force=True) or {}
     uid = user_id()
     updates, params = [], []
@@ -59,6 +62,8 @@ def update_account():
 @app.post("/api/account/password")
 @login_required
 def update_account_password():
+    if refused := refuse_when_slave():
+        return refused
     payload = request.get_json(force=True) or {}
     new_password = str(payload.get("new_password") or "")
     current_password = str(payload.get("current_password") or "")
@@ -77,6 +82,8 @@ def update_account_password():
 @app.post("/api/account/oauth/unlink")
 @login_required
 def unlink_account_oauth():
+    if refused := refuse_when_slave():
+        return refused
     row = db().execute("SELECT password_hash FROM users WHERE id=?", (user_id(),)).fetchone()
     if not row["password_hash"]:
         return jsonify({"error": "Bitte zuerst ein Passwort festlegen -- sonst ist nach dem Trennen kein Login mehr möglich."}), 400

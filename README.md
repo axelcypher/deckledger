@@ -80,6 +80,23 @@ Behind a reverse proxy the app can also run under a path, for example `ophir.exa
 - The session cookie is `ophir_cards_session`, limited to the app's path and signed with a salt of its own, so apps on the same host never read each other's sessions, even with the same `SECRET_KEY`.
 - The SSO redirect URI and the eBay callback contain the path too (`https://ophir.example.org/cards/oauth/callback`, `.../cards/ebay/callback`); register them with the provider for every address you sign in on.
 
+### Shared sign-in with other Ophir apps
+
+When several Ophir apps share a host (`ophir.example.org/cards`, `/figures`), one of them can sign people in for all: the **master** serves sign-in under `/auth` on that host, and the others (**slaves**) take that sign-in. Signing out anywhere signs out everywhere, and there is one SSO redirect URI for all apps: `https://ophir.example.org/auth/oauth/callback`.
+
+| Setting | Values | Description |
+| --- | --- | --- |
+| `OPHIR_AUTH_MODE` | `standalone` (default), `master`, `slave` | Sign users in itself, also for the other apps, or take the master's sign-in |
+| `OPHIR_AUTH_PATH` | default `/auth` | Where the master serves sign-in on the shared host; the same in every app |
+| `OPHIR_AUTH_HOME` | default `/` | Master: where a sign-in at `/auth` ends that did not say where to go, e.g. `/cards/` |
+
+- All apps need the same `SECRET_KEY`.
+- The proxy serves the master under its own path **and** under `/auth`, both the way described in "Serving under a path".
+- Accounts and roles are managed at the master. A slave creates its own account for someone on their first visit, or links an existing one with the same email or username, and takes the display name, email and role from the master. In a slave, accounts, passwords and SSO cannot be changed.
+- An account deleted or demoted at the master keeps working at the slaves for up to 12 hours.
+
+The protocol, also for implementing it in another app, is in [docs/code/shared-auth.md](docs/code/shared-auth.md).
+
 ### Single sign-on (OAuth2 / OIDC)
 
 Ophir Cards can sign users in through one external OAuth2/OIDC identity provider (Google, Authentik, Keycloak, Authelia, Okta or any other OIDC-compatible one), next to local username and password accounts. It is configured one of three ways:

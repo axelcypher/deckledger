@@ -94,6 +94,7 @@ Adding a migration: a new file with the next number, listed in `MIGRATIONS`; nev
 | 0014 | ebay sale deals | `ebay_sales.deal_id`. |
 | 0015 | price observed_at index | Index on `price_observations(observed_at)`. |
 | 0016 | lookup indexes | Indexes on `ebay_listings(user_id, variant_id)`, `card_identities(canonical_name NOCASE)`, `deal_events(deal_id)`, `inbox_items(post_id)`, `applied_requests(created_at)`. |
+| 0017 | shared sign-in subject | `users.auth_subject` (`TEXT NOT NULL DEFAULT ''`, unique where not empty): the master's account id a slave account is linked to (see [shared-auth.md](shared-auth.md)). |
 
 ## Dependencies
 

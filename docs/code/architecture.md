@@ -45,6 +45,7 @@ ebay_sync.py                      every 600 s, followed listings and connected a
 | eBay | `ophir_cards/ebay.py`, `ebay_photos.py`, `ebay_sync.py` | [ebay.md](ebay.md) |
 | Export, backup, restore, text import | `ophir_cards/backup.py` | [backup.md](backup.md) |
 | Sign-in, SSO, own account, admin API | `ophir_cards/auth.py`, `oauth_client.py`, `account.py`, `admin.py` | [auth.md](auth.md) |
+| Shared sign-in of the Ophir apps on one host (master/slave) | `ophir_auth.py`, `ophir_cards/shared_auth.py` | [shared-auth.md](shared-auth.md) |
 | Page shell, dashboard data, public profile | `ophir_cards/pages.py`, `public_profile.py`, `templates/` | [pages.md](pages.md) |
 | Browser frontend, service worker, frontend tests | `templates/index.html`, `static/` | [frontend.md](frontend.md) |
 
