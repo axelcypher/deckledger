@@ -391,7 +391,7 @@ def ebay_connect():
     try:
         config = require_config(db(), for_users=True)
     except EbayError:
-        return redirect("/?ebay=not_configured")
+        return redirect(url_for("index", ebay="not_configured"))
     state = secrets.token_urlsafe(24)
     session["ebay_oauth_state"] = state
     query = urlencode({"client_id": config["client_id"], "response_type": "code", "redirect_uri": config["ru_name"],
@@ -405,9 +405,9 @@ def ebay_callback():
     """Where eBay sends the user back to (the RuName's "accept" and "decline" URL)."""
     expected = session.pop("ebay_oauth_state", None)
     if request.args.get("error") or not request.args.get("code"):
-        return redirect("/?ebay=denied")
+        return redirect(url_for("index", ebay="denied"))
     if not expected or not secrets.compare_digest(expected, request.args.get("state", "")):
-        return redirect("/?ebay=state")
+        return redirect(url_for("index", ebay="state"))
     try:
         config = require_config(db(), for_users=True)
         payload = token_request(config, {"grant_type": "authorization_code", "code": request.args["code"], "redirect_uri": config["ru_name"]})
@@ -419,7 +419,7 @@ def ebay_callback():
             pass
     except EbayError as error:
         app.logger.warning("eBay connection failed: %s", error)
-        return redirect("/?ebay=failed")
+        return redirect(url_for("index", ebay="failed"))
     stamp = now_iso()
     db().execute(
         """INSERT INTO ebay_accounts(user_id,username,access_token,access_expires_at,refresh_token,refresh_expires_at,environment,connected_at,last_error,scopes)
@@ -430,7 +430,7 @@ def ebay_callback():
          later(payload.get("refresh_token_expires_in", 47304000)), config["environment"], stamp, " ".join(USER_SCOPES)),
     )
     db().commit()
-    return redirect("/?ebay=connected")
+    return redirect(url_for("index", ebay="connected"))
 
 
 @app.post("/api/ebay/disconnect")

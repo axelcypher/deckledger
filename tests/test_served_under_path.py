@@ -55,3 +55,8 @@ def test_a_session_another_app_signed_with_the_same_key_is_not_accepted(anonymou
     anonymous.set_cookie("ophir_cards_session", foreign)
     anonymous.set_cookie("session", foreign)
     assert anonymous.get("/api/bootstrap").status_code == 401
+
+
+def test_the_ebay_return_stays_under_the_path():
+    client, _ = login_under_path()
+    assert client.get("/ebay/callback?code=x&state=wrong", base_url=UNDER_PATH).headers["Location"] == "/cards/?ebay=state"
